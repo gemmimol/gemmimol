@@ -8647,7 +8647,7 @@ Viewer.prototype.KEYBOARD_HELP = [
 ].join('\n');
 
 Viewer.prototype.ABOUT_HELP =
-  '&nbsp; <a href="https://uglymol.github.io">GemmiMol</a> ' +
+  '&nbsp; <a href="https://gemmimol.github.io">GemmiMol</a> ' +
   // @ts-expect-error Cannot find name 'VERSION'
   (typeof VERSION === 'string' ? VERSION : 'dev');
 

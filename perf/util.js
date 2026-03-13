@@ -1,29 +1,52 @@
 'use strict';
 // Node.js only
 
-const child_process = require('child_process');
+const Buffer = require('buffer').Buffer;
 const fs = require('fs');
+const pathModule = require('path');
 const Benchmark = require('benchmark');
 const GM = require('../gemmimol');
 
 let gemmi_promise;
+const DATA_DIR = pathModule.join(__dirname, '..', 'data');
+const DATA_BASE_URL = 'https://gemmimol.github.io/data/';
+const DATA_FILES = ['1mru.pdb', '1mru.map', '1mru_diff.map', '1mru_m0.map',
+                    '1mru.omap', '1mru_diff.omap', 'pdb2mru.ent', '1yk4.pdb'];
 
 function data_path(filename) {
   if (filename.charAt(0) === '/') return filename;
-  const path = __dirname + '/../data/' + filename;
+  const path = pathModule.join(DATA_DIR, filename);
   try {
     fs.statSync(path);
   } catch {
-    console.log('we need to download ' + filename + ' (only once)');
-    const url = 'http://uglymol.github.io/data/' + filename;
-    const cmd = 'curl -f ' + url + ' -o ' + path;
-    if (!child_process.execSync) {
-      console.log('no execSync (in Node v0.11.12+), you need to:\n' + cmd);
-      process.exit(1);
-    }
-    child_process.execSync(cmd);
+    throw new Error('Missing data file "' + filename +
+                    '". Run "npm run download-data" to fetch test fixtures.');
   }
   return path;
+}
+
+async function download_file(filename) {
+  const path = data_path_or_target(filename);
+  try {
+    fs.statSync(path);
+    return;
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  console.log('downloading ' + filename);
+  const response = await fetch(DATA_BASE_URL + filename);
+  if (!response.ok) {
+    throw new Error('Failed to download ' + filename + ': ' +
+                    response.status + ' ' + response.statusText);
+  }
+  const tmp = path + '.tmp';
+  const buffer = Buffer.from(await response.arrayBuffer());
+  await fs.promises.writeFile(tmp, buffer);
+  await fs.promises.rename(tmp, path);
+}
+
+function data_path_or_target(filename) {
+  return pathModule.join(DATA_DIR, filename);
 }
 
 exports.open_as_utf8 = function (filename) {
@@ -62,6 +85,12 @@ exports.load_models_from_gemmi = function (filename, getMonomerCifs) {
   });
 };
 
+exports.download_data = async function () {
+  for (let i = 0; i < DATA_FILES.length; i++) {
+    await download_file(DATA_FILES[i]);
+  }
+};
+
 const bench_to_run = process.argv[2];
 
 exports.bench = function (name, fn, options) {
@@ -82,11 +111,8 @@ exports.bench = function (name, fn, options) {
 };
 
 if (bench_to_run === 'download-data') {
-  (function () {
-    const files = ['1mru.pdb', '1mru.map', '1mru_diff.map', '1mru_m0.map',
-                   '1mru.omap', '1mru_diff.omap', 'pdb2mru.ent'];
-    for (let i = 0; i < files.length; i++) {
-      data_path(files[i]);
-    }
-  })();
+  exports.download_data().catch(function (err) {
+    console.error(err);
+    process.exit(1);
+  });
 }

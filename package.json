@@ -10,10 +10,10 @@
     "protein",
     "structure"
   ],
-  "homepage": "https://uglymol.github.io",
+  "homepage": "https://gemmimol.github.io",
   "repository": {
     "type": "git",
-    "url": "https://github.com/uglymol/uglymol.git"
+    "url": "https://github.com/gemmimol/gemmimol.git"
   },
   "license": "MIT",
   "main": "gemmimol.js",
@@ -37,7 +37,7 @@
     "prepack": "npm run build",
     "serve": "serve -l 7890",
     "start": "npm run watch & npm run serve",
-    "test": "npm run lint && tsc --noEmit src/*.ts && rollup -c && jest --testMatch='**/test/*.js'",
+    "test": "npm run lint && tsc --noEmit src/*.ts && rollup -c && npm run download-data && jest --testMatch='**/test/*.js'",
     "version": "npm run build && git add -A gemmimol.js gemmimol.min.js",
     "watch": "rollup -c --watch"
   },
