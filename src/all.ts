@@ -6,7 +6,7 @@
  *                v-- elmap.ts <-.
  *      unitcell.ts               \
  *                ^-  model.ts <- viewer.ts
- *     uthree/ <-------------------' / /
+ *     three-r162/ <---------------' / /
  *       ^  ^----- draw.ts <--------' /
  *       '------ controls.ts <-------'
  */
@@ -27,8 +27,8 @@ export * from './elmap';
 
 // modified subset of THREE.js
 // (exported, because Vector3, Color, etc can be useful in an app)
-export * from './uthree/main.js';
-//export * from './uthree/extras.js';
+export * from './three-r162/main.js';
+//export * from './three-r162/extras.js';
 
 // drawing primitives
 export * from './draw';

@@ -1,5 +1,5 @@
 import { OrthographicCamera, Scene, Color, Vector3,
-         Ray, WebGLRenderer, Fog } from './uthree/main';
+         Ray, WebGLRenderer, Fog } from './three-r162/main';
 import { makeLineMaterial, makeLineSegments, makeRibbon,
          makeChickenWire, makeGrid, makeSticks, makeBalls, makeWheels, makeCube,
          makeRgbBox, Label, addXyzCross } from './draw';
@@ -9,7 +9,7 @@ import { BondType, modelsFromGemmi } from './model';
 
 import type { Atom, Model } from './model';
 import type { GemmiBondingInfo } from './model';
-import type { LineSegments } from './uthree/main';
+import type { LineSegments } from './three-r162/main';
 import type { OrCameraType } from './controls';
 
 type Num2 = [number, number];

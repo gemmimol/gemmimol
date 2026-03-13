@@ -1,5 +1,5 @@
-import { Vector3, Quaternion, Matrix4 } from './uthree/main';
-import type { OrthographicCamera } from './uthree/main';
+import { Vector3, Quaternion, Matrix4 } from './three-r162/main';
+import type { OrthographicCamera } from './three-r162/main';
 
 // Properties defined with Object.defineProperties() in JS are not understood
 // by TypeScript; add them here.
