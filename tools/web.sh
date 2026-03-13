@@ -2,7 +2,7 @@
 # takes one arg - directory of a clone of gemmimol.github.io
 outdir="$1"
 
-[ -e src/elmap.js ] || { echo "Run me from top-level gemmimol dir"; exit 1; }
+[ -e src/elmap.ts ] || { echo "Run me from top-level gemmimol dir"; exit 1; }
 
 # use README.md without badges
 cat >$outdir/index.md <<EOF
