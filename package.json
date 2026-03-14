@@ -30,6 +30,7 @@
   "scripts": {
     "build": "npm test",
     "bundle": "rollup -c",
+    "compare-three-r162": "node tools/compare-three-r162.js",
     "coverage": "rollup -c --sourcemap && jest --testMatch='**/test/*.js' --coverage --collectCoverageFrom='gemmimol.js'",
     "ci": "npm run download-data && npm test",
     "download-data": "node perf/util.js download-data",

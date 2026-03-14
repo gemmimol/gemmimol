@@ -11,7 +11,8 @@ let gemmi_promise;
 const DATA_DIR = pathModule.join(__dirname, '..', 'data');
 const DATA_BASE_URL = 'https://gemmimol.github.io/data/';
 const DATA_FILES = ['1mru.pdb', '1mru.map', '1mru_diff.map', '1mru_m0.map',
-                    '1mru.omap', '1mru_diff.omap', 'pdb2mru.ent', '1yk4.pdb'];
+                    '1mru.omap', '1mru_diff.omap', 'pdb2mru.ent', '1yk4.pdb',
+                    '1YJP.pdb'];
 
 function data_path(filename) {
   if (filename.charAt(0) === '/') return filename;
