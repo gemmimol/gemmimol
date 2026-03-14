@@ -1,8 +1,8 @@
-
+[![npm](https://img.shields.io/npm/v/gemmimol.svg?maxAge=2592000)](https://www.npmjs.com/package/gemmimol)
 GemmiMol is a web-based macromolecular viewer focused on electron density.
 It is a successor of the deprecated UglyMol.
 
-It makes models and e.den. maps easy to recognize, navigate and interpret --
+It makes models and e.den. maps easy to recognize, navigate and interpret --:
 for crystallographers.
 It looks like [Coot](http://www2.mrc-lmb.cam.ac.uk/personal/pemsley/coot/)
 and walks (mouse controls) like Coot.
