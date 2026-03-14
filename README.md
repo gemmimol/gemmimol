@@ -17,7 +17,7 @@ that provides the data access
 Try it:
 
 - [1MRU](https://gemmimol.github.io/1mru.html) (60kDa, 3Å),
-  and in [dual view](https://gemmimoljj.github.io/dual.html) with PDB_REDO,
+  and in [dual view](https://gemmimol.github.io/dual.html) with PDB_REDO,
 - [a blob](https://gemmimol.github.io/dimple_thaum.html#xyz=14,18,12&eye=80,71,-41&zoom=70)
   (Dimple result, thaumatin, 1.4Å),
 - or any [local file or wwPDB entry](https://gemmimol.github.io/view/).
