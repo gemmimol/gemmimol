@@ -1700,7 +1700,6 @@ class Quaternion {
 
 class Vector3 {
   constructor(x = 0, y = 0, z = 0) {
-    Vector3.prototype.isVector3 = true;
     this.x = x;
     this.y = y;
     this.z = z;
@@ -1898,6 +1897,7 @@ class Vector3 {
     return this;
   }
 }
+Vector3.prototype.isVector3 = true;
 const _vector = /*@__PURE__*/ new Vector3();
 
 
@@ -3056,7 +3056,6 @@ let _materialId = 0;
 class Material extends EventDispatcher {
   constructor() {
     super();
-    this.isMaterial = true;
     Object.defineProperty(this, 'id', { value: _materialId++ });
     this.uuid = generateUUID();
     this.name = '';
@@ -3123,12 +3122,12 @@ class Material extends EventDispatcher {
     this.dispatchEvent( { type: 'update' } );
   }
 }
+Material.prototype.isMaterial = true;
 
 // materials/ShaderMaterial.js
 class ShaderMaterial extends Material {
   constructor(parameters) {
     super();
-    this.isShaderMaterial = true;
     this.type = 'ShaderMaterial';
     this.uniforms = {};
     this.vertexShader = '';
@@ -3143,6 +3142,7 @@ class ShaderMaterial extends Material {
     this.setValues(parameters);
   }
 }
+ShaderMaterial.prototype.isShaderMaterial = true;
 
 
 // core/Object3D.js
@@ -3154,8 +3154,6 @@ const _removedEvent = { type: 'removed' };
 class Object3D extends EventDispatcher {
   constructor() {
     super();
-
-    this.isObject3D = true;
 
     Object.defineProperty(this, 'id', { value: _object3DId++ });
 
@@ -3298,6 +3296,7 @@ class Object3D extends EventDispatcher {
   }
 }
 
+Object3D.prototype.isObject3D = true;
 Object3D.DEFAULT_UP = /*@__PURE__*/ new Vector3(0, 1, 0);
 Object3D.DEFAULT_MATRIX_AUTO_UPDATE = true;
 Object3D.DEFAULT_MATRIX_WORLD_AUTO_UPDATE = true;
@@ -3310,7 +3309,6 @@ class BufferAttribute {
     if (Array.isArray(array)) {
       throw new TypeError('BufferAttribute: array should be a Typed Array.');
     }
-    this.isBufferAttribute = true;
 
     this.array = array;
     this.itemSize = itemSize;
@@ -3332,6 +3330,7 @@ class BufferAttribute {
 
   onUploadCallback() {}
 }
+BufferAttribute.prototype.isBufferAttribute = true;
 
 
 // core/BufferGeometry.js
@@ -3340,7 +3339,6 @@ let _id = 0;
 class BufferGeometry extends EventDispatcher {
   constructor() {
     super();
-    this.isBufferGeometry = true;
     Object.defineProperty(this, 'id', { value: _id++ });
     this.uuid = generateUUID();
     this.name = '';
@@ -3370,15 +3368,13 @@ class BufferGeometry extends EventDispatcher {
     this.dispatchEvent({ type: 'dispose' });
   }
 }
+BufferGeometry.prototype.isBufferGeometry = true;
 
 
 // objects/Mesh.js
 class Mesh extends Object3D {
   constructor(geometry, material) {
     super();
-
-    this.isMesh = true;
-
     this.type = 'Mesh';
 
     if (!geometry) throw new TypeError('Mesh: geometry not set');
@@ -3386,13 +3382,13 @@ class Mesh extends Object3D {
     this.material = material;
   }
 }
+Mesh.prototype.isMesh = true;
 
 
 // cameras/Camera.js
 class Camera extends Object3D {
   constructor() {
     super();
-    this.isCamera = true;
     this.type = 'Camera';
     this.matrixWorldInverse = new Matrix4();
     this.projectionMatrix = new Matrix4();
@@ -3411,6 +3407,7 @@ class Camera extends Object3D {
   //  this.matrixWorldInverse.copy(this.matrixWorld).invert();
   //}
 }
+Camera.prototype.isCamera = true;
 
 // cameras/OrthographicCamera.js
 class OrthographicCamera extends Camera {
@@ -5202,12 +5199,12 @@ class Scene extends Object3D {
 class Line extends Object3D {
   constructor(geometry, material) {
     super();
-    this.isLine = true;
     this.type = 'Line';
     this.geometry = geometry;
     this.material = material;
   }
 }
+Line.prototype.isLine = true;
 
 
 // objects/LineSegments.js
@@ -5224,12 +5221,12 @@ class LineSegments extends Line {
 class Points extends Object3D {
   constructor(geometry, material) {
     super();
-    this.isPoints = true;
     this.type = 'Points';
     this.geometry = geometry;
     this.material = material;
   }
 }
+Points.prototype.isPoints = true;
 
 // Copyright 2010-2023 Three.js Authors
 // SPDX-License-Identifier: MIT
@@ -5327,9 +5324,7 @@ const pz = /*@__PURE__*/ new CubicPoly();
 class CatmullRomCurve3 extends Curve {
   constructor(points = [], closed = false, curveType = 'centripetal', tension = 0.5) {
     super();
-
     this.isCatmullRomCurve3 = true;
-
     this.type = 'CatmullRomCurve3';
 
     this.points = points;
