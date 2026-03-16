@@ -1,24 +1,19 @@
 
 /* Dependencies between files (ES6 modules):
  *
- *    isosurface.ts <--.
- *                      \
- *                v-- elmap.ts <-.
- *      unitcell.ts               \
- *                ^-  model.ts <- viewer.ts
+ *      elmap.ts <-.
+ *                  \
+ *                model.ts <- viewer.ts
  *     three-r162/ <---------------' / /
  *       ^  ^----- draw.ts <--------' /
  *       '------ controls.ts <-------'
  */
 
-// UnitCell class with methods to fractionalize/orthogonalize coords
-export * from './unitcell';
+// UnitCell type from gemmi WASM
+export type { UnitCell } from './gemmi_api';
 
 // molecule model
 export * from './model';
-
-// isosurface extraction, marching cubes etc.
-export * from './isosurface';
 
 // electron density map
 export * from './elmap';

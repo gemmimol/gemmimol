@@ -2,7 +2,7 @@ import { BufferAttribute, BufferGeometry, ShaderMaterial,
          Object3D, Mesh, Line, LineSegments, Points,
          Color, Vector3, Texture } from './three-r162/main.js';
 import { CatmullRomCurve3 } from './three-r162/extras.js';
-import type { IsosurfaceData } from './isosurface';
+import type { IsosurfaceData } from './elmap';
 
 import type { Atom } from './model';
 type Num3 = [number, number, number];

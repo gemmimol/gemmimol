@@ -14,77 +14,6 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 var VERSION = exports.VERSION = '0.8.0';
 
 
-class UnitCell {
-  
-  
-  
-
-  constructor(a, b, c,
-              alpha, beta, gamma) {
-    if (a <= 0 || b <= 0 || c <= 0 || alpha <= 0 || beta <= 0 || gamma <= 0) {
-      throw Error('Zero or negative unit cell parameter(s).');
-    }
-    this.parameters = [a, b, c, alpha, beta, gamma];
-    const deg2rad = Math.PI / 180.0;
-    const cos_alpha = Math.cos(deg2rad * alpha);
-    const cos_beta = Math.cos(deg2rad * beta);
-    const cos_gamma = Math.cos(deg2rad * gamma);
-    const sin_alpha = Math.sin(deg2rad * alpha);
-    const sin_beta = Math.sin(deg2rad * beta);
-    const sin_gamma = Math.sin(deg2rad * gamma);
-    if (sin_alpha === 0 || sin_beta === 0 || sin_gamma === 0) {
-      throw Error('Impossible angle - N*180deg.');
-    }
-    const cos_alpha_star_sin_beta = (cos_beta * cos_gamma - cos_alpha) /
-                                    sin_gamma;
-    const cos_alpha_star = cos_alpha_star_sin_beta / sin_beta;
-    const s1rca2 = Math.sqrt(1.0 - cos_alpha_star * cos_alpha_star);
-    // The orthogonalization matrix we use is described in ITfC B p.262:
-    // "An alternative mode of orthogonalization, used by the Protein
-    // Data Bank and most programs, is to align the a1 axis of the unit
-    // cell with the Cartesian X_1 axis, and to align the a*_3 axis with the
-    // Cartesian X_3 axis."
-    //
-    // Zeros in the matrices below are kept to make matrix multiplication
-    // faster: they make extract_block() 2x (!) faster on V8 4.5.103,
-    // no difference on FF 50.
-    /* eslint-disable no-multi-spaces */
-    this.orth = [a,   b * cos_gamma,  c * cos_beta,
-                 0.0, b * sin_gamma, -c * cos_alpha_star_sin_beta,
-                 0.0, 0.0          ,  c * sin_beta * s1rca2];
-    // based on xtal.js which is based on cctbx.uctbx
-    this.frac = [
-      1.0 / a,
-      -cos_gamma / (sin_gamma * a),
-      -(cos_gamma * cos_alpha_star_sin_beta + cos_beta * sin_gamma) /
-          (sin_beta * s1rca2 * sin_gamma * a),
-      0.0,
-      1.0 / (sin_gamma * b),
-      cos_alpha_star / (s1rca2 * sin_gamma * b),
-      0.0,
-      0.0,
-      1.0 / (sin_beta * s1rca2 * c),
-    ];
-  }
-
-  fractionalize(xyz) {
-    return multiply(xyz, this.frac);
-  }
-
-  orthogonalize(xyz) {
-    return multiply(xyz, this.orth);
-  }
-}
-
-// This function is only used with matrices frac and orth, which have 3 zeros.
-// We skip these elements, but it doesn't affect performance (on FF50 and V8).
-function multiply(xyz, mat) {
-  /* eslint-disable indent, no-multi-spaces */
-  return [mat[0] * xyz[0]  + mat[1] * xyz[1]  + mat[2] * xyz[2],
-        /*mat[3] * xyz[0]*/+ mat[4] * xyz[1]  + mat[5] * xyz[2],
-        /*mat[6] * xyz[0]  + mat[7] * xyz[1]*/+ mat[8] * xyz[2]];
-}
-
 const BondType = {
   Unspec: 0,
   Single: 1,
@@ -158,7 +87,7 @@ function modelsFromGemmi(gemmi, buffer, name,
       const model = st.at(i_model);
       const m = new Model();
       m.source_model_index = i_model;
-      m.unit_cell = new UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
+      m.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
       let atom_i_seq = 0;
       for (let i_chain = 0; i_chain < model.length; ++i_chain) {
         const chain = model.at(i_chain);
@@ -603,6 +532,68 @@ function setIsosurfaceModule(module) {
   gemmi_module = module;
 }
 
+function modulo(a, b) {
+  const reminder = a % b;
+  return reminder >= 0 ? reminder : reminder + b;
+}
+
+class GridArray {
+  
+  
+
+  constructor(dim) {
+    this.dim = dim; // dimensions of the grid for the entire unit cell
+    this.values = new Float32Array(dim[0] * dim[1] * dim[2]);
+  }
+
+  grid2index(i, j, k) {
+    i = modulo(i, this.dim[0]);
+    j = modulo(j, this.dim[1]);
+    k = modulo(k, this.dim[2]);
+    return this.dim[2] * (this.dim[1] * i + j) + k;
+  }
+
+  grid2index_unchecked(i, j, k) {
+    return this.dim[2] * (this.dim[1] * i + j) + k;
+  }
+
+  grid2frac(i, j, k) {
+    return [i / this.dim[0], j / this.dim[1], k / this.dim[2]];
+  }
+
+  // return grid coordinates (rounded down) for the given fractional coordinates
+  frac2grid(xyz) {
+    // at one point "| 0" here made extract_block() 40% faster on V8 3.14,
+    // but I don't see any effect now
+    return [Math.floor(xyz[0] * this.dim[0]) | 0,
+            Math.floor(xyz[1] * this.dim[1]) | 0,
+            Math.floor(xyz[2] * this.dim[2]) | 0];
+  }
+
+  set_grid_value(i, j, k, value) {
+    const idx = this.grid2index(i, j, k);
+    this.values[idx] = value;
+  }
+
+  get_grid_value(i, j, k) {
+    const idx = this.grid2index(i, j, k);
+    return this.values[idx];
+  }
+}
+
+function calculate_stddev(a, offset) {
+  let sum = 0;
+  let sq_sum = 0;
+  const alen = a.length;
+  for (let i = offset; i < alen; i++) {
+    sum += a[i];
+    sq_sum += a[i] * a[i];
+  }
+  const mean = sum / (alen - offset);
+  const variance = sq_sum / (alen - offset) - mean * mean;
+  return {mean: mean, rms: Math.sqrt(variance)};
+}
+
 class Block {
   
   
@@ -671,74 +662,12 @@ class Block {
   }
 }
 
-function modulo(a, b) {
-  const reminder = a % b;
-  return reminder >= 0 ? reminder : reminder + b;
-}
-
-class GridArray {
-  
-  
-
-  constructor(dim) {
-    this.dim = dim; // dimensions of the grid for the entire unit cell
-    this.values = new Float32Array(dim[0] * dim[1] * dim[2]);
-  }
-
-  grid2index(i, j, k) {
-    i = modulo(i, this.dim[0]);
-    j = modulo(j, this.dim[1]);
-    k = modulo(k, this.dim[2]);
-    return this.dim[2] * (this.dim[1] * i + j) + k;
-  }
-
-  grid2index_unchecked(i, j, k) {
-    return this.dim[2] * (this.dim[1] * i + j) + k;
-  }
-
-  grid2frac(i, j, k) {
-    return [i / this.dim[0], j / this.dim[1], k / this.dim[2]];
-  }
-
-  // return grid coordinates (rounded down) for the given fractional coordinates
-  frac2grid(xyz) {
-    // at one point "| 0" here made extract_block() 40% faster on V8 3.14,
-    // but I don't see any effect now
-    return [Math.floor(xyz[0] * this.dim[0]) | 0,
-            Math.floor(xyz[1] * this.dim[1]) | 0,
-            Math.floor(xyz[2] * this.dim[2]) | 0];
-  }
-
-  set_grid_value(i, j, k, value) {
-    const idx = this.grid2index(i, j, k);
-    this.values[idx] = value;
-  }
-
-  get_grid_value(i, j, k) {
-    const idx = this.grid2index(i, j, k);
-    return this.values[idx];
-  }
-}
-
-function calculate_stddev(a, offset) {
-  let sum = 0;
-  let sq_sum = 0;
-  const alen = a.length;
-  for (let i = offset; i < alen; i++) {
-    sum += a[i];
-    sq_sum += a[i] * a[i];
-  }
-  const mean = sum / (alen - offset);
-  const variance = sq_sum / (alen - offset) - mean * mean;
-  return {mean: mean, rms: Math.sqrt(variance)};
-}
-
 function extract_block_from_grid(block, grid, unit_cell,
                                  radius, center) {
   const fc = unit_cell.fractionalize(center);
-  const r = [radius / unit_cell.parameters[0],
-             radius / unit_cell.parameters[1],
-             radius / unit_cell.parameters[2]];
+  const r = [radius / unit_cell.a,
+             radius / unit_cell.b,
+             radius / unit_cell.c];
   const grid_min = grid.frac2grid([fc[0] - r[0], fc[1] - r[1], fc[2] - r[2]]);
   const grid_max = grid.frac2grid([fc[0] + r[0], fc[1] + r[1], fc[2] + r[2]]);
   const size = [grid_max[0] - grid_min[0] + 1,
@@ -797,13 +726,13 @@ class ElMap {
     }
     const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
     this.wasm_ccp4 = ccp4;
-    this.set_from_ccp4_map(ccp4);
+    this.set_from_ccp4_map(ccp4, gemmi);
   }
 
   // DSN6 MAP FORMAT
   // http://www.uoxray.uoregon.edu/tnt/manual/node104.html
   // Density values are stored as bytes.
-  from_dsn6(buf) {
+  from_dsn6(buf, gemmi) {
     if (this.wasm_ccp4 != null) {
       this.wasm_ccp4.delete();
       this.wasm_ccp4 = null;
@@ -828,12 +757,12 @@ class ElMap {
     const n_real = [iview[3], iview[4], iview[5]];
     const n_grid = [iview[6], iview[7], iview[8]];
     const cell_mult = 1.0 / iview[17];
-    this.unit_cell = new UnitCell(cell_mult * iview[9],
-                                  cell_mult * iview[10],
-                                  cell_mult * iview[11],
-                                  cell_mult * iview[12],
-                                  cell_mult * iview[13],
-                                  cell_mult * iview[14]);
+    this.unit_cell = new gemmi.UnitCell(cell_mult * iview[9],
+                                        cell_mult * iview[10],
+                                        cell_mult * iview[11],
+                                        cell_mult * iview[12],
+                                        cell_mult * iview[13],
+                                        cell_mult * iview[14]);
     const grid = new GridArray(n_grid);
     const prod = iview[15] / 100;
     const plus = iview[16];
@@ -874,7 +803,8 @@ class ElMap {
   }
 
   show_debug_info() {
-    console.log('unit cell:', this.unit_cell && this.unit_cell.parameters);
+    const uc = this.unit_cell;
+    console.log('unit cell:', uc && [uc.a, uc.b, uc.c, uc.alpha, uc.beta, uc.gamma]);
     console.log('grid:', this.grid && this.grid.dim);
   }
 
@@ -914,10 +844,10 @@ class ElMap {
     }
   }
 
-   set_from_ccp4_map(ccp4) {
+   set_from_ccp4_map(ccp4, gemmi) {
     const cell = ccp4.cell;
-    this.unit_cell = new UnitCell(cell.a, cell.b, cell.c,
-                                  cell.alpha, cell.beta, cell.gamma);
+    this.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c,
+                                        cell.alpha, cell.beta, cell.gamma);
     this.stats.mean = ccp4.mean;
     this.stats.rms = ccp4.rms;
     const dim = [ccp4.nx, ccp4.ny, ccp4.nz];
@@ -7963,7 +7893,7 @@ class Viewer {
   load_map_from_buffer(buffer, options, gemmi) {
     const map = new ElMap();
     if (options.format === 'dsn6') {
-      map.from_dsn6(buffer);
+      map.from_dsn6(buffer, gemmi);
     } else {
       map.from_ccp4(buffer, true, gemmi);
     }
@@ -8126,8 +8056,8 @@ class ReciprocalSpaceMap extends ElMap {
     if (this.unit_cell == null) return;
     // unit of the map from dials.rs_mapper is (100A)^-1, we scale it to A^-1
     // We assume the "unit cell" is cubic -- as it is in rs_mapper.
-    const par = this.unit_cell.parameters;
-    this.box_size = [par[0]/ 100, par[1] / 100, par[2] / 100];
+    const uc = this.unit_cell;
+    this.box_size = [uc.a / 100, uc.b / 100, uc.c / 100];
     this.unit_cell = null;
   }
 
@@ -8608,17 +8538,17 @@ function log_timing(t0, text) {
   console.log(text + ': ' + (performance.now() - t0).toFixed(2) + ' ms.');
 }
 
-function add_map_from_mtz(viewer, mtz, map_data, is_diff) {
+function add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff) {
   const map = new ElMap();
   const mc = mtz.cell;
-  map.unit_cell = new UnitCell(mc.a, mc.b, mc.c, mc.alpha, mc.beta, mc.gamma);
+  map.unit_cell = new gemmi.UnitCell(mc.a, mc.b, mc.c, mc.alpha, mc.beta, mc.gamma);
   map.stats.rms = mtz.rmsd;
   map.grid = new GridArray([mtz.nx, mtz.ny, mtz.nz]);
   map.grid.values.set(map_data);
   viewer.add_map(map, is_diff);
 }
 
-function load_maps_from_mtz_buffer(viewer, mtz,
+function load_maps_from_mtz_buffer(gemmi, viewer, mtz,
                                    labels) {
   if (labels != null) {
     for (let n = 0; n < labels.length; n += 2) {
@@ -8632,7 +8562,7 @@ function load_maps_from_mtz_buffer(viewer, mtz,
         continue;
       }
       const is_diff = (n % 4 == 2);
-      add_map_from_mtz(viewer, mtz, map_data, is_diff);
+      add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff);
     }
   } else {  // use default labels
     for (let nmap = 0; nmap < 2; ++nmap) {
@@ -8642,7 +8572,7 @@ function load_maps_from_mtz_buffer(viewer, mtz,
       log_timing(t0, 'map ' + mtz.nx + 'x' + mtz.ny + 'x' + mtz.nz +
                      ' calculated in');
       if (map_data != null) {
-        add_map_from_mtz(viewer, mtz, map_data, is_diff);
+        add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff);
       }
     }
   }
@@ -8656,7 +8586,7 @@ function load_maps_from_mtz(gemmi, viewer, url,
     try {
       const mtz = gemmi.readMtz(req.response);
       //console.log("[after readMTZ] wasm mem:", gemmi.HEAPU8.length / 1024, "kb");
-      load_maps_from_mtz_buffer(viewer, mtz, labels);
+      load_maps_from_mtz_buffer(gemmi, viewer, mtz, labels);
     } catch (e) {
       viewer.hud(e.message, 'ERR');
       return;
@@ -8677,7 +8607,7 @@ function set_pdb_and_mtz_dropzone(gemmi, viewer,
           const t0 = performance.now();
           try {
             const mtz = gemmi.readMtz(evt.target.result);
-            load_maps_from_mtz_buffer(viewer, mtz);
+            load_maps_from_mtz_buffer(gemmi, viewer, mtz);
           } catch (e) {
             viewer.hud(e.message, 'ERR');
             return;
@@ -8695,7 +8625,6 @@ function set_pdb_and_mtz_dropzone(gemmi, viewer,
   });
 }
 
-exports.Block = Block;
 exports.BondType = BondType;
 exports.BufferAttribute = BufferAttribute;
 exports.BufferGeometry = BufferGeometry;
@@ -8721,7 +8650,6 @@ exports.STATE = STATE;
 exports.Scene = Scene;
 exports.ShaderMaterial = ShaderMaterial;
 exports.Texture = Texture;
-exports.UnitCell = UnitCell;
 exports.Vector3 = Vector3;
 exports.Viewer = Viewer;
 exports.WebGLRenderer = WebGLRenderer;

@@ -4,8 +4,7 @@ import { makeLineMaterial, makeLineSegments, makeRibbon,
          makeChickenWire, makeGrid, makeSticks, makeBalls, makeWheels, makeCube,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
-import { ElMap } from './elmap';
-import { setIsosurfaceModule } from './isosurface';
+import { ElMap, setIsosurfaceModule } from './elmap';
 import { BondType, modelsFromGemmi } from './model';
 
 import type { Atom, Model } from './model';
@@ -2179,7 +2178,7 @@ export class Viewer {
   load_map_from_buffer(buffer: ArrayBuffer, options: Record<string, any>, gemmi?: any) {
     const map = new ElMap();
     if (options.format === 'dsn6') {
-      map.from_dsn6(buffer);
+      map.from_dsn6(buffer, gemmi);
     } else {
       map.from_ccp4(buffer, true, gemmi);
     }

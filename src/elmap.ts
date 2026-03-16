@@ -1,9 +1,18 @@
-import { UnitCell } from './unitcell';
-import { Block, setIsosurfaceModule } from './isosurface';
-import type { IsosurfaceData } from './isosurface';
-import type { Module as GemmiModule, Ccp4Map as WasmCcp4Map } from './gemmi_wasm';
+import type { Module as GemmiModule, UnitCell, Ccp4Map as WasmCcp4Map,
+              Isosurface as WasmIsosurface } from './gemmi_api';
 
 type Num3 = [number, number, number];
+
+export interface IsosurfaceData {
+  vertices: Float32Array;
+  segments: Uint32Array;
+}
+
+let gemmi_module: GemmiModule | null = null;
+
+export function setIsosurfaceModule(module: GemmiModule) {
+  gemmi_module = module;
+}
 
 function modulo(a: number, b: number) {
   const reminder = a % b;
@@ -67,12 +76,80 @@ function calculate_stddev(a: Float32Array|Int8Array, offset: number) {
   return {mean: mean, rms: Math.sqrt(variance)};
 }
 
+class Block {
+  _points: Float32Array | null;
+  _values: Float32Array | null;
+  _size: Num3;
+
+  constructor() {
+    this._points = null;
+    this._values = null;
+    this._size = [0, 0, 0];
+  }
+
+  set(points: Num3[], values: number[], size: Num3) {
+    if (size[0] <= 0 || size[1] <= 0 || size[2] <= 0) {
+      throw Error('Grid dimensions are zero along at least one edge');
+    }
+    const len = size[0] * size[1] * size[2];
+    if (values.length !== len || points.length !== len) {
+      throw Error('isosurface: array size mismatch');
+    }
+
+    this._points = new Float32Array(3 * len);
+    for (let i = 0; i < len; ++i) {
+      const point = points[i];
+      this._points[3*i] = point[0];
+      this._points[3*i+1] = point[1];
+      this._points[3*i+2] = point[2];
+    }
+    this._values = new Float32Array(values);
+    this._size = size;
+  }
+
+  clear() {
+    this._points = null;
+    this._values = null;
+  }
+
+  empty() : boolean {
+    return this._values === null;
+  }
+
+  isosurface(isolevel: number, method: string='') {
+    if (gemmi_module == null) {
+      throw Error('Gemmi is required for isosurface extraction.');
+    }
+    if (this._values == null || this._points == null) {
+      throw Error('Block is empty.');
+    }
+
+    let iso: WasmIsosurface | null = null;
+    try {
+      iso = new gemmi_module.Isosurface();
+      iso.resize_input(this._values.length);
+      iso.set_size(this._size[0], this._size[1], this._size[2]);
+      iso.input_points().set(this._points);
+      iso.input_values().set(this._values);
+      if (!iso.calculate(isolevel, method)) {
+        throw Error(iso.last_error || 'Failed to calculate isosurface.');
+      }
+      return {
+        vertices: iso.vertices().slice(),
+        segments: iso.segments().slice(),
+      };
+    } finally {
+      if (iso != null) iso.delete();
+    }
+  }
+}
+
 function extract_block_from_grid(block: Block, grid: GridArray, unit_cell: UnitCell,
                                  radius: number, center: Num3) {
   const fc = unit_cell.fractionalize(center);
-  const r = [radius / unit_cell.parameters[0],
-             radius / unit_cell.parameters[1],
-             radius / unit_cell.parameters[2]];
+  const r = [radius / unit_cell.a,
+             radius / unit_cell.b,
+             radius / unit_cell.c];
   const grid_min = grid.frac2grid([fc[0] - r[0], fc[1] - r[1], fc[2] - r[2]]);
   const grid_max = grid.frac2grid([fc[0] + r[0], fc[1] + r[1], fc[2] + r[2]]);
   const size: Num3 = [grid_max[0] - grid_min[0] + 1,
@@ -131,13 +208,13 @@ export class ElMap {
     }
     const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
     this.wasm_ccp4 = ccp4;
-    this.set_from_ccp4_map(ccp4);
+    this.set_from_ccp4_map(ccp4, gemmi);
   }
 
   // DSN6 MAP FORMAT
   // http://www.uoxray.uoregon.edu/tnt/manual/node104.html
   // Density values are stored as bytes.
-  from_dsn6(buf: ArrayBuffer) {
+  from_dsn6(buf: ArrayBuffer, gemmi: GemmiModule) {
     if (this.wasm_ccp4 != null) {
       this.wasm_ccp4.delete();
       this.wasm_ccp4 = null;
@@ -162,12 +239,12 @@ export class ElMap {
     const n_real: Num3 = [iview[3], iview[4], iview[5]];
     const n_grid: Num3 = [iview[6], iview[7], iview[8]];
     const cell_mult = 1.0 / iview[17];
-    this.unit_cell = new UnitCell(cell_mult * iview[9],
-                                  cell_mult * iview[10],
-                                  cell_mult * iview[11],
-                                  cell_mult * iview[12],
-                                  cell_mult * iview[13],
-                                  cell_mult * iview[14]);
+    this.unit_cell = new gemmi.UnitCell(cell_mult * iview[9],
+                                        cell_mult * iview[10],
+                                        cell_mult * iview[11],
+                                        cell_mult * iview[12],
+                                        cell_mult * iview[13],
+                                        cell_mult * iview[14]);
     const grid = new GridArray(n_grid);
     const prod = iview[15] / 100;
     const plus = iview[16];
@@ -208,7 +285,8 @@ export class ElMap {
   }
 
   show_debug_info() {
-    console.log('unit cell:', this.unit_cell && this.unit_cell.parameters);
+    const uc = this.unit_cell;
+    console.log('unit cell:', uc && [uc.a, uc.b, uc.c, uc.alpha, uc.beta, uc.gamma]);
     console.log('grid:', this.grid && this.grid.dim);
   }
 
@@ -248,10 +326,10 @@ export class ElMap {
     }
   }
 
-  private set_from_ccp4_map(ccp4: WasmCcp4Map) {
+  private set_from_ccp4_map(ccp4: WasmCcp4Map, gemmi: GemmiModule) {
     const cell = ccp4.cell;
-    this.unit_cell = new UnitCell(cell.a, cell.b, cell.c,
-                                  cell.alpha, cell.beta, cell.gamma);
+    this.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c,
+                                        cell.alpha, cell.beta, cell.gamma);
     this.stats.mean = ccp4.mean;
     this.stats.rms = ccp4.rms;
     const dim: Num3 = [ccp4.nx, ccp4.ny, ccp4.nz];
