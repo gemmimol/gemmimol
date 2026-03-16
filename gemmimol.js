@@ -597,6 +597,12 @@ class Cubicles {
   }
 }
 
+let wasm_module = null;
+
+function setIsosurfaceModule(module) {
+  wasm_module = (module != null && typeof module.Isosurface === 'function') ? module : null;
+}
+
 class Block {
   
   
@@ -616,8 +622,14 @@ class Block {
       throw Error('isosurface: array size mismatch');
     }
 
-    this._points = points;
-    this._values = values;
+    this._points = new Float32Array(3 * len);
+    for (let i = 0; i < len; ++i) {
+      const point = points[i];
+      this._points[3*i] = point[0];
+      this._points[3*i+1] = point[1];
+      this._points[3*i+2] = point[2];
+    }
+    this._values = new Float32Array(values);
     this._size = size;
   }
 
@@ -634,8 +646,39 @@ class Block {
     //if (method === 'marching tetrahedra') {
     //  return marchingTetrahedra(block, isolevel);
     //}
+    const wasm_iso = wasmMarchingCubes(this._size,
+                                       this._values,
+                                       this._points,
+                                       isolevel,
+                                       method);
+    if (wasm_iso != null) return wasm_iso;
     return marchingCubes(this._size, this._values, this._points,
                          isolevel, method);
+  }
+}
+
+function wasmMarchingCubes(dims,
+                           values,
+                           points,
+                           isolevel,
+                           method) {
+  if (wasm_module == null || values == null || points == null) return null;
+  let iso = null;
+  try {
+    iso = new wasm_module.Isosurface();
+    iso.resize_input(values.length);
+    iso.set_size(dims[0], dims[1], dims[2]);
+    iso.input_points().set(points);
+    iso.input_values().set(values);
+    if (!iso.calculate(isolevel, method || '')) {
+      throw Error(iso.last_error || 'Failed to calculate isosurface.');
+    }
+    return {
+      vertices: iso.vertices().slice(),
+      segments: iso.segments().slice(),
+    };
+  } finally {
+    if (iso != null) iso.delete();
   }
 }
 
@@ -1220,7 +1263,7 @@ function marchingCubes(dims,
   const vlist = new Array(12);
   const vert_offsets = calculateVertOffsets(dims);
   const vertex_values = new Float32Array(8);
-  const vertex_points = new Array(8);
+  const point_offsets = new Int32Array(8);
   const size_x = dims[0];
   const size_y = dims[1];
   const size_z = dims[2];
@@ -1243,7 +1286,7 @@ function marchingCubes(dims,
         for (i = 0; i < 8; ++i) {
           j = offset0 + vert_offsets[i];
           vertex_values[i] = values[j];
-          vertex_points[i] = points[j];
+          point_offsets[i] = 3 * j;
         }
 
         // 12 bit number, indicates which edges are crossed by the isosurface
@@ -1260,15 +1303,15 @@ function marchingCubes(dims,
               if (mu > 0.85) mu = 1;
               else if (mu < 0.15) mu = 0;
             }
-            const p1 = vertex_points[e[0]];
-            const p2 = vertex_points[e[1]];
+            const p1 = point_offsets[e[0]];
+            const p2 = point_offsets[e[1]];
             // The number of added vertices could be roughly halved
             // if we avoided duplicates between neighbouring cells.
             // Using a map for lookups is too slow, perhaps a big
             // array would do?
-            vertices.push(p1[0] + (p2[0] - p1[0]) * mu,
-                          p1[1] + (p2[1] - p1[1]) * mu,
-                          p1[2] + (p2[2] - p1[2]) * mu);
+            vertices.push(points[p1] + (points[p2] - points[p1]) * mu,
+                          points[p1+1] + (points[p2+1] - points[p1+1]) * mu,
+                          points[p1+2] + (points[p2+2] - points[p1+2]) * mu);
             vlist[i] = vertex_count++;
           }
         }
@@ -1368,6 +1411,7 @@ class ElMap {
     if (gemmi == null || typeof gemmi.readCcp4Map !== 'function') {
       throw Error('Gemmi is required for CCP4 map loading.');
     }
+    setIsosurfaceModule(gemmi);
     const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
     try {
       this.set_from_ccp4_map(ccp4);
@@ -7073,6 +7117,7 @@ class Viewer {
     }
     if (options.gemmi) {
       this.gemmi_module = options.gemmi;
+      setIsosurfaceModule(options.gemmi);
     } else if (options.gemmi_factory) {
       this.gemmi_factory = options.gemmi_factory;
     } else if (typeof globalThis !== 'undefined' &&
@@ -8427,13 +8472,20 @@ class Viewer {
   }
 
   resolve_gemmi(explicit_module) {
-    if (explicit_module) return Promise.resolve(explicit_module);
-    if (this.gemmi_module) return Promise.resolve(this.gemmi_module);
+    if (explicit_module) {
+      setIsosurfaceModule(explicit_module);
+      return Promise.resolve(explicit_module);
+    }
+    if (this.gemmi_module) {
+      setIsosurfaceModule(this.gemmi_module);
+      return Promise.resolve(this.gemmi_module);
+    }
     if (this.gemmi_factory == null) return Promise.resolve(null);
     if (this.gemmi_loading == null) {
       const self = this;
       this.gemmi_loading = this.gemmi_factory().then(function (gemmi) {
         self.gemmi_module = gemmi;
+        setIsosurfaceModule(gemmi);
         return gemmi;
       }, function (err) {
         self.gemmi_loading = null;
@@ -9304,6 +9356,7 @@ exports.makeSticks = makeSticks;
 exports.makeUniforms = makeUniforms;
 exports.makeWheels = makeWheels;
 exports.modelsFromGemmi = modelsFromGemmi;
+exports.setIsosurfaceModule = setIsosurfaceModule;
 exports.set_pdb_and_mtz_dropzone = set_pdb_and_mtz_dropzone;
 
 }));

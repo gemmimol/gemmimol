@@ -14,16 +14,12 @@ export function setIsosurfaceModule(module: GemmiModule | null | undefined) {
 }
 
 export class Block {
-  _points: Num3[] | null;
-  _values: number[] | null;
-  _flat_points: Float32Array | null;
-  _flat_values: Float32Array | null;
+  _points: Float32Array | null;
+  _values: Float32Array | null;
   _size: Num3
   constructor() {
     this._points = null;
     this._values = null;
-    this._flat_points = null;
-    this._flat_values = null;
     this._size = [0, 0, 0];
   }
 
@@ -36,24 +32,20 @@ export class Block {
       throw Error('isosurface: array size mismatch');
     }
 
-    this._points = points;
-    this._values = values;
-    this._flat_points = new Float32Array(3 * len);
+    this._points = new Float32Array(3 * len);
     for (let i = 0; i < len; ++i) {
       const point = points[i];
-      this._flat_points[3*i] = point[0];
-      this._flat_points[3*i+1] = point[1];
-      this._flat_points[3*i+2] = point[2];
+      this._points[3*i] = point[0];
+      this._points[3*i+1] = point[1];
+      this._points[3*i+2] = point[2];
     }
-    this._flat_values = new Float32Array(values);
+    this._values = new Float32Array(values);
     this._size = size;
   }
 
   clear() {
     this._points = null;
     this._values = null;
-    this._flat_points = null;
-    this._flat_values = null;
   }
 
   empty() : boolean {
@@ -65,8 +57,8 @@ export class Block {
     //  return marchingTetrahedra(block, isolevel);
     //}
     const wasm_iso = wasmMarchingCubes(this._size,
-                                       this._flat_values,
-                                       this._flat_points,
+                                       this._values,
+                                       this._points,
                                        isolevel,
                                        method);
     if (wasm_iso != null) return wasm_iso;
@@ -672,8 +664,8 @@ function calculateVertOffsets(dims: Num3) {
 
 
 function marchingCubes(dims: Num3,
-                       values: number[] | null,
-                       points: Num3[] | null,
+                       values: Float32Array | null,
+                       points: Float32Array | null,
                        isolevel: number,
                        method: string) {
   const snap = (method === 'snapped MC');
@@ -681,7 +673,7 @@ function marchingCubes(dims: Num3,
   const vlist = new Array(12);
   const vert_offsets = calculateVertOffsets(dims);
   const vertex_values = new Float32Array(8);
-  const vertex_points: Num3[] = new Array(8);
+  const point_offsets = new Int32Array(8);
   const size_x = dims[0];
   const size_y = dims[1];
   const size_z = dims[2];
@@ -704,7 +696,7 @@ function marchingCubes(dims: Num3,
         for (i = 0; i < 8; ++i) {
           j = offset0 + vert_offsets[i];
           vertex_values[i] = values[j];
-          vertex_points[i] = points[j];
+          point_offsets[i] = 3 * j;
         }
 
         // 12 bit number, indicates which edges are crossed by the isosurface
@@ -721,15 +713,15 @@ function marchingCubes(dims: Num3,
               if (mu > 0.85) mu = 1;
               else if (mu < 0.15) mu = 0;
             }
-            const p1 = vertex_points[e[0]];
-            const p2 = vertex_points[e[1]];
+            const p1 = point_offsets[e[0]];
+            const p2 = point_offsets[e[1]];
             // The number of added vertices could be roughly halved
             // if we avoided duplicates between neighbouring cells.
             // Using a map for lookups is too slow, perhaps a big
             // array would do?
-            vertices.push(p1[0] + (p2[0] - p1[0]) * mu,
-                          p1[1] + (p2[1] - p1[1]) * mu,
-                          p1[2] + (p2[2] - p1[2]) * mu);
+            vertices.push(points[p1] + (points[p2] - points[p1]) * mu,
+                          points[p1+1] + (points[p2+1] - points[p1+1]) * mu,
+                          points[p1+2] + (points[p2+2] - points[p1+2]) * mu);
             vlist[i] = vertex_count++;
           }
         }
