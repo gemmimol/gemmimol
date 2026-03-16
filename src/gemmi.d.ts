@@ -124,6 +124,21 @@ export interface Ccp4Map extends ClassHandle {
   isosurface_segments(): Uint32Array;
 }
 
+export interface Dsn6Map extends ClassHandle {
+  readonly cell: UnitCell;
+  readonly nx: number;
+  readonly ny: number;
+  readonly nz: number;
+  readonly mean: number;
+  readonly rms: number;
+  readonly last_error: string;
+  read(): boolean;
+  data(): Float32Array;
+  extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
+  isosurface_vertices(): Float32Array;
+  isosurface_segments(): Uint32Array;
+}
+
 export interface Mtz extends ClassHandle {
   readonly cell: UnitCell;
   readonly nx: number;
@@ -176,6 +191,9 @@ interface EmbindModule {
   Ccp4Map: {
     new(_0: EmbindString): Ccp4Map;
   };
+  Dsn6Map: {
+    new(_0: EmbindString): Dsn6Map;
+  };
   Mtz: {
     new(_0: EmbindString): Mtz;
   };
@@ -187,6 +205,7 @@ export type MainModule = WasmModule & typeof RuntimeExports & EmbindModule;
 export type GemmiModule = MainModule & {
   read_structure(buf: string | ArrayBuffer, name: string, format?: string): Structure;
   readCcp4Map(map_buf: string | ArrayBuffer, expand_symmetry?: boolean): Ccp4Map;
+  readDsn6Map(map_buf: string | ArrayBuffer): Dsn6Map;
   readMtz(mtz_buf: string | ArrayBuffer): Mtz;
 };
 export default function MainModuleFactory (options?: unknown): Promise<GemmiModule>;

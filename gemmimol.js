@@ -575,19 +575,6 @@ class GridArray {
   }
 }
 
-function calculate_stddev(a, offset) {
-  let sum = 0;
-  let sq_sum = 0;
-  const alen = a.length;
-  for (let i = offset; i < alen; i++) {
-    sum += a[i];
-    sq_sum += a[i] * a[i];
-  }
-  const mean = sum / (alen - offset);
-  const variance = sq_sum / (alen - offset) - mean * mean;
-  return {mean: mean, rms: Math.sqrt(variance)};
-}
-
 class Block {
   
   
@@ -701,7 +688,7 @@ class ElMap {
     this.grid = null;
     this.stats = { mean: 0.0, rms: 1.0 };
     this.block = new Block();
-    this.wasm_ccp4 = null;
+    this.wasm_map = null;
     this.block_center = null;
     this.block_radius = 0;
   }
@@ -716,87 +703,30 @@ class ElMap {
       throw Error('Gemmi is required for CCP4 map loading.');
     }
     this.gemmi_module = gemmi;
-    if (this.wasm_ccp4 != null) {
-      this.wasm_ccp4.delete();
-      this.wasm_ccp4 = null;
+    if (this.wasm_map != null) {
+      this.wasm_map.delete();
+      this.wasm_map = null;
     }
     const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
-    this.wasm_ccp4 = ccp4;
-    this.set_from_ccp4_map(ccp4, gemmi);
+    this.wasm_map = ccp4;
+    this.set_from_wasm_map(ccp4, gemmi);
   }
 
   // DSN6 MAP FORMAT
   // http://www.uoxray.uoregon.edu/tnt/manual/node104.html
   // Density values are stored as bytes.
   from_dsn6(buf, gemmi) {
+    if (typeof gemmi.readDsn6Map !== 'function') {
+      throw Error('Gemmi is required for DSN6 map loading.');
+    }
     this.gemmi_module = gemmi;
-    if (this.wasm_ccp4 != null) {
-      this.wasm_ccp4.delete();
-      this.wasm_ccp4 = null;
+    if (this.wasm_map != null) {
+      this.wasm_map.delete();
+      this.wasm_map = null;
     }
-    //console.log('buf type: ' + Object.prototype.toString.call(buf));
-    const u8data = new Uint8Array(buf);
-    const iview = new Int16Array(u8data.buffer);
-    if (iview[18] !== 100) {
-      const len = iview.length;  // or only header, 256?
-      for (let n = 0; n < len; n++) {
-        // swapping bytes with Uint8Array like this:
-        // var tmp=u8data[n*2]; u8data[n*2]=u8data[n*2+1]; u8data[n*2+1]=tmp;
-        // was slowing down this whole function 5x times (!?) on V8.
-        const val = iview[n];
-        iview[n] = ((val & 0xff) << 8) | ((val >> 8) & 0xff);
-      }
-    }
-    if (iview[18] !== 100) {
-      throw Error('Endian swap failed');
-    }
-    const origin = [iview[0], iview[1], iview[2]];
-    const n_real = [iview[3], iview[4], iview[5]];
-    const n_grid = [iview[6], iview[7], iview[8]];
-    const cell_mult = 1.0 / iview[17];
-    this.unit_cell = new gemmi.UnitCell(cell_mult * iview[9],
-                                        cell_mult * iview[10],
-                                        cell_mult * iview[11],
-                                        cell_mult * iview[12],
-                                        cell_mult * iview[13],
-                                        cell_mult * iview[14]);
-    const grid = new GridArray(n_grid);
-    const prod = iview[15] / 100;
-    const plus = iview[16];
-    //var data_scale_factor = iview[15] / iview[18] + iview[16];
-    // bricks have 512 (8x8x8) values
-    let offset = 512;
-    const n_blocks = [Math.ceil(n_real[0] / 8),
-                      Math.ceil(n_real[1] / 8),
-                      Math.ceil(n_real[2] / 8)];
-    for (let zz = 0; zz < n_blocks[2]; zz++) {
-      for (let yy = 0; yy < n_blocks[1]; yy++) {
-        for (let xx = 0; xx < n_blocks[0]; xx++) { // loop over bricks
-          for (let k = 0; k < 8; k++) {
-            const z = 8 * zz + k;
-            for (let j = 0; j < 8; j++) {
-              const y = 8 * yy + j;
-              for (let i = 0; i < 8; i++) { // loop inside brick
-                const x = 8 * xx + i;
-                if (x < n_real[0] && y < n_real[1] && z < n_real[2]) {
-                  const density = (u8data[offset] - plus) / prod;
-                  offset++;
-                  grid.set_grid_value(origin[0] + x,
-                                      origin[1] + y,
-                                      origin[2] + z, density);
-                } else {
-                  offset += 8 - i;
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    this.stats = calculate_stddev(grid.values, 0);
-    this.grid = grid;
-    //this.show_debug_info();
+    const dsn6 = gemmi.readDsn6Map(buf);
+    this.wasm_map = dsn6;
+    this.set_from_wasm_map(dsn6, gemmi);
   }
 
   show_debug_info() {
@@ -808,7 +738,7 @@ class ElMap {
   prepare_isosurface(radius, center) {
     this.block_center = center;
     this.block_radius = radius;
-    if (this.wasm_ccp4 != null && this.unit_cell != null) return;
+    if (this.wasm_map != null && this.unit_cell != null) return;
     const grid = this.grid;
     const unit_cell = this.unit_cell;
     if (grid == null || unit_cell == null) return;
@@ -817,48 +747,37 @@ class ElMap {
 
   isomesh_in_block(sigma, method) {
     const abs_level = this.abs_level(sigma);
-    if (this.wasm_ccp4 != null && this.block_center != null && this.unit_cell != null) {
-      if (!this.wasm_ccp4.extract_isosurface(this.block_radius,
-                                             this.block_center[0],
-                                             this.block_center[1],
-                                             this.block_center[2],
-                                             abs_level,
-                                             method || '')) {
-        throw Error(this.wasm_ccp4.last_error || 'Failed to extract isosurface.');
+    if (this.wasm_map != null && this.block_center != null && this.unit_cell != null) {
+      if (!this.wasm_map.extract_isosurface(this.block_radius,
+                                            this.block_center[0],
+                                            this.block_center[1],
+                                            this.block_center[2],
+                                            abs_level,
+                                            method || '')) {
+        throw Error(this.wasm_map.last_error || 'Failed to extract isosurface.');
       }
       return {
-        vertices: this.wasm_ccp4.isosurface_vertices().slice(),
-        segments: this.wasm_ccp4.isosurface_segments().slice(),
+        vertices: this.wasm_map.isosurface_vertices().slice(),
+        segments: this.wasm_map.isosurface_segments().slice(),
       } ;
     }
     return this.block.isosurface(this.gemmi_module, abs_level, method);
   }
 
   dispose() {
-    if (this.wasm_ccp4 != null) {
-      this.wasm_ccp4.delete();
-      this.wasm_ccp4 = null;
+    if (this.wasm_map != null) {
+      this.wasm_map.delete();
+      this.wasm_map = null;
     }
   }
 
-   set_from_ccp4_map(ccp4, gemmi) {
-    const cell = ccp4.cell;
+   set_from_wasm_map(map, gemmi) {
+    const cell = map.cell;
     this.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c,
                                         cell.alpha, cell.beta, cell.gamma);
-    this.stats.mean = ccp4.mean;
-    this.stats.rms = ccp4.rms;
-    const dim = [ccp4.nx, ccp4.ny, ccp4.nz];
-    const grid = new GridArray(dim);
-    const values = ccp4.data();
-    for (let x = 0; x < dim[0]; ++x) {
-      for (let y = 0; y < dim[1]; ++y) {
-        for (let z = 0; z < dim[2]; ++z) {
-          const src = (z * dim[1] + y) * dim[0] + x;
-          grid.values[grid.grid2index_unchecked(x, y, z)] = values[src];
-        }
-      }
-    }
-    this.grid = grid;
+    this.stats.mean = map.mean;
+    this.stats.rms = map.rms;
+    this.grid = null;
   }
 
 }

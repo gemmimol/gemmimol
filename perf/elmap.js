@@ -29,7 +29,7 @@ var setup = util.load_gemmi().then(function (gemmi) {
     map.from_ccp4(map2_buf.slice(0), true, gemmi);
   }, {onComplete: print_map_stats});
 
-  util.bench('ElMap#extract_block', function () {
+  util.bench('ElMap#prepare_isosurface', function () {
     map.prepare_isosurface(15, [25, 26, 35]);
   });
 });
