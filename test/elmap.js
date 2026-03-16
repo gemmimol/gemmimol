@@ -24,7 +24,7 @@ describe('ElMap', () => {
     });
   });
   it('#from_dsn6', () => {
-    dmap.from_dsn6(dmap_buf);
+    dmap.from_dsn6(dmap_buf, gemmi);
   });
   it('#from_ccp4', () => {
     cmap.from_ccp4(cmap_buf, true, gemmi);
@@ -62,9 +62,10 @@ describe('ElMap', () => {
     fallback.dispose();
   });
   it('compare unit cells', () => {
-    for (var i = 0; i < 6; i++) {
-      var p1 = dmap.unit_cell.parameters[i];
-      var p2 = cmap.unit_cell.parameters[i];
+    var keys = ['a', 'b', 'c', 'alpha', 'beta', 'gamma'];
+    for (var i = 0; i < keys.length; i++) {
+      var p1 = dmap.unit_cell[keys[i]];
+      var p2 = cmap.unit_cell[keys[i]];
       expect(Math.abs(p1 - p2)).toBeLessThan(0.02);
     }
   });

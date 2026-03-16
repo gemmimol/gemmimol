@@ -1,4 +1,4 @@
-import { UnitCell } from './unitcell';
+import type { GemmiModule, Structure, UnitCell } from './gemmi';
 
 type Num3 = [number, number, number];
 
@@ -20,7 +20,7 @@ export const BondType = {
 } as const;
 export type BondTypeValue = typeof BondType[keyof typeof BondType];
 
-function getGemmiBondData(gemmi: any, st: any,
+function getGemmiBondData(gemmi: GemmiModule, st: Structure,
                           getMonomerCifs?: MonomerFetcher) {
   if (typeof gemmi.BondInfo !== 'function') {
     return Promise.resolve({
@@ -65,7 +65,7 @@ function getGemmiBondData(gemmi: any, st: any,
   }).finally(() => bond_info.delete());
 }
 
-export function modelsFromGemmi(gemmi, buffer: ArrayBuffer, name: string,
+export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: string,
                                 getMonomerCifs?: MonomerFetcher) {
   const st = gemmi.read_structure(buffer, name);
   return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
@@ -82,7 +82,7 @@ export function modelsFromGemmi(gemmi, buffer: ArrayBuffer, name: string,
       const model = st.at(i_model);
       const m = new Model();
       m.source_model_index = i_model;
-      m.unit_cell = new UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
+      m.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
       let atom_i_seq = 0;
       for (let i_chain = 0; i_chain < model.length; ++i_chain) {
         const chain = model.at(i_chain);

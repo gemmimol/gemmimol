@@ -9,9 +9,8 @@ const dmap_buf = util.open_as_array_buffer('1mru.omap');
 let map;
 
 var setup = util.load_gemmi().then(function (gemmi) {
-  GM.setIsosurfaceModule(gemmi);
   map = new GM.ElMap();
-  map.from_dsn6(dmap_buf.slice(0));
+  map.from_dsn6(dmap_buf.slice(0), gemmi);
   map.prepare_isosurface(15, [25, 26, 35]);
 
   util.bench('isosurface', function () {

@@ -10,7 +10,7 @@
  */
 
 // UnitCell type from gemmi WASM
-export type { UnitCell } from './gemmi_api';
+export type { UnitCell } from './gemmi';
 
 // molecule model
 export * from './model';

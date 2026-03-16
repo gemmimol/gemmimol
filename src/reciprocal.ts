@@ -4,6 +4,7 @@ import { addXyzCross, makeLineMaterial, makeLineSegments,
          makeUniforms, fog_pars_fragment, fog_end_fragment } from './draw';
 import { Points, BufferAttribute, BufferGeometry,
          ShaderMaterial, Color } from './three-r162/main';
+import type { GemmiModule } from './gemmi';
 import type { ViewerConfig } from './viewer';
 
 type Num3 = [number, number, number];
@@ -52,15 +53,15 @@ const SPOT_SHAPES = ['wheel', 'square'];
 export class ReciprocalSpaceMap extends ElMap {
   box_size: Num3;
 
-  constructor(buf: ArrayBuffer, gemmi: any) {
+  constructor(buf: ArrayBuffer, gemmi: GemmiModule) {
     super();
     this.box_size = [1, 1, 1];
     this.from_ccp4(buf, false, gemmi);
     if (this.unit_cell == null) return;
     // unit of the map from dials.rs_mapper is (100A)^-1, we scale it to A^-1
     // We assume the "unit cell" is cubic -- as it is in rs_mapper.
-    const par = this.unit_cell.parameters;
-    this.box_size = [par[0]/ 100, par[1] / 100, par[2] / 100];
+    const uc = this.unit_cell;
+    this.box_size = [uc.a / 100, uc.b / 100, uc.c / 100];
     this.unit_cell = null;
   }
 

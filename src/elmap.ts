@@ -1,17 +1,11 @@
-import type { Module as GemmiModule, UnitCell, Ccp4Map as WasmCcp4Map,
-              Isosurface as WasmIsosurface } from './gemmi_api';
+import type { GemmiModule, UnitCell, Ccp4Map as WasmCcp4Map,
+              Isosurface as WasmIsosurface } from './gemmi';
 
 type Num3 = [number, number, number];
 
 export interface IsosurfaceData {
   vertices: Float32Array;
   segments: Uint32Array;
-}
-
-let gemmi_module: GemmiModule | null = null;
-
-export function setIsosurfaceModule(module: GemmiModule) {
-  gemmi_module = module;
 }
 
 function modulo(a: number, b: number) {
@@ -116,7 +110,7 @@ class Block {
     return this._values === null;
   }
 
-  isosurface(isolevel: number, method: string='') {
+  isosurface(gemmi_module: GemmiModule | null, isolevel: number, method: string='') {
     if (gemmi_module == null) {
       throw Error('Gemmi is required for isosurface extraction.');
     }
@@ -172,6 +166,7 @@ function extract_block_from_grid(block: Block, grid: GridArray, unit_cell: UnitC
 }
 
 export class ElMap {
+  gemmi_module: GemmiModule | null;
   unit_cell: UnitCell | null;
   grid: GridArray | null;
   stats: { mean: number, rms: number };
@@ -183,6 +178,7 @@ export class ElMap {
   box_size?: Num3; // used in ReciprocalSpaceMap
 
   constructor() {
+    this.gemmi_module = null;
     this.unit_cell = null;
     this.grid = null;
     this.stats = { mean: 0.0, rms: 1.0 };
@@ -201,7 +197,7 @@ export class ElMap {
     if (gemmi == null || typeof gemmi.readCcp4Map !== 'function') {
       throw Error('Gemmi is required for CCP4 map loading.');
     }
-    setIsosurfaceModule(gemmi);
+    this.gemmi_module = gemmi;
     if (this.wasm_ccp4 != null) {
       this.wasm_ccp4.delete();
       this.wasm_ccp4 = null;
@@ -215,6 +211,7 @@ export class ElMap {
   // http://www.uoxray.uoregon.edu/tnt/manual/node104.html
   // Density values are stored as bytes.
   from_dsn6(buf: ArrayBuffer, gemmi: GemmiModule) {
+    this.gemmi_module = gemmi;
     if (this.wasm_ccp4 != null) {
       this.wasm_ccp4.delete();
       this.wasm_ccp4 = null;
@@ -316,7 +313,7 @@ export class ElMap {
         segments: this.wasm_ccp4.isosurface_segments().slice(),
       } as IsosurfaceData;
     }
-    return this.block.isosurface(abs_level, method);
+    return this.block.isosurface(this.gemmi_module, abs_level, method);
   }
 
   dispose() {

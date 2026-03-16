@@ -1,16 +1,16 @@
-import { UnitCell } from './unitcell';
 import { ElMap, GridArray } from './elmap';
 import type { Viewer } from './viewer';
-import type { Module as MtzModule, Mtz as WasmMtz } from './gemmi_wasm';
+import type { GemmiModule, Mtz as WasmMtz } from './gemmi';
 
 function log_timing(t0: number, text: string) {
   console.log(text + ': ' + (performance.now() - t0).toFixed(2) + ' ms.');
 }
 
-function add_map_from_mtz(viewer, mtz, map_data, is_diff: boolean) {
+function add_map_from_mtz(gemmi: GemmiModule, viewer, mtz, map_data, is_diff: boolean) {
   const map = new ElMap();
+  map.gemmi_module = gemmi;
   const mc = mtz.cell;
-  map.unit_cell = new UnitCell(mc.a, mc.b, mc.c, mc.alpha, mc.beta, mc.gamma);
+  map.unit_cell = new gemmi.UnitCell(mc.a, mc.b, mc.c, mc.alpha, mc.beta, mc.gamma);
   map.stats.rms = mtz.rmsd;
   map.grid = new GridArray([mtz.nx, mtz.ny, mtz.nz]);
   map.grid.values.set(map_data);
@@ -18,7 +18,7 @@ function add_map_from_mtz(viewer, mtz, map_data, is_diff: boolean) {
 }
 
 export
-function load_maps_from_mtz_buffer(viewer: Viewer, mtz: WasmMtz,
+function load_maps_from_mtz_buffer(gemmi: GemmiModule, viewer: Viewer, mtz: WasmMtz,
                                    labels?: string[]) {
   if (labels != null) {
     for (let n = 0; n < labels.length; n += 2) {
@@ -32,7 +32,7 @@ function load_maps_from_mtz_buffer(viewer: Viewer, mtz: WasmMtz,
         continue;
       }
       const is_diff = (n % 4 == 2);
-      add_map_from_mtz(viewer, mtz, map_data, is_diff);
+      add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff);
     }
   } else {  // use default labels
     for (let nmap = 0; nmap < 2; ++nmap) {
@@ -42,7 +42,7 @@ function load_maps_from_mtz_buffer(viewer: Viewer, mtz: WasmMtz,
       log_timing(t0, 'map ' + mtz.nx + 'x' + mtz.ny + 'x' + mtz.nz +
                      ' calculated in');
       if (map_data != null) {
-        add_map_from_mtz(viewer, mtz, map_data, is_diff);
+        add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff);
       }
     }
   }
@@ -50,14 +50,14 @@ function load_maps_from_mtz_buffer(viewer: Viewer, mtz: WasmMtz,
 }
 
 export
-function load_maps_from_mtz(gemmi: MtzModule, viewer: Viewer, url: string,
+function load_maps_from_mtz(gemmi: GemmiModule, viewer: Viewer, url: string,
                             labels?: string[], callback?: () => void) {
   viewer.load_file(url, {binary: true, progress: true}, function (req) {
     const t0 = performance.now();
     try {
       const mtz = gemmi.readMtz(req.response);
       //console.log("[after readMTZ] wasm mem:", gemmi.HEAPU8.length / 1024, "kb");
-      load_maps_from_mtz_buffer(viewer, mtz, labels);
+      load_maps_from_mtz_buffer(gemmi, viewer, mtz, labels);
     } catch (e) {
       viewer.hud(e.message, 'ERR');
       return;
@@ -69,7 +69,7 @@ function load_maps_from_mtz(gemmi: MtzModule, viewer: Viewer, url: string,
 }
 
 export
-function set_pdb_and_mtz_dropzone(gemmi: MtzModule, viewer: Viewer,
+function set_pdb_and_mtz_dropzone(gemmi: GemmiModule, viewer: Viewer,
                                   zone: HTMLElement) {
   viewer.set_dropzone(zone, function (file) {
     if (/\.mtz$/.test(file.name)) {
@@ -79,7 +79,7 @@ function set_pdb_and_mtz_dropzone(gemmi: MtzModule, viewer: Viewer,
           const t0 = performance.now();
           try {
             const mtz = gemmi.readMtz(evt.target.result);
-            load_maps_from_mtz_buffer(viewer, mtz);
+            load_maps_from_mtz_buffer(gemmi, viewer, mtz);
           } catch (e) {
             viewer.hud(e.message, 'ERR');
             return;

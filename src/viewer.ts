@@ -4,9 +4,10 @@ import { makeLineMaterial, makeLineSegments, makeRibbon,
          makeChickenWire, makeGrid, makeSticks, makeBalls, makeWheels, makeCube,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
-import { ElMap, setIsosurfaceModule } from './elmap';
+import { ElMap } from './elmap';
 import { BondType, modelsFromGemmi } from './model';
 
+import type { GemmiModule, Structure } from './gemmi';
 import type { Atom, Model } from './model';
 import type { GemmiBondingInfo } from './model';
 import type { LineSegments } from './three-r162/main';
@@ -15,8 +16,8 @@ import type { OrCameraType } from './controls';
 type Num2 = [number, number];
 type Num3 = [number, number, number];
 type GemmiSelectionContext = {
-  gemmi: any,
-  structure: any,
+  gemmi: GemmiModule,
+  structure: Structure,
   model_index: number,
 };
 
@@ -635,9 +636,9 @@ export class Viewer {
   xhr_headers: Record<string, string>;
   monomer_cif_cache: Record<string, Promise<string | null>>;
   last_bonding_info: GemmiBondingInfo | null;
-  gemmi_factory: (() => Promise<any>) | null;
-  gemmi_module: any;
-  gemmi_loading: Promise<any> | null;
+  gemmi_factory: (() => Promise<GemmiModule>) | null;
+  gemmi_module: GemmiModule | null;
+  gemmi_loading: Promise<GemmiModule> | null;
   config: ViewerConfig;
   window_size: Num2;
   window_offset: Num2;
@@ -716,7 +717,6 @@ export class Viewer {
     }
     if (options.gemmi) {
       this.gemmi_module = options.gemmi;
-      setIsosurfaceModule(options.gemmi);
     } else if (options.gemmi_factory) {
       this.gemmi_factory = options.gemmi_factory;
     } else if (typeof globalThis !== 'undefined' &&
@@ -2070,13 +2070,11 @@ export class Viewer {
     });
   }
 
-  resolve_gemmi(explicit_module?: any) {
+  resolve_gemmi(explicit_module?: GemmiModule) {
     if (explicit_module) {
-      setIsosurfaceModule(explicit_module);
       return Promise.resolve(explicit_module);
     }
     if (this.gemmi_module) {
-      setIsosurfaceModule(this.gemmi_module);
       return Promise.resolve(this.gemmi_module);
     }
     if (this.gemmi_factory == null) return Promise.resolve(null);
@@ -2084,7 +2082,6 @@ export class Viewer {
       const self = this;
       this.gemmi_loading = this.gemmi_factory().then(function (gemmi) {
         self.gemmi_module = gemmi;
-        setIsosurfaceModule(gemmi);
         return gemmi;
       }, function (err) {
         self.gemmi_loading = null;
@@ -2094,7 +2091,7 @@ export class Viewer {
     return this.gemmi_loading;
   }
 
-  load_coordinate_buffer(buffer: ArrayBuffer, name: string, explicit_gemmi?: any) {
+  load_coordinate_buffer(buffer: ArrayBuffer, name: string, explicit_gemmi?: GemmiModule) {
     const self = this;
     return this.resolve_gemmi(explicit_gemmi).then(function (gemmi) {
       if (!gemmi) throw Error('Gemmi is required for coordinate loading.');
@@ -2103,7 +2100,7 @@ export class Viewer {
   }
 
   // Load molecular model from PDB file and centers the view
-  load_pdb_from_text(text: string, name: string='model.pdb', explicit_gemmi?: any) {
+  load_pdb_from_text(text: string, name: string='model.pdb', explicit_gemmi?: GemmiModule) {
     const self = this;
     return this.resolve_gemmi(explicit_gemmi).then(function (gemmi) {
       if (!gemmi) throw Error('Gemmi is required for coordinate loading.');

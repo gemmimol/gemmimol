@@ -526,12 +526,6 @@ class Cubicles {
   }
 }
 
-let gemmi_module = null;
-
-function setIsosurfaceModule(module) {
-  gemmi_module = module;
-}
-
 function modulo(a, b) {
   const reminder = a % b;
   return reminder >= 0 ? reminder : reminder + b;
@@ -634,7 +628,7 @@ class Block {
     return this._values === null;
   }
 
-  isosurface(isolevel, method='') {
+  isosurface(gemmi_module, isolevel, method='') {
     if (gemmi_module == null) {
       throw Error('Gemmi is required for isosurface extraction.');
     }
@@ -698,9 +692,11 @@ class ElMap {
   
   
   
+  
    // used in ReciprocalSpaceMap
 
   constructor() {
+    this.gemmi_module = null;
     this.unit_cell = null;
     this.grid = null;
     this.stats = { mean: 0.0, rms: 1.0 };
@@ -719,7 +715,7 @@ class ElMap {
     if (gemmi == null || typeof gemmi.readCcp4Map !== 'function') {
       throw Error('Gemmi is required for CCP4 map loading.');
     }
-    setIsosurfaceModule(gemmi);
+    this.gemmi_module = gemmi;
     if (this.wasm_ccp4 != null) {
       this.wasm_ccp4.delete();
       this.wasm_ccp4 = null;
@@ -733,6 +729,7 @@ class ElMap {
   // http://www.uoxray.uoregon.edu/tnt/manual/node104.html
   // Density values are stored as bytes.
   from_dsn6(buf, gemmi) {
+    this.gemmi_module = gemmi;
     if (this.wasm_ccp4 != null) {
       this.wasm_ccp4.delete();
       this.wasm_ccp4 = null;
@@ -834,7 +831,7 @@ class ElMap {
         segments: this.wasm_ccp4.isosurface_segments().slice(),
       } ;
     }
-    return this.block.isosurface(abs_level, method);
+    return this.block.isosurface(this.gemmi_module, abs_level, method);
   }
 
   dispose() {
@@ -6431,7 +6428,6 @@ class Viewer {
     }
     if (options.gemmi) {
       this.gemmi_module = options.gemmi;
-      setIsosurfaceModule(options.gemmi);
     } else if (options.gemmi_factory) {
       this.gemmi_factory = options.gemmi_factory;
     } else if (typeof globalThis !== 'undefined' &&
@@ -7787,11 +7783,9 @@ class Viewer {
 
   resolve_gemmi(explicit_module) {
     if (explicit_module) {
-      setIsosurfaceModule(explicit_module);
       return Promise.resolve(explicit_module);
     }
     if (this.gemmi_module) {
-      setIsosurfaceModule(this.gemmi_module);
       return Promise.resolve(this.gemmi_module);
     }
     if (this.gemmi_factory == null) return Promise.resolve(null);
@@ -7799,7 +7793,6 @@ class Viewer {
       const self = this;
       this.gemmi_loading = this.gemmi_factory().then(function (gemmi) {
         self.gemmi_module = gemmi;
-        setIsosurfaceModule(gemmi);
         return gemmi;
       }, function (err) {
         self.gemmi_loading = null;
@@ -8540,6 +8533,7 @@ function log_timing(t0, text) {
 
 function add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff) {
   const map = new ElMap();
+  map.gemmi_module = gemmi;
   const mc = mtz.cell;
   map.unit_cell = new gemmi.UnitCell(mc.a, mc.b, mc.c, mc.alpha, mc.beta, mc.gamma);
   map.stats.rms = mtz.rmsd;
@@ -8672,7 +8666,6 @@ exports.makeSticks = makeSticks;
 exports.makeUniforms = makeUniforms;
 exports.makeWheels = makeWheels;
 exports.modelsFromGemmi = modelsFromGemmi;
-exports.setIsosurfaceModule = setIsosurfaceModule;
 exports.set_pdb_and_mtz_dropzone = set_pdb_and_mtz_dropzone;
 
 }));
