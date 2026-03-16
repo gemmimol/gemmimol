@@ -1,12 +1,29 @@
+import type { Module as GemmiModule, Isosurface as WasmIsosurface } from './gemmi_wasm';
+
 type Num3 = [number, number, number];
+
+export interface IsosurfaceData {
+  vertices: number[] | Float32Array;
+  segments: number[] | Uint32Array;
+}
+
+let wasm_module: GemmiModule | null = null;
+
+export function setIsosurfaceModule(module: GemmiModule | null | undefined) {
+  wasm_module = (module != null && typeof module.Isosurface === 'function') ? module : null;
+}
 
 export class Block {
   _points: Num3[] | null;
   _values: number[] | null;
+  _flat_points: Float32Array | null;
+  _flat_values: Float32Array | null;
   _size: Num3
   constructor() {
     this._points = null;
     this._values = null;
+    this._flat_points = null;
+    this._flat_values = null;
     this._size = [0, 0, 0];
   }
 
@@ -21,12 +38,22 @@ export class Block {
 
     this._points = points;
     this._values = values;
+    this._flat_points = new Float32Array(3 * len);
+    for (let i = 0; i < len; ++i) {
+      const point = points[i];
+      this._flat_points[3*i] = point[0];
+      this._flat_points[3*i+1] = point[1];
+      this._flat_points[3*i+2] = point[2];
+    }
+    this._flat_values = new Float32Array(values);
     this._size = size;
   }
 
   clear() {
     this._points = null;
     this._values = null;
+    this._flat_points = null;
+    this._flat_values = null;
   }
 
   empty() : boolean {
@@ -37,8 +64,39 @@ export class Block {
     //if (method === 'marching tetrahedra') {
     //  return marchingTetrahedra(block, isolevel);
     //}
+    const wasm_iso = wasmMarchingCubes(this._size,
+                                       this._flat_values,
+                                       this._flat_points,
+                                       isolevel,
+                                       method);
+    if (wasm_iso != null) return wasm_iso;
     return marchingCubes(this._size, this._values, this._points,
                          isolevel, method);
+  }
+}
+
+function wasmMarchingCubes(dims: Num3,
+                           values: Float32Array | null,
+                           points: Float32Array | null,
+                           isolevel: number,
+                           method: string): IsosurfaceData | null {
+  if (wasm_module == null || values == null || points == null) return null;
+  let iso: WasmIsosurface | null = null;
+  try {
+    iso = new wasm_module.Isosurface();
+    iso.resize_input(values.length);
+    iso.set_size(dims[0], dims[1], dims[2]);
+    iso.input_points().set(points);
+    iso.input_values().set(values);
+    if (!iso.calculate(isolevel, method || '')) {
+      throw Error(iso.last_error || 'Failed to calculate isosurface.');
+    }
+    return {
+      vertices: iso.vertices().slice(),
+      segments: iso.segments().slice(),
+    };
+  } finally {
+    if (iso != null) iso.delete();
   }
 }
 
@@ -684,4 +742,3 @@ function marchingCubes(dims: Num3,
   }
   return { vertices: vertices, segments: segments };
 }
-

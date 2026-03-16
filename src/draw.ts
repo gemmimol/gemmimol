@@ -2,6 +2,7 @@ import { BufferAttribute, BufferGeometry, ShaderMaterial,
          Object3D, Mesh, Line, LineSegments, Points,
          Color, Vector3, Texture } from './three-r162/main.js';
 import { CatmullRomCurve3 } from './three-r162/extras.js';
+import type { IsosurfaceData } from './isosurface';
 
 import type { Atom } from './model';
 type Num3 = [number, number, number];
@@ -302,7 +303,7 @@ export function makeRibbon(vertices: Atom[],
 
 
 export
-function makeChickenWire(data: {vertices: number[], segments: number[]},
+function makeChickenWire(data: IsosurfaceData,
                          options: {[key: string]: unknown}) {
   const geom = new BufferGeometry();
   const position = new Float32Array(data.vertices);

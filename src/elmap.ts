@@ -1,5 +1,5 @@
 import { UnitCell } from './unitcell';
-import { Block } from './isosurface';
+import { Block, setIsosurfaceModule } from './isosurface';
 import type { Module as GemmiModule, Ccp4Map as WasmCcp4Map } from './gemmi_wasm';
 
 type Num3 = [number, number, number];
@@ -90,6 +90,7 @@ export class ElMap {
     if (gemmi == null || typeof gemmi.readCcp4Map !== 'function') {
       throw Error('Gemmi is required for CCP4 map loading.');
     }
+    setIsosurfaceModule(gemmi);
     const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
     try {
       this.set_from_ccp4_map(ccp4);

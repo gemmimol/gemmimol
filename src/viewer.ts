@@ -5,6 +5,7 @@ import { makeLineMaterial, makeLineSegments, makeRibbon,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
 import { ElMap } from './elmap';
+import { setIsosurfaceModule } from './isosurface';
 import { BondType, modelsFromGemmi } from './model';
 
 import type { Atom, Model } from './model';
@@ -716,6 +717,7 @@ export class Viewer {
     }
     if (options.gemmi) {
       this.gemmi_module = options.gemmi;
+      setIsosurfaceModule(options.gemmi);
     } else if (options.gemmi_factory) {
       this.gemmi_factory = options.gemmi_factory;
     } else if (typeof globalThis !== 'undefined' &&
@@ -2070,13 +2072,20 @@ export class Viewer {
   }
 
   resolve_gemmi(explicit_module?: any) {
-    if (explicit_module) return Promise.resolve(explicit_module);
-    if (this.gemmi_module) return Promise.resolve(this.gemmi_module);
+    if (explicit_module) {
+      setIsosurfaceModule(explicit_module);
+      return Promise.resolve(explicit_module);
+    }
+    if (this.gemmi_module) {
+      setIsosurfaceModule(this.gemmi_module);
+      return Promise.resolve(this.gemmi_module);
+    }
     if (this.gemmi_factory == null) return Promise.resolve(null);
     if (this.gemmi_loading == null) {
       const self = this;
       this.gemmi_loading = this.gemmi_factory().then(function (gemmi) {
         self.gemmi_module = gemmi;
+        setIsosurfaceModule(gemmi);
         return gemmi;
       }, function (err) {
         self.gemmi_loading = null;

@@ -88,6 +88,18 @@ export interface Ccp4Map {
   delete(): void;
 }
 
+export interface Isosurface {
+  readonly last_error: string;
+  resize_input(point_count: number): void;
+  set_size(size_x: number, size_y: number, size_z: number): void;
+  input_points(): Float32Array;
+  input_values(): Float32Array;
+  calculate(isolevel: number, method: string): boolean;
+  vertices(): Float32Array;
+  segments(): Uint32Array;
+  delete(): void;
+}
+
 export interface Mtz {
   readonly cell: UnitCell;
   readonly nx: number;
@@ -115,5 +127,8 @@ export interface Module {
   };
   readCcp4Map(map_buf: string | ArrayBuffer, expand_symmetry?: boolean): Ccp4Map;
   readMtz(mtz_buf: string | ArrayBuffer): Mtz;
+  Isosurface: {
+    new (): Isosurface;
+  };
   HEAPU8: Uint8Array;
 }
