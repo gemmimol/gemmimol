@@ -597,16 +597,17 @@ class Cubicles {
   }
 }
 
-let wasm_module = null;
+let gemmi_module = null;
 
 function setIsosurfaceModule(module) {
-  wasm_module = (module != null && typeof module.Isosurface === 'function') ? module : null;
+  gemmi_module = module;
 }
 
 class Block {
   
   
   
+
   constructor() {
     this._points = null;
     this._values = null;
@@ -642,687 +643,32 @@ class Block {
     return this._values === null;
   }
 
-  isosurface(isolevel, method) {
-    //if (method === 'marching tetrahedra') {
-    //  return marchingTetrahedra(block, isolevel);
-    //}
-    const wasm_iso = wasmMarchingCubes(this._size,
-                                       this._values,
-                                       this._points,
-                                       isolevel,
-                                       method);
-    if (wasm_iso != null) return wasm_iso;
-    return marchingCubes(this._size, this._values, this._points,
-                         isolevel, method);
-  }
-}
-
-function wasmMarchingCubes(dims,
-                           values,
-                           points,
-                           isolevel,
-                           method) {
-  if (wasm_module == null || values == null || points == null) return null;
-  let iso = null;
-  try {
-    iso = new wasm_module.Isosurface();
-    iso.resize_input(values.length);
-    iso.set_size(dims[0], dims[1], dims[2]);
-    iso.input_points().set(points);
-    iso.input_values().set(values);
-    if (!iso.calculate(isolevel, method || '')) {
-      throw Error(iso.last_error || 'Failed to calculate isosurface.');
+  isosurface(isolevel, method='') {
+    if (gemmi_module == null) {
+      throw Error('Gemmi is required for isosurface extraction.');
     }
-    return {
-      vertices: iso.vertices().slice(),
-      segments: iso.segments().slice(),
-    };
-  } finally {
-    if (iso != null) iso.delete();
-  }
-}
+    if (this._values == null || this._points == null) {
+      throw Error('Block is empty.');
+    }
 
-/* eslint comma-spacing: 0, no-multi-spaces: 0 */
-
-const edgeTable = new Int32Array([
-  0x0  , 0x0  , 0x202, 0x302, 0x406, 0x406, 0x604, 0x704,
-  0x804, 0x805, 0xa06, 0xa06, 0xc0a, 0xd03, 0xe08, 0xf00,
-  0x90 , 0x98 , 0x292, 0x292, 0x496, 0x49e, 0x694, 0x694,
-  0x894, 0x894, 0xa96, 0xa96, 0xc9a, 0xc92, 0xe91, 0xe90,
-  0x230, 0x230, 0x33 , 0x13a, 0x636, 0x636, 0x434, 0x43c,
-  0xa34, 0xa35, 0x837, 0x936, 0xe3a, 0xf32, 0xc31, 0xd30,
-  0x2a0, 0x2a8, 0xa3 , 0xaa , 0x6a6, 0x6af, 0x5a4, 0x4ac,
-  0xaa4, 0xaa4, 0x9a6, 0x8a6, 0xfaa, 0xea3, 0xca1, 0xca0,
-  0x460, 0x460, 0x662, 0x762, 0x66 , 0x66 , 0x265, 0x364,
-  0xc64, 0xc65, 0xe66, 0xe66, 0x86a, 0x863, 0xa69, 0xa60,
-  0x4f0, 0x4f8, 0x6f2, 0x6f2, 0xf6 , 0xfe , 0x2f5, 0x2fc,
-  0xcf4, 0xcf4, 0xef6, 0xef6, 0x8fa, 0x8f3, 0xaf9, 0xaf0,
-  0x650, 0x650, 0x453, 0x552, 0x256, 0x256, 0x54 , 0x154,
-  0xe54, 0xf54, 0xc57, 0xd56, 0xa5a, 0xb52, 0x859, 0x950,
-  0x7c0, 0x6c1, 0x5c2, 0x4c2, 0x3c6, 0x2ce, 0xc5 , 0xc4 ,
-  0xfc4, 0xec5, 0xdc6, 0xcc6, 0xbca, 0xac2, 0x8c1, 0x8c0,
-  0x8c0, 0x8c0, 0xac2, 0xbc2, 0xcc6, 0xcc6, 0xec4, 0xfcc,
-  0xc4 , 0xc5 , 0x2c6, 0x3c6, 0x4c2, 0x5c2, 0x6c1, 0x7c0,
-  0x950, 0x859, 0xb52, 0xa5a, 0xd56, 0xc57, 0xe54, 0xe5c,
-  0x154, 0x54 , 0x25e, 0x256, 0x552, 0x453, 0x658, 0x650,
-  0xaf0, 0xaf0, 0x8f3, 0x8fa, 0xef6, 0xef6, 0xcf4, 0xcfc,
-  0x2f4, 0x3f5, 0xff , 0x1f6, 0x6f2, 0x6f3, 0x4f9, 0x5f0,
-  0xa60, 0xa69, 0x863, 0x86a, 0xe66, 0xe67, 0xd65, 0xc6c,
-  0x364, 0x265, 0x166, 0x66 , 0x76a, 0x663, 0x460, 0x460,
-  0xca0, 0xca0, 0xea2, 0xfa2, 0x8a6, 0x8a6, 0xaa4, 0xba4,
-  0x4ac, 0x5a4, 0x6ae, 0x7a6, 0xaa , 0xa3 , 0x2a8, 0x2a0,
-  0xd30, 0xc31, 0xf32, 0xe3a, 0x936, 0x837, 0xb35, 0xa34,
-  0x43c, 0x434, 0x73e, 0x636, 0x13a, 0x33 , 0x339, 0x230,
-  0xe90, 0xe90, 0xc92, 0xc9a, 0xa96, 0xa96, 0x894, 0x89c,
-  0x694, 0x695, 0x49f, 0x496, 0x292, 0x392, 0x98 , 0x90 ,
-  0xf00, 0xe08, 0xd03, 0xc0a, 0xa06, 0xa0e, 0x805, 0x804,
-  0x704, 0x604, 0x506, 0x406, 0x302, 0x202, 0x0  , 0x0]);
-
-
-// generated from classical triTable by tools/isolut.py
-const segTable = [
-  [],
-  [],
-  [1, 9],
-  [1, 8, 1, 9],
-  [2, 10, 10, 1],
-  [2, 10, 10, 1],
-  [9, 2, 2, 10, 10, 9],
-  [2, 8, 2, 10, 10, 8, 10, 9],
-  [11, 2],
-  [0, 11, 11, 2],
-  [1, 9, 11, 2],
-  [1, 11, 11, 2, 1, 9, 9, 11],
-  [3, 10, 10, 1, 11, 10],
-  [0, 10, 10, 1, 8, 10, 11, 10],
-  [3, 9, 11, 9, 11, 10, 10, 9],
-  [8, 10, 10, 9, 11, 10],
-  [4, 7],
-  [4, 3, 4, 7],
-  [1, 9, 4, 7],
-  [4, 1, 1, 9, 4, 7, 7, 1],
-  [2, 10, 10, 1, 4, 7],
-  [3, 4, 4, 7, 2, 10, 10, 1],
-  [9, 2, 2, 10, 10, 9, 4, 7],
-  [2, 10, 10, 9, 9, 2, 9, 7, 7, 2, 4, 7],
-  [4, 7, 11, 2],
-  [11, 4, 4, 7, 11, 2, 2, 4],
-  [1, 9, 4, 7, 11, 2],
-  [4, 7, 11, 4, 11, 9, 11, 2, 2, 9, 1, 9],
-  [3, 10, 10, 1, 11, 10, 4, 7],
-  [1, 11, 11, 10, 10, 1, 1, 4, 4, 11, 4, 7],
-  [4, 7, 0, 11, 11, 9, 11, 10, 10, 9],
-  [4, 7, 11, 4, 11, 9, 11, 10, 10, 9],
-  [9, 5, 5, 4],
-  [9, 5, 5, 4],
-  [0, 5, 5, 4, 1, 5],
-  [8, 5, 5, 4, 3, 5, 1, 5],
-  [2, 10, 10, 1, 9, 5, 5, 4],
-  [2, 10, 10, 1, 9, 5, 5, 4],
-  [5, 2, 2, 10, 10, 5, 5, 4, 4, 2],
-  [2, 10, 10, 5, 5, 2, 5, 3, 5, 4, 4, 3],
-  [9, 5, 5, 4, 11, 2],
-  [0, 11, 11, 2, 9, 5, 5, 4],
-  [0, 5, 5, 4, 1, 5, 11, 2],
-  [1, 5, 5, 2, 5, 8, 8, 2, 11, 2, 5, 4],
-  [10, 3, 11, 10, 10, 1, 9, 5, 5, 4],
-  [9, 5, 5, 4, 8, 1, 8, 10, 10, 1, 11, 10],
-  [5, 4, 0, 5, 0, 11, 11, 5, 11, 10, 10, 5],
-  [5, 4, 8, 5, 8, 10, 10, 5, 11, 10],
-  [9, 7, 5, 7, 9, 5],
-  [9, 3, 9, 5, 5, 3, 5, 7],
-  [0, 7, 1, 7, 1, 5, 5, 7],
-  [1, 5, 5, 3, 5, 7],
-  [9, 7, 9, 5, 5, 7, 10, 1, 2, 10],
-  [10, 1, 2, 10, 9, 5, 5, 0, 5, 3, 5, 7],
-  [2, 8, 2, 5, 5, 8, 5, 7, 10, 5, 2, 10],
-  [2, 10, 10, 5, 5, 2, 5, 3, 5, 7],
-  [7, 9, 9, 5, 5, 7, 11, 2],
-  [9, 5, 5, 7, 7, 9, 7, 2, 2, 9, 11, 2],
-  [11, 2, 1, 8, 1, 7, 1, 5, 5, 7],
-  [11, 2, 1, 11, 1, 7, 1, 5, 5, 7],
-  [9, 5, 5, 8, 5, 7, 10, 1, 3, 10, 11, 10],
-  [5, 7, 7, 0, 0, 5, 9, 5, 11, 0, 0, 10, 10, 1, 11, 10],
-  [11, 10, 10, 0, 0, 11, 10, 5, 5, 0, 0, 7, 5, 7],
-  [11, 10, 10, 5, 5, 11, 5, 7],
-  [10, 6, 6, 5, 5, 10],
-  [5, 10, 10, 6, 6, 5],
-  [1, 9, 5, 10, 10, 6, 6, 5],
-  [1, 8, 1, 9, 5, 10, 10, 6, 6, 5],
-  [1, 6, 6, 5, 5, 1, 2, 6],
-  [1, 6, 6, 5, 5, 1, 2, 6],
-  [9, 6, 6, 5, 5, 9, 0, 6, 2, 6],
-  [5, 9, 8, 5, 8, 2, 2, 5, 2, 6, 6, 5],
-  [11, 2, 10, 6, 6, 5, 5, 10],
-  [11, 0, 11, 2, 10, 6, 6, 5, 5, 10],
-  [1, 9, 11, 2, 5, 10, 10, 6, 6, 5],
-  [5, 10, 10, 6, 6, 5, 1, 9, 9, 2, 9, 11, 11, 2],
-  [6, 3, 11, 6, 6, 5, 5, 3, 5, 1],
-  [11, 0, 11, 5, 5, 0, 5, 1, 11, 6, 6, 5],
-  [11, 6, 6, 3, 6, 0, 6, 5, 5, 0, 5, 9],
-  [6, 5, 5, 9, 9, 6, 9, 11, 11, 6],
-  [5, 10, 10, 6, 6, 5, 4, 7],
-  [4, 3, 4, 7, 6, 5, 5, 10, 10, 6],
-  [1, 9, 5, 10, 10, 6, 6, 5, 4, 7],
-  [10, 6, 6, 5, 5, 10, 1, 9, 9, 7, 7, 1, 4, 7],
-  [6, 1, 2, 6, 6, 5, 5, 1, 4, 7],
-  [2, 5, 5, 1, 2, 6, 6, 5, 4, 3, 4, 7],
-  [4, 7, 0, 5, 5, 9, 0, 6, 6, 5, 2, 6],
-  [3, 9, 9, 7, 4, 7, 2, 9, 5, 9, 9, 6, 6, 5, 2, 6],
-  [11, 2, 4, 7, 10, 6, 6, 5, 5, 10],
-  [5, 10, 10, 6, 6, 5, 4, 7, 7, 2, 2, 4, 11, 2],
-  [1, 9, 4, 7, 11, 2, 5, 10, 10, 6, 6, 5],
-  [9, 2, 1, 9, 9, 11, 11, 2, 4, 11, 4, 7, 5, 10, 10, 6, 6, 5],
-  [4, 7, 11, 5, 5, 3, 5, 1, 11, 6, 6, 5],
-  [5, 1, 1, 11, 11, 5, 11, 6, 6, 5, 0, 11, 11, 4, 4, 7],
-  [0, 5, 5, 9, 0, 6, 6, 5, 3, 6, 11, 6, 4, 7],
-  [6, 5, 5, 9, 9, 6, 9, 11, 11, 6, 4, 7, 7, 9],
-  [10, 4, 9, 10, 6, 4, 10, 6],
-  [4, 10, 10, 6, 6, 4, 9, 10],
-  [10, 0, 1, 10, 10, 6, 6, 0, 6, 4],
-  [1, 8, 1, 6, 6, 8, 6, 4, 1, 10, 10, 6],
-  [1, 4, 9, 1, 2, 4, 2, 6, 6, 4],
-  [2, 9, 9, 1, 2, 4, 2, 6, 6, 4],
-  [2, 4, 2, 6, 6, 4],
-  [2, 8, 2, 4, 2, 6, 6, 4],
-  [10, 4, 9, 10, 10, 6, 6, 4, 11, 2],
-  [8, 2, 11, 2, 9, 10, 10, 4, 10, 6, 6, 4],
-  [11, 2, 1, 6, 6, 0, 6, 4, 1, 10, 10, 6],
-  [6, 4, 4, 1, 1, 6, 1, 10, 10, 6, 8, 1, 1, 11, 11, 2],
-  [9, 6, 6, 4, 9, 3, 3, 6, 9, 1, 11, 6],
-  [11, 1, 1, 8, 11, 6, 6, 1, 9, 1, 1, 4, 6, 4],
-  [11, 6, 6, 3, 6, 0, 6, 4],
-  [6, 4, 8, 6, 11, 6],
-  [7, 10, 10, 6, 6, 7, 8, 10, 9, 10],
-  [0, 7, 0, 10, 10, 7, 9, 10, 6, 7, 10, 6],
-  [10, 6, 6, 7, 7, 10, 1, 10, 7, 1, 8, 1],
-  [10, 6, 6, 7, 7, 10, 7, 1, 1, 10],
-  [2, 6, 6, 1, 6, 8, 8, 1, 9, 1, 6, 7],
-  [2, 6, 6, 9, 9, 2, 9, 1, 6, 7, 7, 9, 9, 3],
-  [0, 7, 0, 6, 6, 7, 2, 6],
-  [2, 7, 6, 7, 2, 6],
-  [11, 2, 10, 6, 6, 8, 8, 10, 9, 10, 6, 7],
-  [0, 7, 7, 2, 11, 2, 9, 7, 6, 7, 7, 10, 10, 6, 9, 10],
-  [1, 8, 1, 7, 1, 10, 10, 7, 6, 7, 10, 6, 11, 2],
-  [11, 2, 1, 11, 1, 7, 10, 6, 6, 1, 1, 10, 6, 7],
-  [9, 6, 6, 8, 6, 7, 9, 1, 1, 6, 11, 6, 6, 3],
-  [9, 1, 11, 6, 6, 7],
-  [0, 7, 0, 6, 6, 7, 11, 0, 11, 6],
-  [11, 6, 6, 7],
-  [7, 6, 6, 11],
-  [7, 6, 6, 11],
-  [1, 9, 7, 6, 6, 11],
-  [8, 1, 1, 9, 7, 6, 6, 11],
-  [10, 1, 2, 10, 6, 11, 7, 6],
-  [2, 10, 10, 1, 6, 11, 7, 6],
-  [2, 9, 2, 10, 10, 9, 6, 11, 7, 6],
-  [6, 11, 7, 6, 2, 10, 10, 3, 10, 8, 10, 9],
-  [7, 2, 6, 2, 7, 6],
-  [7, 0, 7, 6, 6, 0, 6, 2],
-  [2, 7, 7, 6, 6, 2, 1, 9],
-  [1, 6, 6, 2, 1, 8, 8, 6, 1, 9, 7, 6],
-  [10, 7, 7, 6, 6, 10, 10, 1, 1, 7],
-  [10, 7, 7, 6, 6, 10, 1, 7, 10, 1, 1, 8],
-  [7, 0, 7, 10, 10, 0, 10, 9, 6, 10, 7, 6],
-  [7, 6, 6, 10, 10, 7, 10, 8, 10, 9],
-  [6, 8, 4, 6, 6, 11],
-  [3, 6, 6, 11, 0, 6, 4, 6],
-  [8, 6, 6, 11, 4, 6, 1, 9],
-  [4, 6, 6, 9, 6, 3, 3, 9, 1, 9, 6, 11],
-  [6, 8, 4, 6, 6, 11, 2, 10, 10, 1],
-  [2, 10, 10, 1, 0, 11, 0, 6, 6, 11, 4, 6],
-  [4, 11, 4, 6, 6, 11, 2, 9, 2, 10, 10, 9],
-  [10, 9, 9, 3, 3, 10, 2, 10, 4, 3, 3, 6, 6, 11, 4, 6],
-  [8, 2, 4, 2, 4, 6, 6, 2],
-  [4, 2, 4, 6, 6, 2],
-  [1, 9, 3, 4, 4, 2, 4, 6, 6, 2],
-  [1, 9, 4, 1, 4, 2, 4, 6, 6, 2],
-  [8, 1, 8, 6, 6, 1, 4, 6, 6, 10, 10, 1],
-  [10, 1, 0, 10, 0, 6, 6, 10, 4, 6],
-  [4, 6, 6, 3, 3, 4, 6, 10, 10, 3, 3, 9, 10, 9],
-  [10, 9, 4, 10, 6, 10, 4, 6],
-  [9, 5, 5, 4, 7, 6, 6, 11],
-  [9, 5, 5, 4, 7, 6, 6, 11],
-  [5, 0, 1, 5, 5, 4, 7, 6, 6, 11],
-  [7, 6, 6, 11, 3, 4, 3, 5, 5, 4, 1, 5],
-  [9, 5, 5, 4, 10, 1, 2, 10, 7, 6, 6, 11],
-  [6, 11, 7, 6, 2, 10, 10, 1, 9, 5, 5, 4],
-  [7, 6, 6, 11, 5, 4, 4, 10, 10, 5, 4, 2, 2, 10],
-  [3, 4, 3, 5, 5, 4, 2, 5, 10, 5, 2, 10, 7, 6, 6, 11],
-  [7, 2, 7, 6, 6, 2, 5, 4, 9, 5],
-  [9, 5, 5, 4, 8, 6, 6, 0, 6, 2, 7, 6],
-  [3, 6, 6, 2, 7, 6, 1, 5, 5, 0, 5, 4],
-  [6, 2, 2, 8, 8, 6, 7, 6, 1, 8, 8, 5, 5, 4, 1, 5],
-  [9, 5, 5, 4, 10, 1, 1, 6, 6, 10, 1, 7, 7, 6],
-  [1, 6, 6, 10, 10, 1, 1, 7, 7, 6, 0, 7, 9, 5, 5, 4],
-  [0, 10, 10, 4, 10, 5, 5, 4, 3, 10, 6, 10, 10, 7, 7, 6],
-  [7, 6, 6, 10, 10, 7, 10, 8, 5, 4, 4, 10, 10, 5],
-  [6, 9, 9, 5, 5, 6, 6, 11, 11, 9],
-  [3, 6, 6, 11, 0, 6, 0, 5, 5, 6, 9, 5],
-  [0, 11, 0, 5, 5, 11, 1, 5, 5, 6, 6, 11],
-  [6, 11, 3, 6, 3, 5, 5, 6, 1, 5],
-  [2, 10, 10, 1, 9, 5, 5, 11, 11, 9, 5, 6, 6, 11],
-  [0, 11, 0, 6, 6, 11, 9, 6, 5, 6, 9, 5, 2, 10, 10, 1],
-  [8, 5, 5, 11, 5, 6, 6, 11, 0, 5, 10, 5, 5, 2, 2, 10],
-  [6, 11, 3, 6, 3, 5, 5, 6, 2, 10, 10, 3, 10, 5],
-  [5, 8, 9, 5, 5, 2, 2, 8, 5, 6, 6, 2],
-  [9, 5, 5, 6, 6, 9, 6, 0, 6, 2],
-  [1, 5, 5, 8, 8, 1, 5, 6, 6, 8, 8, 2, 6, 2],
-  [1, 5, 5, 6, 6, 1, 6, 2],
-  [3, 6, 6, 1, 6, 10, 10, 1, 8, 6, 5, 6, 6, 9, 9, 5],
-  [10, 1, 0, 10, 0, 6, 6, 10, 9, 5, 5, 0, 5, 6],
-  [5, 6, 6, 10, 10, 5],
-  [10, 5, 5, 6, 6, 10],
-  [11, 5, 5, 10, 10, 11, 7, 5],
-  [11, 5, 5, 10, 10, 11, 7, 5],
-  [5, 11, 7, 5, 5, 10, 10, 11, 1, 9],
-  [10, 7, 7, 5, 5, 10, 10, 11, 8, 1, 1, 9],
-  [11, 1, 2, 11, 7, 1, 7, 5, 5, 1],
-  [2, 7, 7, 1, 7, 5, 5, 1, 2, 11],
-  [9, 7, 7, 5, 5, 9, 9, 2, 2, 7, 2, 11],
-  [7, 5, 5, 2, 2, 7, 2, 11, 5, 9, 9, 2, 2, 8],
-  [2, 5, 5, 10, 10, 2, 3, 5, 7, 5],
-  [8, 2, 8, 5, 5, 2, 7, 5, 10, 2, 5, 10],
-  [1, 9, 5, 10, 10, 3, 3, 5, 7, 5, 10, 2],
-  [8, 2, 2, 9, 1, 9, 7, 2, 10, 2, 2, 5, 5, 10, 7, 5],
-  [3, 5, 5, 1, 7, 5],
-  [7, 0, 7, 1, 7, 5, 5, 1],
-  [3, 9, 3, 5, 5, 9, 7, 5],
-  [7, 9, 5, 9, 7, 5],
-  [5, 8, 4, 5, 5, 10, 10, 8, 10, 11],
-  [5, 0, 4, 5, 5, 11, 11, 0, 5, 10, 10, 11],
-  [1, 9, 4, 10, 10, 8, 10, 11, 4, 5, 5, 10],
-  [10, 11, 11, 4, 4, 10, 4, 5, 5, 10, 3, 4, 4, 1, 1, 9],
-  [2, 5, 5, 1, 2, 8, 8, 5, 2, 11, 4, 5],
-  [4, 11, 11, 0, 4, 5, 5, 11, 2, 11, 11, 1, 5, 1],
-  [2, 5, 5, 0, 5, 9, 2, 11, 11, 5, 4, 5, 5, 8],
-  [4, 5, 5, 9, 2, 11],
-  [2, 5, 5, 10, 10, 2, 3, 5, 3, 4, 4, 5],
-  [5, 10, 10, 2, 2, 5, 2, 4, 4, 5],
-  [3, 10, 10, 2, 3, 5, 5, 10, 8, 5, 4, 5, 1, 9],
-  [5, 10, 10, 2, 2, 5, 2, 4, 4, 5, 1, 9, 9, 2],
-  [4, 5, 5, 8, 5, 3, 5, 1],
-  [4, 5, 5, 0, 5, 1],
-  [4, 5, 5, 8, 5, 3, 0, 5, 5, 9],
-  [4, 5, 5, 9],
-  [4, 11, 7, 4, 9, 11, 9, 10, 10, 11],
-  [9, 7, 7, 4, 9, 11, 9, 10, 10, 11],
-  [1, 10, 10, 11, 11, 1, 11, 4, 4, 1, 7, 4],
-  [1, 4, 4, 3, 1, 10, 10, 4, 7, 4, 4, 11, 10, 11],
-  [4, 11, 7, 4, 9, 11, 9, 2, 2, 11, 9, 1],
-  [9, 7, 7, 4, 9, 11, 9, 1, 1, 11, 2, 11],
-  [7, 4, 4, 11, 4, 2, 2, 11],
-  [7, 4, 4, 11, 4, 2, 2, 11, 3, 4],
-  [2, 9, 9, 10, 10, 2, 2, 7, 7, 9, 7, 4],
-  [9, 10, 10, 7, 7, 9, 7, 4, 10, 2, 2, 7, 7, 0],
-  [7, 10, 10, 3, 10, 2, 7, 4, 4, 10, 1, 10, 10, 0],
-  [1, 10, 10, 2, 7, 4],
-  [9, 1, 1, 4, 1, 7, 7, 4],
-  [9, 1, 1, 4, 1, 7, 7, 4, 8, 1],
-  [3, 4, 7, 4],
-  [7, 4],
-  [9, 10, 10, 8, 10, 11],
-  [9, 3, 9, 11, 9, 10, 10, 11],
-  [1, 10, 10, 0, 10, 8, 10, 11],
-  [1, 10, 10, 3, 10, 11],
-  [2, 11, 11, 1, 11, 9, 9, 1],
-  [9, 3, 9, 11, 2, 9, 9, 1, 2, 11],
-  [2, 11, 11, 0],
-  [2, 11],
-  [8, 2, 8, 10, 10, 2, 9, 10],
-  [9, 10, 10, 2, 2, 9],
-  [8, 2, 8, 10, 10, 2, 1, 8, 1, 10],
-  [1, 10, 10, 2],
-  [8, 1, 9, 1],
-  [9, 1],
-  [],
-  []];
-
-const segTable2 = [
-  [],
-  [],
-  [1, 9],
-  [1, 9],
-  [2, 10, 10, 1],
-  [2, 10, 10, 1],
-  [2, 10, 10, 9],
-  [2, 10, 10, 9],
-  [11, 2],
-  [11, 2],
-  [1, 9, 11, 2],
-  [11, 2, 1, 9],
-  [10, 1, 11, 10],
-  [10, 1, 11, 10],
-  [11, 10, 10, 9],
-  [10, 9, 11, 10],
-  [4, 7],
-  [4, 7],
-  [1, 9, 4, 7],
-  [1, 9, 4, 7],
-  [2, 10, 10, 1, 4, 7],
-  [4, 7, 2, 10, 10, 1],
-  [2, 10, 10, 9, 4, 7],
-  [2, 10, 10, 9, 4, 7],
-  [4, 7, 11, 2],
-  [4, 7, 11, 2],
-  [1, 9, 4, 7, 11, 2],
-  [4, 7, 11, 2, 1, 9],
-  [10, 1, 11, 10, 4, 7],
-  [11, 10, 10, 1, 4, 7],
-  [4, 7, 11, 10, 10, 9],
-  [4, 7, 11, 10, 10, 9],
-  [9, 5, 5, 4],
-  [9, 5, 5, 4],
-  [5, 4, 1, 5],
-  [5, 4, 1, 5],
-  [2, 10, 10, 1, 9, 5, 5, 4],
-  [2, 10, 10, 1, 9, 5, 5, 4],
-  [2, 10, 10, 5, 5, 4],
-  [2, 10, 10, 5, 5, 4],
-  [9, 5, 5, 4, 11, 2],
-  [11, 2, 9, 5, 5, 4],
-  [5, 4, 1, 5, 11, 2],
-  [1, 5, 11, 2, 5, 4],
-  [11, 10, 10, 1, 9, 5, 5, 4],
-  [9, 5, 5, 4, 10, 1, 11, 10],
-  [5, 4, 11, 10, 10, 5],
-  [5, 4, 10, 5, 11, 10],
-  [5, 7, 9, 5],
-  [9, 5, 5, 7],
-  [1, 5, 5, 7],
-  [1, 5, 5, 7],
-  [9, 5, 5, 7, 10, 1, 2, 10],
-  [10, 1, 2, 10, 9, 5, 5, 7],
-  [5, 7, 10, 5, 2, 10],
-  [2, 10, 10, 5, 5, 7],
-  [9, 5, 5, 7, 11, 2],
-  [9, 5, 5, 7, 11, 2],
-  [11, 2, 1, 5, 5, 7],
-  [11, 2, 1, 5, 5, 7],
-  [9, 5, 5, 7, 10, 1, 11, 10],
-  [5, 7, 9, 5, 10, 1, 11, 10],
-  [11, 10, 10, 5, 5, 7],
-  [11, 10, 10, 5, 5, 7],
-  [10, 6, 6, 5, 5, 10],
-  [5, 10, 10, 6, 6, 5],
-  [1, 9, 5, 10, 10, 6, 6, 5],
-  [1, 9, 5, 10, 10, 6, 6, 5],
-  [6, 5, 5, 1, 2, 6],
-  [6, 5, 5, 1, 2, 6],
-  [6, 5, 5, 9, 2, 6],
-  [5, 9, 2, 6, 6, 5],
-  [11, 2, 10, 6, 6, 5, 5, 10],
-  [11, 2, 10, 6, 6, 5, 5, 10],
-  [1, 9, 11, 2, 5, 10, 10, 6, 6, 5],
-  [5, 10, 10, 6, 6, 5, 1, 9, 11, 2],
-  [11, 6, 6, 5, 5, 1],
-  [5, 1, 11, 6, 6, 5],
-  [11, 6, 6, 5, 5, 9],
-  [6, 5, 5, 9, 11, 6],
-  [5, 10, 10, 6, 6, 5, 4, 7],
-  [4, 7, 6, 5, 5, 10, 10, 6],
-  [1, 9, 5, 10, 10, 6, 6, 5, 4, 7],
-  [10, 6, 6, 5, 5, 10, 1, 9, 4, 7],
-  [2, 6, 6, 5, 5, 1, 4, 7],
-  [5, 1, 2, 6, 6, 5, 4, 7],
-  [4, 7, 5, 9, 6, 5, 2, 6],
-  [4, 7, 5, 9, 6, 5, 2, 6],
-  [11, 2, 4, 7, 10, 6, 6, 5, 5, 10],
-  [5, 10, 10, 6, 6, 5, 4, 7, 11, 2],
-  [1, 9, 4, 7, 11, 2, 5, 10, 10, 6, 6, 5],
-  [1, 9, 11, 2, 4, 7, 5, 10, 10, 6, 6, 5],
-  [4, 7, 5, 1, 11, 6, 6, 5],
-  [5, 1, 11, 6, 6, 5, 4, 7],
-  [5, 9, 6, 5, 11, 6, 4, 7],
-  [6, 5, 5, 9, 11, 6, 4, 7],
-  [9, 10, 6, 4, 10, 6],
-  [10, 6, 6, 4, 9, 10],
-  [1, 10, 10, 6, 6, 4],
-  [6, 4, 1, 10, 10, 6],
-  [9, 1, 2, 6, 6, 4],
-  [9, 1, 2, 6, 6, 4],
-  [2, 6, 6, 4],
-  [2, 6, 6, 4],
-  [9, 10, 10, 6, 6, 4, 11, 2],
-  [11, 2, 9, 10, 10, 6, 6, 4],
-  [11, 2, 6, 4, 1, 10, 10, 6],
-  [6, 4, 1, 10, 10, 6, 11, 2],
-  [6, 4, 9, 1, 11, 6],
-  [11, 6, 9, 1, 6, 4],
-  [11, 6, 6, 4],
-  [6, 4, 11, 6],
-  [10, 6, 6, 7, 9, 10],
-  [9, 10, 6, 7, 10, 6],
-  [10, 6, 6, 7, 1, 10],
-  [10, 6, 6, 7, 1, 10],
-  [2, 6, 9, 1, 6, 7],
-  [2, 6, 9, 1, 6, 7],
-  [6, 7, 2, 6],
-  [6, 7, 2, 6],
-  [11, 2, 10, 6, 9, 10, 6, 7],
-  [11, 2, 6, 7, 10, 6, 9, 10],
-  [1, 10, 6, 7, 10, 6, 11, 2],
-  [11, 2, 10, 6, 1, 10, 6, 7],
-  [6, 7, 9, 1, 11, 6],
-  [9, 1, 11, 6, 6, 7],
-  [6, 7, 11, 6],
-  [11, 6, 6, 7],
-  [7, 6, 6, 11],
-  [7, 6, 6, 11],
-  [1, 9, 7, 6, 6, 11],
-  [1, 9, 7, 6, 6, 11],
-  [10, 1, 2, 10, 6, 11, 7, 6],
-  [2, 10, 10, 1, 6, 11, 7, 6],
-  [2, 10, 10, 9, 6, 11, 7, 6],
-  [6, 11, 7, 6, 2, 10, 10, 9],
-  [6, 2, 7, 6],
-  [7, 6, 6, 2],
-  [7, 6, 6, 2, 1, 9],
-  [6, 2, 1, 9, 7, 6],
-  [7, 6, 6, 10, 10, 1],
-  [7, 6, 6, 10, 10, 1],
-  [10, 9, 6, 10, 7, 6],
-  [7, 6, 6, 10, 10, 9],
-  [4, 6, 6, 11],
-  [6, 11, 4, 6],
-  [6, 11, 4, 6, 1, 9],
-  [4, 6, 1, 9, 6, 11],
-  [4, 6, 6, 11, 2, 10, 10, 1],
-  [2, 10, 10, 1, 6, 11, 4, 6],
-  [4, 6, 6, 11, 2, 10, 10, 9],
-  [10, 9, 2, 10, 6, 11, 4, 6],
-  [4, 6, 6, 2],
-  [4, 6, 6, 2],
-  [1, 9, 4, 6, 6, 2],
-  [1, 9, 4, 6, 6, 2],
-  [4, 6, 6, 10, 10, 1],
-  [10, 1, 6, 10, 4, 6],
-  [4, 6, 6, 10, 10, 9],
-  [10, 9, 6, 10, 4, 6],
-  [9, 5, 5, 4, 7, 6, 6, 11],
-  [9, 5, 5, 4, 7, 6, 6, 11],
-  [1, 5, 5, 4, 7, 6, 6, 11],
-  [7, 6, 6, 11, 5, 4, 1, 5],
-  [9, 5, 5, 4, 10, 1, 2, 10, 7, 6, 6, 11],
-  [6, 11, 7, 6, 2, 10, 10, 1, 9, 5, 5, 4],
-  [7, 6, 6, 11, 5, 4, 10, 5, 2, 10],
-  [5, 4, 10, 5, 2, 10, 7, 6, 6, 11],
-  [7, 6, 6, 2, 5, 4, 9, 5],
-  [9, 5, 5, 4, 6, 2, 7, 6],
-  [6, 2, 7, 6, 1, 5, 5, 4],
-  [6, 2, 7, 6, 5, 4, 1, 5],
-  [9, 5, 5, 4, 10, 1, 6, 10, 7, 6],
-  [6, 10, 10, 1, 7, 6, 9, 5, 5, 4],
-  [10, 5, 5, 4, 6, 10, 7, 6],
-  [7, 6, 6, 10, 5, 4, 10, 5],
-  [9, 5, 5, 6, 6, 11],
-  [6, 11, 5, 6, 9, 5],
-  [1, 5, 5, 6, 6, 11],
-  [6, 11, 5, 6, 1, 5],
-  [2, 10, 10, 1, 9, 5, 5, 6, 6, 11],
-  [6, 11, 5, 6, 9, 5, 2, 10, 10, 1],
-  [5, 6, 6, 11, 10, 5, 2, 10],
-  [6, 11, 5, 6, 2, 10, 10, 5],
-  [9, 5, 5, 6, 6, 2],
-  [9, 5, 5, 6, 6, 2],
-  [1, 5, 5, 6, 6, 2],
-  [1, 5, 5, 6, 6, 2],
-  [6, 10, 10, 1, 5, 6, 9, 5],
-  [10, 1, 6, 10, 9, 5, 5, 6],
-  [5, 6, 6, 10, 10, 5],
-  [10, 5, 5, 6, 6, 10],
-  [5, 10, 10, 11, 7, 5],
-  [5, 10, 10, 11, 7, 5],
-  [7, 5, 5, 10, 10, 11, 1, 9],
-  [7, 5, 5, 10, 10, 11, 1, 9],
-  [2, 11, 7, 5, 5, 1],
-  [7, 5, 5, 1, 2, 11],
-  [7, 5, 5, 9, 2, 11],
-  [7, 5, 2, 11, 5, 9],
-  [5, 10, 10, 2, 7, 5],
-  [7, 5, 10, 2, 5, 10],
-  [1, 9, 5, 10, 7, 5, 10, 2],
-  [1, 9, 10, 2, 5, 10, 7, 5],
-  [5, 1, 7, 5],
-  [7, 5, 5, 1],
-  [5, 9, 7, 5],
-  [5, 9, 7, 5],
-  [4, 5, 5, 10, 10, 11],
-  [4, 5, 5, 10, 10, 11],
-  [1, 9, 10, 11, 4, 5, 5, 10],
-  [10, 11, 4, 5, 5, 10, 1, 9],
-  [5, 1, 2, 11, 4, 5],
-  [4, 5, 2, 11, 5, 1],
-  [5, 9, 2, 11, 4, 5],
-  [4, 5, 5, 9, 2, 11],
-  [5, 10, 10, 2, 4, 5],
-  [5, 10, 10, 2, 4, 5],
-  [10, 2, 5, 10, 4, 5, 1, 9],
-  [5, 10, 10, 2, 4, 5, 1, 9],
-  [4, 5, 5, 1],
-  [4, 5, 5, 1],
-  [4, 5, 5, 9],
-  [4, 5, 5, 9],
-  [7, 4, 9, 10, 10, 11],
-  [7, 4, 9, 10, 10, 11],
-  [1, 10, 10, 11, 7, 4],
-  [1, 10, 7, 4, 10, 11],
-  [7, 4, 2, 11, 9, 1],
-  [7, 4, 9, 1, 2, 11],
-  [7, 4, 2, 11],
-  [7, 4, 2, 11],
-  [9, 10, 10, 2, 7, 4],
-  [9, 10, 7, 4, 10, 2],
-  [10, 2, 7, 4, 1, 10],
-  [1, 10, 10, 2, 7, 4],
-  [9, 1, 7, 4],
-  [9, 1, 7, 4],
-  [7, 4],
-  [7, 4],
-  [9, 10, 10, 11],
-  [9, 10, 10, 11],
-  [1, 10, 10, 11],
-  [1, 10, 10, 11],
-  [2, 11, 9, 1],
-  [9, 1, 2, 11],
-  [2, 11],
-  [2, 11],
-  [10, 2, 9, 10],
-  [9, 10, 10, 2],
-  [10, 2, 1, 10],
-  [1, 10, 10, 2],
-  [9, 1],
-  [9, 1],
-  [],
-  []];
-
-const cubeVerts = [[0,0,0], [1,0,0], [1,1,0], [0,1,0],
-                   [0,0,1], [1,0,1], [1,1,1], [0,1,1]];
-const edgeIndex = [[0,1], [1,2], [2,3], [3,0], [4,5], [5,6],
-                   [6,7], [7,4], [0,4], [1,5], [2,6], [3,7]];
-// edge directions: [x, y, -x, -y, x, y, -x, -y, z, z, z, z]
-
-// return offsets relative to vertex [0,0,0]
-function calculateVertOffsets(dims) {
-  const vert_offsets = [];
-  for (let i = 0; i < 8; ++i) {
-    const v = cubeVerts[i];
-    vert_offsets.push(v[0] + dims[2] * (v[1] + dims[1] * v[2]));
-  }
-  return vert_offsets;
-}
-
-
-function marchingCubes(dims,
-                       values,
-                       points,
-                       isolevel,
-                       method) {
-  const snap = (method === 'snapped MC');
-  const seg_table = (method === 'squarish' ? segTable2 : segTable);
-  const vlist = new Array(12);
-  const vert_offsets = calculateVertOffsets(dims);
-  const vertex_values = new Float32Array(8);
-  const point_offsets = new Int32Array(8);
-  const size_x = dims[0];
-  const size_y = dims[1];
-  const size_z = dims[2];
-  if (values == null || points == null) return;
-  const vertices = [];
-  const segments = [];
-  let vertex_count = 0;
-  for (let x = 0; x < size_x - 1; x++) {
-    for (let y = 0; y < size_y - 1; y++) {
-      for (let z = 0; z < size_z - 1; z++) {
-        const offset0 = z + size_z * (y + size_y * x);
-        let cubeindex = 0;
-        let i;
-        let j;
-        for (i = 0; i < 8; ++i) {
-          j = offset0 + vert_offsets[i];
-          cubeindex |= (values[j] < isolevel) ? 1 << i : 0;
-        }
-        if (cubeindex === 0 || cubeindex === 255) continue;
-        for (i = 0; i < 8; ++i) {
-          j = offset0 + vert_offsets[i];
-          vertex_values[i] = values[j];
-          point_offsets[i] = 3 * j;
-        }
-
-        // 12 bit number, indicates which edges are crossed by the isosurface
-        const edge_mask = edgeTable[cubeindex];
-
-        // check which edges are crossed, and estimate the point location
-        // using a weighted average of scalar values at edge endpoints.
-        for (i = 0; i < 12; ++i) {
-          if ((edge_mask & (1 << i)) !== 0) {
-            const e = edgeIndex[i];
-            let mu = (isolevel - vertex_values[e[0]]) /
-                     (vertex_values[e[1]] - vertex_values[e[0]]);
-            if (snap === true) {
-              if (mu > 0.85) mu = 1;
-              else if (mu < 0.15) mu = 0;
-            }
-            const p1 = point_offsets[e[0]];
-            const p2 = point_offsets[e[1]];
-            // The number of added vertices could be roughly halved
-            // if we avoided duplicates between neighbouring cells.
-            // Using a map for lookups is too slow, perhaps a big
-            // array would do?
-            vertices.push(points[p1] + (points[p2] - points[p1]) * mu,
-                          points[p1+1] + (points[p2+1] - points[p1+1]) * mu,
-                          points[p1+2] + (points[p2+2] - points[p1+2]) * mu);
-            vlist[i] = vertex_count++;
-          }
-        }
-        const t = seg_table[cubeindex];
-        for (i = 0; i < t.length; i++) {
-          segments.push(vlist[t[i]]);
-        }
+    let iso = null;
+    try {
+      iso = new gemmi_module.Isosurface();
+      iso.resize_input(this._values.length);
+      iso.set_size(this._size[0], this._size[1], this._size[2]);
+      iso.input_points().set(this._points);
+      iso.input_values().set(this._values);
+      if (!iso.calculate(isolevel, method)) {
+        throw Error(iso.last_error || 'Failed to calculate isosurface.');
       }
+      return {
+        vertices: iso.vertices().slice(),
+        segments: iso.segments().slice(),
+      };
+    } finally {
+      if (iso != null) iso.delete();
     }
   }
-  return { vertices: vertices, segments: segments };
 }
 
 function modulo(a, b) {
@@ -1387,7 +733,37 @@ function calculate_stddev(a, offset) {
   return {mean: mean, rms: Math.sqrt(variance)};
 }
 
+function extract_block_from_grid(block, grid, unit_cell,
+                                 radius, center) {
+  const fc = unit_cell.fractionalize(center);
+  const r = [radius / unit_cell.parameters[0],
+             radius / unit_cell.parameters[1],
+             radius / unit_cell.parameters[2]];
+  const grid_min = grid.frac2grid([fc[0] - r[0], fc[1] - r[1], fc[2] - r[2]]);
+  const grid_max = grid.frac2grid([fc[0] + r[0], fc[1] + r[1], fc[2] + r[2]]);
+  const size = [grid_max[0] - grid_min[0] + 1,
+                      grid_max[1] - grid_min[1] + 1,
+                      grid_max[2] - grid_min[2] + 1];
+  const points = [];
+  const values = [];
+  for (let i = grid_min[0]; i <= grid_max[0]; i++) {
+    for (let j = grid_min[1]; j <= grid_max[1]; j++) {
+      for (let k = grid_min[2]; k <= grid_max[2]; k++) {
+        const frac = grid.grid2frac(i, j, k);
+        const orth = unit_cell.orthogonalize(frac);
+        points.push(orth);
+        const map_value = grid.get_grid_value(i, j, k);
+        values.push(map_value);
+      }
+    }
+  }
+  block.set(points, values, size);
+}
+
 class ElMap {
+  
+  
+  
   
   
   
@@ -1400,6 +776,9 @@ class ElMap {
     this.grid = null;
     this.stats = { mean: 0.0, rms: 1.0 };
     this.block = new Block();
+    this.wasm_ccp4 = null;
+    this.block_center = null;
+    this.block_radius = 0;
   }
 
   abs_level(sigma) {
@@ -1412,18 +791,23 @@ class ElMap {
       throw Error('Gemmi is required for CCP4 map loading.');
     }
     setIsosurfaceModule(gemmi);
-    const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
-    try {
-      this.set_from_ccp4_map(ccp4);
-    } finally {
-      ccp4.delete();
+    if (this.wasm_ccp4 != null) {
+      this.wasm_ccp4.delete();
+      this.wasm_ccp4 = null;
     }
+    const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
+    this.wasm_ccp4 = ccp4;
+    this.set_from_ccp4_map(ccp4);
   }
 
   // DSN6 MAP FORMAT
   // http://www.uoxray.uoregon.edu/tnt/manual/node104.html
   // Density values are stored as bytes.
   from_dsn6(buf) {
+    if (this.wasm_ccp4 != null) {
+      this.wasm_ccp4.delete();
+      this.wasm_ccp4 = null;
+    }
     //console.log('buf type: ' + Object.prototype.toString.call(buf));
     const u8data = new Uint8Array(buf);
     const iview = new Int16Array(u8data.buffer);
@@ -1494,40 +878,40 @@ class ElMap {
     console.log('grid:', this.grid && this.grid.dim);
   }
 
-  // Extract a block of density for calculating an isosurface using the
-  // separate marching cubes implementation.
-  extract_block(radius, center) {
+  prepare_isosurface(radius, center) {
+    this.block_center = center;
+    this.block_radius = radius;
+    if (this.wasm_ccp4 != null && this.unit_cell != null) return;
     const grid = this.grid;
     const unit_cell = this.unit_cell;
     if (grid == null || unit_cell == null) return;
-    const fc = unit_cell.fractionalize(center);
-    const r = [radius / unit_cell.parameters[0],
-               radius / unit_cell.parameters[1],
-               radius / unit_cell.parameters[2]];
-    const grid_min = grid.frac2grid([fc[0] - r[0], fc[1] - r[1], fc[2] - r[2]]);
-    const grid_max = grid.frac2grid([fc[0] + r[0], fc[1] + r[1], fc[2] + r[2]]);
-    const size = [grid_max[0] - grid_min[0] + 1,
-                        grid_max[1] - grid_min[1] + 1,
-                        grid_max[2] - grid_min[2] + 1];
-    const points = [];
-    const values = [];
-    for (let i = grid_min[0]; i <= grid_max[0]; i++) {
-      for (let j = grid_min[1]; j <= grid_max[1]; j++) {
-        for (let k = grid_min[2]; k <= grid_max[2]; k++) {
-          const frac = grid.grid2frac(i, j, k);
-          const orth = unit_cell.orthogonalize(frac);
-          points.push(orth);
-          const map_value = grid.get_grid_value(i, j, k);
-          values.push(map_value);
-        }
-      }
-    }
-    this.block.set(points, values, size);
+    extract_block_from_grid(this.block, grid, unit_cell, radius, center);
   }
 
   isomesh_in_block(sigma, method) {
     const abs_level = this.abs_level(sigma);
+    if (this.wasm_ccp4 != null && this.block_center != null && this.unit_cell != null) {
+      if (!this.wasm_ccp4.extract_isosurface(this.block_radius,
+                                             this.block_center[0],
+                                             this.block_center[1],
+                                             this.block_center[2],
+                                             abs_level,
+                                             method || '')) {
+        throw Error(this.wasm_ccp4.last_error || 'Failed to extract isosurface.');
+      }
+      return {
+        vertices: this.wasm_ccp4.isosurface_vertices().slice(),
+        segments: this.wasm_ccp4.isosurface_segments().slice(),
+      } ;
+    }
     return this.block.isosurface(abs_level, method);
+  }
+
+  dispose() {
+    if (this.wasm_ccp4 != null) {
+      this.wasm_ccp4.delete();
+      this.wasm_ccp4 = null;
+    }
   }
 
    set_from_ccp4_map(ccp4) {
@@ -7521,7 +6905,7 @@ class Viewer {
     if (map_bag.map.block.empty()) {
       const t = this.target;
       map_bag.block_ctr.copy(t);
-      map_bag.map.extract_block(this.config.map_radius, [t.x, t.y, t.z]);
+      map_bag.map.prepare_isosurface(this.config.map_radius, [t.x, t.y, t.z]);
     }
     for (const mtype of map_bag.types) {
       const isolevel = (mtype === 'map_neg' ? -1 : 1) * map_bag.isolevel;
@@ -8747,7 +8131,7 @@ class ReciprocalSpaceMap extends ElMap {
     this.unit_cell = null;
   }
 
-  extract_block(radius, center) {
+  prepare_isosurface(radius, center) {
     const grid = this.grid;
     if (grid == null) return;
     const b = this.box_size;
@@ -9077,7 +8461,11 @@ class ReciprocalViewer extends Viewer {
     this.resolve_gemmi().then(function (gemmi) {
       if (gemmi == null) throw Error('Gemmi is required for CCP4 map loading.');
       if (self.map_bags.length > 0) {
-        self.clear_el_objects(self.map_bags.pop());
+        const old_map = self.map_bags.pop();
+        if (old_map != null) {
+          self.clear_el_objects(old_map);
+          old_map.map.dispose();
+        }
       }
       const map = new ReciprocalSpaceMap(buffer, gemmi);
       const map_range = map.box_size[0] / 2;

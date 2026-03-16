@@ -30,7 +30,7 @@ var setup = util.load_gemmi().then(function (gemmi) {
   }, {onComplete: print_map_stats});
 
   util.bench('ElMap#extract_block', function () {
-    map.extract_block(15, [25, 26, 35]);
+    map.prepare_isosurface(15, [25, 26, 35]);
   });
 });
 

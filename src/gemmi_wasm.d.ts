@@ -85,6 +85,10 @@ export interface Ccp4Map {
   readonly last_error: string;
   read(_0: boolean): boolean;
   data(): Float32Array;
+  extract_isosurface(radius: number, x: number, y: number, z: number,
+                     isolevel: number, method: string): boolean;
+  isosurface_vertices(): Float32Array;
+  isosurface_segments(): Uint32Array;
   delete(): void;
 }
 

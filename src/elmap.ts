@@ -1,5 +1,6 @@
 import { UnitCell } from './unitcell';
 import { Block, setIsosurfaceModule } from './isosurface';
+import type { IsosurfaceData } from './isosurface';
 import type { Module as GemmiModule, Ccp4Map as WasmCcp4Map } from './gemmi_wasm';
 
 type Num3 = [number, number, number];
@@ -66,11 +67,41 @@ function calculate_stddev(a: Float32Array|Int8Array, offset: number) {
   return {mean: mean, rms: Math.sqrt(variance)};
 }
 
+function extract_block_from_grid(block: Block, grid: GridArray, unit_cell: UnitCell,
+                                 radius: number, center: Num3) {
+  const fc = unit_cell.fractionalize(center);
+  const r = [radius / unit_cell.parameters[0],
+             radius / unit_cell.parameters[1],
+             radius / unit_cell.parameters[2]];
+  const grid_min = grid.frac2grid([fc[0] - r[0], fc[1] - r[1], fc[2] - r[2]]);
+  const grid_max = grid.frac2grid([fc[0] + r[0], fc[1] + r[1], fc[2] + r[2]]);
+  const size: Num3 = [grid_max[0] - grid_min[0] + 1,
+                      grid_max[1] - grid_min[1] + 1,
+                      grid_max[2] - grid_min[2] + 1];
+  const points = [];
+  const values = [];
+  for (let i = grid_min[0]; i <= grid_max[0]; i++) {
+    for (let j = grid_min[1]; j <= grid_max[1]; j++) {
+      for (let k = grid_min[2]; k <= grid_max[2]; k++) {
+        const frac = grid.grid2frac(i, j, k);
+        const orth = unit_cell.orthogonalize(frac);
+        points.push(orth);
+        const map_value = grid.get_grid_value(i, j, k);
+        values.push(map_value);
+      }
+    }
+  }
+  block.set(points, values, size);
+}
+
 export class ElMap {
   unit_cell: UnitCell | null;
   grid: GridArray | null;
   stats: { mean: number, rms: number };
   block: Block;
+  wasm_ccp4: WasmCcp4Map | null;
+  block_center: Num3 | null;
+  block_radius: number;
   declare unit: string;
   box_size?: Num3; // used in ReciprocalSpaceMap
 
@@ -79,6 +110,9 @@ export class ElMap {
     this.grid = null;
     this.stats = { mean: 0.0, rms: 1.0 };
     this.block = new Block();
+    this.wasm_ccp4 = null;
+    this.block_center = null;
+    this.block_radius = 0;
   }
 
   abs_level(sigma: number) {
@@ -91,18 +125,23 @@ export class ElMap {
       throw Error('Gemmi is required for CCP4 map loading.');
     }
     setIsosurfaceModule(gemmi);
-    const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
-    try {
-      this.set_from_ccp4_map(ccp4);
-    } finally {
-      ccp4.delete();
+    if (this.wasm_ccp4 != null) {
+      this.wasm_ccp4.delete();
+      this.wasm_ccp4 = null;
     }
+    const ccp4 = gemmi.readCcp4Map(buf, expand_symmetry);
+    this.wasm_ccp4 = ccp4;
+    this.set_from_ccp4_map(ccp4);
   }
 
   // DSN6 MAP FORMAT
   // http://www.uoxray.uoregon.edu/tnt/manual/node104.html
   // Density values are stored as bytes.
   from_dsn6(buf: ArrayBuffer) {
+    if (this.wasm_ccp4 != null) {
+      this.wasm_ccp4.delete();
+      this.wasm_ccp4 = null;
+    }
     //console.log('buf type: ' + Object.prototype.toString.call(buf));
     const u8data = new Uint8Array(buf);
     const iview = new Int16Array(u8data.buffer);
@@ -173,40 +212,40 @@ export class ElMap {
     console.log('grid:', this.grid && this.grid.dim);
   }
 
-  // Extract a block of density for calculating an isosurface using the
-  // separate marching cubes implementation.
-  extract_block(radius: number, center: Num3) {
+  prepare_isosurface(radius: number, center: Num3) {
+    this.block_center = center;
+    this.block_radius = radius;
+    if (this.wasm_ccp4 != null && this.unit_cell != null) return;
     const grid = this.grid;
     const unit_cell = this.unit_cell;
     if (grid == null || unit_cell == null) return;
-    const fc = unit_cell.fractionalize(center);
-    const r = [radius / unit_cell.parameters[0],
-               radius / unit_cell.parameters[1],
-               radius / unit_cell.parameters[2]];
-    const grid_min = grid.frac2grid([fc[0] - r[0], fc[1] - r[1], fc[2] - r[2]]);
-    const grid_max = grid.frac2grid([fc[0] + r[0], fc[1] + r[1], fc[2] + r[2]]);
-    const size: Num3 = [grid_max[0] - grid_min[0] + 1,
-                        grid_max[1] - grid_min[1] + 1,
-                        grid_max[2] - grid_min[2] + 1];
-    const points = [];
-    const values = [];
-    for (let i = grid_min[0]; i <= grid_max[0]; i++) {
-      for (let j = grid_min[1]; j <= grid_max[1]; j++) {
-        for (let k = grid_min[2]; k <= grid_max[2]; k++) {
-          const frac = grid.grid2frac(i, j, k);
-          const orth = unit_cell.orthogonalize(frac);
-          points.push(orth);
-          const map_value = grid.get_grid_value(i, j, k);
-          values.push(map_value);
-        }
-      }
-    }
-    this.block.set(points, values, size);
+    extract_block_from_grid(this.block, grid, unit_cell, radius, center);
   }
 
   isomesh_in_block(sigma: number, method: string) {
     const abs_level = this.abs_level(sigma);
+    if (this.wasm_ccp4 != null && this.block_center != null && this.unit_cell != null) {
+      if (!this.wasm_ccp4.extract_isosurface(this.block_radius,
+                                             this.block_center[0],
+                                             this.block_center[1],
+                                             this.block_center[2],
+                                             abs_level,
+                                             method || '')) {
+        throw Error(this.wasm_ccp4.last_error || 'Failed to extract isosurface.');
+      }
+      return {
+        vertices: this.wasm_ccp4.isosurface_vertices().slice(),
+        segments: this.wasm_ccp4.isosurface_segments().slice(),
+      } as IsosurfaceData;
+    }
     return this.block.isosurface(abs_level, method);
+  }
+
+  dispose() {
+    if (this.wasm_ccp4 != null) {
+      this.wasm_ccp4.delete();
+      this.wasm_ccp4 = null;
+    }
   }
 
   private set_from_ccp4_map(ccp4: WasmCcp4Map) {

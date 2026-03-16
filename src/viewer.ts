@@ -1121,7 +1121,7 @@ export class Viewer {
     if (map_bag.map.block.empty()) {
       const t = this.target;
       map_bag.block_ctr.copy(t);
-      map_bag.map.extract_block(this.config.map_radius, [t.x, t.y, t.z]);
+      map_bag.map.prepare_isosurface(this.config.map_radius, [t.x, t.y, t.z]);
     }
     for (const mtype of map_bag.types) {
       const isolevel = (mtype === 'map_neg' ? -1 : 1) * map_bag.isolevel;

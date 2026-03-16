@@ -64,7 +64,7 @@ export class ReciprocalSpaceMap extends ElMap {
     this.unit_cell = null;
   }
 
-  extract_block(radius: number, center: Num3) {
+  prepare_isosurface(radius: number, center: Num3) {
     const grid = this.grid;
     if (grid == null) return;
     const b = this.box_size;
@@ -394,7 +394,11 @@ export class ReciprocalViewer extends Viewer {
     this.resolve_gemmi().then(function (gemmi) {
       if (gemmi == null) throw Error('Gemmi is required for CCP4 map loading.');
       if (self.map_bags.length > 0) {
-        self.clear_el_objects(self.map_bags.pop());
+        const old_map = self.map_bags.pop();
+        if (old_map != null) {
+          self.clear_el_objects(old_map);
+          old_map.map.dispose();
+        }
       }
       const map = new ReciprocalSpaceMap(buffer, gemmi);
       const map_range = map.box_size[0] / 2;

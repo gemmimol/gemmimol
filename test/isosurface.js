@@ -1,5 +1,6 @@
 
-var Block = require('../gemmimol').Block;
+var GM = require('../gemmimol');
+var util = require('../perf/util');
 
 describe('isosurface', () => {
   'use strict';
@@ -21,8 +22,14 @@ describe('isosurface', () => {
       }
     }
   }
-  const block = new Block();
-  block.set(points, values, dims);
+  var block;
+  beforeAll(function () {
+    return util.load_gemmi().then(function (gemmi) {
+      GM.setIsosurfaceModule(gemmi);
+      block = new GM.Block();
+      block.set(points, values, dims);
+    });
+  });
   it('sphere', () => {
     var isolevel = 3;
     var ret = block.isosurface(isolevel);
