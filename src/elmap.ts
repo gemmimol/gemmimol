@@ -1,5 +1,6 @@
 import type { GemmiModule, UnitCell, Ccp4Map as WasmCcp4Map,
               Dsn6Map as WasmDsn6Map,
+              MtzMap as WasmMtzMap,
               Isosurface as WasmIsosurface } from './gemmi';
 
 type Num3 = [number, number, number];
@@ -9,7 +10,7 @@ export interface IsosurfaceData {
   segments: Uint32Array;
 }
 
-type WasmDensityMap = WasmCcp4Map | WasmDsn6Map;
+type WasmDensityMap = WasmCcp4Map | WasmDsn6Map | WasmMtzMap;
 
 function modulo(a: number, b: number) {
   const reminder = a % b;
@@ -212,12 +213,6 @@ export class ElMap {
     const dsn6 = gemmi.readDsn6Map(buf);
     this.wasm_map = dsn6;
     this.set_from_wasm_map(dsn6, gemmi);
-  }
-
-  show_debug_info() {
-    const uc = this.unit_cell;
-    console.log('unit cell:', uc && [uc.a, uc.b, uc.c, uc.alpha, uc.beta, uc.gamma]);
-    console.log('grid:', this.grid && this.grid.dim);
   }
 
   prepare_isosurface(radius: number, center: Num3) {

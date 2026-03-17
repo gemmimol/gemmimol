@@ -149,6 +149,22 @@ export interface Mtz extends ClassHandle {
   read(): boolean;
   calculate_map(_0: boolean): Float32Array | null;
   calculate_map_from_labels(_0: EmbindString, _1: EmbindString): Float32Array | null;
+  calculate_wasm_map(_0: boolean): MtzMap | null;
+  calculate_wasm_map_from_labels(_0: EmbindString, _1: EmbindString): MtzMap | null;
+}
+
+export interface MtzMap extends ClassHandle {
+  readonly cell: UnitCell;
+  readonly nx: number;
+  readonly ny: number;
+  readonly nz: number;
+  readonly mean: number;
+  readonly rms: number;
+  readonly last_error: string;
+  data(): Float32Array;
+  extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
+  isosurface_vertices(): Float32Array;
+  isosurface_segments(): Uint32Array;
 }
 
 export type Fractional = [ number, number, number ];
@@ -197,6 +213,7 @@ interface EmbindModule {
   Mtz: {
     new(_0: EmbindString): Mtz;
   };
+  MtzMap: {};
   get_residue_names(_0: Structure): string;
   _read_structure(_0: EmbindString, _1: EmbindString, _2: EmbindString): Structure;
 }

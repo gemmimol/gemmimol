@@ -1915,7 +1915,6 @@ export class Viewer {
   }
 
   add_map(map: ElMap, is_diff_map: boolean) {
-    //map.show_debug_info();
     const map_bag = new MapBag(map, this.config, is_diff_map);
     this.map_bags.push(map_bag);
     this.add_el_objects(map_bag);

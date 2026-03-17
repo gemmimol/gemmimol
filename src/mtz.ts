@@ -1,19 +1,20 @@
-import { ElMap, GridArray } from './elmap';
+import { ElMap } from './elmap';
 import type { Viewer } from './viewer';
-import type { GemmiModule, Mtz as WasmMtz } from './gemmi';
+import type { GemmiModule, Mtz as WasmMtz, MtzMap as WasmMtzMap } from './gemmi';
 
 function log_timing(t0: number, text: string) {
   console.log(text + ': ' + (performance.now() - t0).toFixed(2) + ' ms.');
 }
 
-function add_map_from_mtz(gemmi: GemmiModule, viewer, mtz, map_data, is_diff: boolean) {
+function add_map_from_mtz(gemmi: GemmiModule, viewer: Viewer,
+                          mtz_map: WasmMtzMap, is_diff: boolean) {
   const map = new ElMap();
   map.gemmi_module = gemmi;
-  const mc = mtz.cell;
+  map.wasm_map = mtz_map;
+  const mc = mtz_map.cell;
   map.unit_cell = new gemmi.UnitCell(mc.a, mc.b, mc.c, mc.alpha, mc.beta, mc.gamma);
-  map.stats.rms = mtz.rmsd;
-  map.grid = new GridArray([mtz.nx, mtz.ny, mtz.nz]);
-  map.grid.values.set(map_data);
+  map.stats.mean = mtz_map.mean;
+  map.stats.rms = mtz_map.rms;
   viewer.add_map(map, is_diff);
 }
 
@@ -24,25 +25,31 @@ function load_maps_from_mtz_buffer(gemmi: GemmiModule, viewer: Viewer, mtz: Wasm
     for (let n = 0; n < labels.length; n += 2) {
       if (labels[n] === '') continue;
       const t0 = performance.now();
-      const map_data = mtz.calculate_map_from_labels(labels[n], labels[n+1]);
-      log_timing(t0, 'map ' + mtz.nx + 'x' + mtz.ny + 'x' + mtz.nz +
+      const mtz_map = mtz.calculate_wasm_map_from_labels(labels[n], labels[n+1]);
+      log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
+                     (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
+                     (mtz_map ? mtz_map.nz : mtz.nz) +
                      ' calculated in');
-      if (map_data == null) {
+      if (mtz_map == null) {
         viewer.hud(mtz.last_error, 'ERR');
         continue;
       }
       const is_diff = (n % 4 == 2);
-      add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff);
+      add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
     }
   } else {  // use default labels
     for (let nmap = 0; nmap < 2; ++nmap) {
       const is_diff = (nmap == 1);
       const t0 = performance.now();
-      const map_data = mtz.calculate_map(is_diff);
-      log_timing(t0, 'map ' + mtz.nx + 'x' + mtz.ny + 'x' + mtz.nz +
+      const mtz_map = mtz.calculate_wasm_map(is_diff);
+      log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
+                     (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
+                     (mtz_map ? mtz_map.nz : mtz.nz) +
                      ' calculated in');
-      if (map_data != null) {
-        add_map_from_mtz(gemmi, viewer, mtz, map_data, is_diff);
+      if (mtz_map != null) {
+        add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
+      } else {
+        viewer.hud(mtz.last_error, 'ERR');
       }
     }
   }
