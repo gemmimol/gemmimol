@@ -1922,7 +1922,8 @@ export class Viewer {
   }
 
   load_file(url: string, options: Record<string, any>,
-            callback: (arg: XMLHttpRequest) => void ) {
+            callback: (arg: XMLHttpRequest) => void,
+            error_callback?: (req: XMLHttpRequest, err?: Error) => void ) {
     if (this.renderer === null) return;  // no WebGL detected
     const req = new XMLHttpRequest();
     req.open('GET', url, true);
@@ -1944,10 +1945,12 @@ export class Viewer {
           try {
             callback(req);
           } catch (e) {
-            self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+            if (error_callback) error_callback(req, e);
+            else self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
           }
         } else {
-          self.hud('Failed to fetch ' + url, 'ERR');
+          if (error_callback) error_callback(req);
+          else self.hud('Failed to fetch ' + url, 'ERR');
         }
       }
     };
@@ -1964,7 +1967,8 @@ export class Viewer {
     try {
       req.send(null);
     } catch (e) {
-      self.hud('loading ' + url + ' failed:\n' + e, 'ERR');
+      if (error_callback) error_callback(req, e);
+      else self.hud('loading ' + url + ' failed:\n' + e, 'ERR');
     }
   }
 
@@ -2127,8 +2131,12 @@ export class Viewer {
     });
   }
 
-  load_pdb(url: string, options?: Record<string, any>,
+  load_pdb(url: string | string[], options?: Record<string, any>,
            callback?: () => void) {
+    if (Array.isArray(url)) {
+      this.load_pdb_candidates(url, options, callback);
+      return;
+    }
     const self = this;
     const gemmi = options && options.gemmi;
     this.load_file(url, {binary: true, progress: true}, function (req) {
@@ -2142,6 +2150,38 @@ export class Viewer {
         self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
       });
     });
+  }
+
+  private load_pdb_candidates(urls: string[], options?: Record<string, any>,
+                              callback?: () => void) {
+    const self = this;
+    const gemmi = options && options.gemmi;
+    const failed: string[] = [];
+
+    function try_next(index: number) {
+      if (index >= urls.length) {
+        self.hud('Failed to fetch ' + failed.join(' or '), 'ERR');
+        return;
+      }
+      const url = urls[index];
+      self.load_file(url, {binary: true, progress: true}, function (req) {
+        const t0 = performance.now();
+        self.load_coordinate_buffer(req.response, url, gemmi).then(function () {
+          console.log('coordinate file processed in', (performance.now() - t0).toFixed(2),
+                      (gemmi || self.gemmi_module) ? 'ms (using gemmi)' : 'ms');
+          if (options == null || !options.stay) self.set_view(options);
+          if (callback) callback();
+        }, function () {
+          failed.push(url);
+          try_next(index + 1);
+        });
+      }, function () {
+        failed.push(url);
+        try_next(index + 1);
+      });
+    }
+
+    try_next(0);
   }
 
   load_map(url: string | null, options: Record<string, any>,
@@ -2193,7 +2233,7 @@ export class Viewer {
   }
 
   // Load a model (PDB), normal map and a difference map - in this order.
-  load_pdb_and_maps(pdb: string, map1: string, map2: string,
+  load_pdb_and_maps(pdb: string | string[], map1: string, map2: string,
                     options: Record<string, any>, callback?: () => void) {
     const self = this;
     this.load_pdb(pdb, options, function () {
@@ -2205,7 +2245,7 @@ export class Viewer {
   load_ccp4_maps(url1: string, url2: string, callback?: () => void) {
     this.load_maps(url1, url2, {format: 'ccp4'}, callback);
   }
-  load_pdb_and_ccp4_maps(pdb: string, map1: string, map2: string,
+  load_pdb_and_ccp4_maps(pdb: string | string[], map1: string, map2: string,
                          callback?: () => void) {
     this.load_pdb_and_maps(pdb, map1, map2, {format: 'ccp4'}, callback);
   }
@@ -2214,7 +2254,10 @@ export class Viewer {
   load_from_pdbe(pdb_id: string, callback?: () => void) {
     const id = pdb_id.toLowerCase();
     this.load_pdb_and_maps(
-      'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + id + '.ent',
+      [
+        'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + id + '.ent',
+        'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif',
+      ],
       'https://www.ebi.ac.uk/pdbe/coordinates/files/' + id + '.ccp4',
       'https://www.ebi.ac.uk/pdbe/coordinates/files/' + id + '_diff.ccp4',
       {format: 'ccp4'}, callback);

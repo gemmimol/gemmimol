@@ -7546,7 +7546,8 @@ class Viewer {
   }
 
   load_file(url, options,
-            callback ) {
+            callback,
+            error_callback ) {
     if (this.renderer === null) return;  // no WebGL detected
     const req = new XMLHttpRequest();
     req.open('GET', url, true);
@@ -7568,10 +7569,12 @@ class Viewer {
           try {
             callback(req);
           } catch (e) {
-            self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+            if (error_callback) error_callback(req, e);
+            else self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
           }
         } else {
-          self.hud('Failed to fetch ' + url, 'ERR');
+          if (error_callback) error_callback(req);
+          else self.hud('Failed to fetch ' + url, 'ERR');
         }
       }
     };
@@ -7588,7 +7591,8 @@ class Viewer {
     try {
       req.send(null);
     } catch (e) {
-      self.hud('loading ' + url + ' failed:\n' + e, 'ERR');
+      if (error_callback) error_callback(req, e);
+      else self.hud('loading ' + url + ' failed:\n' + e, 'ERR');
     }
   }
 
@@ -7753,6 +7757,10 @@ class Viewer {
 
   load_pdb(url, options,
            callback) {
+    if (Array.isArray(url)) {
+      this.load_pdb_candidates(url, options, callback);
+      return;
+    }
     const self = this;
     const gemmi = options && options.gemmi;
     this.load_file(url, {binary: true, progress: true}, function (req) {
@@ -7766,6 +7774,38 @@ class Viewer {
         self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
       });
     });
+  }
+
+   load_pdb_candidates(urls, options,
+                              callback) {
+    const self = this;
+    const gemmi = options && options.gemmi;
+    const failed = [];
+
+    function try_next(index) {
+      if (index >= urls.length) {
+        self.hud('Failed to fetch ' + failed.join(' or '), 'ERR');
+        return;
+      }
+      const url = urls[index];
+      self.load_file(url, {binary: true, progress: true}, function (req) {
+        const t0 = performance.now();
+        self.load_coordinate_buffer(req.response, url, gemmi).then(function () {
+          console.log('coordinate file processed in', (performance.now() - t0).toFixed(2),
+                      (gemmi || self.gemmi_module) ? 'ms (using gemmi)' : 'ms');
+          if (options == null || !options.stay) self.set_view(options);
+          if (callback) callback();
+        }, function () {
+          failed.push(url);
+          try_next(index + 1);
+        });
+      }, function () {
+        failed.push(url);
+        try_next(index + 1);
+      });
+    }
+
+    try_next(0);
   }
 
   load_map(url, options,
@@ -7838,7 +7878,10 @@ class Viewer {
   load_from_pdbe(pdb_id, callback) {
     const id = pdb_id.toLowerCase();
     this.load_pdb_and_maps(
-      'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + id + '.ent',
+      [
+        'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + id + '.ent',
+        'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif',
+      ],
       'https://www.ebi.ac.uk/pdbe/coordinates/files/' + id + '.ccp4',
       'https://www.ebi.ac.uk/pdbe/coordinates/files/' + id + '_diff.ccp4',
       {format: 'ccp4'}, callback);

@@ -66,4 +66,22 @@ describe('Viewer', () => {
     press([32/*space*/, 999/*dummy*/]);
     press(['t', 't', 'q', 'q']);
   });
+
+  it('PDBe loader falls back to updated cif', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    viewer2.load_pdb_and_maps = jest.fn();
+
+    viewer2.load_from_pdbe('8aq8');
+
+    expect(viewer2.load_pdb_and_maps).toHaveBeenCalledWith(
+      [
+        'https://www.ebi.ac.uk/pdbe/entry-files/pdb8aq8.ent',
+        'https://www.ebi.ac.uk/pdbe/entry-files/download/8aq8_updated.cif',
+      ],
+      'https://www.ebi.ac.uk/pdbe/coordinates/files/8aq8.ccp4',
+      'https://www.ebi.ac.uk/pdbe/coordinates/files/8aq8_diff.ccp4',
+      {format: 'ccp4'},
+      undefined
+    );
+  });
 });
