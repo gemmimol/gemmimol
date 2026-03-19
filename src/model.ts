@@ -92,6 +92,8 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
           const seqid = res.seqid_string;
           const resname = res.name;
           const ent_type = res.entity_type_string;
+          const ss = res.ss_from_file_string || 'Coil';
+          const strand_sense = res.strand_sense_from_file_string || 'NotStrand';
           const is_ligand = (ent_type === 'non-polymer' || ent_type === 'branched');
           for (let i_atom = 0; i_atom < res.length; ++i_atom) {
             const atom = res.at(i_atom);
@@ -108,6 +110,8 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
             new_atom.b = atom.b_iso;
             new_atom.element = atom.element_uname;
             new_atom.is_ligand = is_ligand;
+            new_atom.ss = ss;
+            new_atom.strand_sense = strand_sense;
             m.atoms.push(new_atom);
           }
         }
@@ -353,6 +357,8 @@ class Atom {
   chain: string;
   chain_index: number;
   seqid: string;
+  ss: string;
+  strand_sense: string;
   xyz: Num3;
   occ: number;
   b: number;
@@ -369,6 +375,8 @@ class Atom {
     this.chain = '';
     this.chain_index = -1;
     this.seqid = '';
+    this.ss = 'Coil';
+    this.strand_sense = 'NotStrand';
     this.xyz = [0, 0, 0];
     this.occ = 1.0;
     this.b = 0;
@@ -415,6 +423,17 @@ class Atom {
 
   is_main_conformer() {
     return this.altloc === '' || this.altloc === 'A';
+  }
+
+  is_backbone() {
+    if (this.resname.length === 3) {
+      return ['N', 'CA', 'C', 'O', 'OXT'].indexOf(this.name) !== -1;
+    }
+    return [
+      'P', 'OP1', 'OP2', 'O1P', 'O2P', 'O5\'', 'C5\'', 'C4\'', 'O4\'',
+      'C3\'', 'O3\'', 'C2\'', 'O2\'', 'C1\'',
+      'O5*', 'C5*', 'C4*', 'O4*', 'C3*', 'O3*', 'C2*', 'O2*', 'C1*',
+    ].indexOf(this.name) !== -1;
   }
 
   bond_radius() { // rather crude

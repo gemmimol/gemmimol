@@ -97,6 +97,8 @@ function modelsFromGemmi(gemmi, buffer, name,
           const seqid = res.seqid_string;
           const resname = res.name;
           const ent_type = res.entity_type_string;
+          const ss = res.ss_from_file_string || 'Coil';
+          const strand_sense = res.strand_sense_from_file_string || 'NotStrand';
           const is_ligand = (ent_type === 'non-polymer' || ent_type === 'branched');
           for (let i_atom = 0; i_atom < res.length; ++i_atom) {
             const atom = res.at(i_atom);
@@ -113,6 +115,8 @@ function modelsFromGemmi(gemmi, buffer, name,
             new_atom.b = atom.b_iso;
             new_atom.element = atom.element_uname;
             new_atom.is_ligand = is_ligand;
+            new_atom.ss = ss;
+            new_atom.strand_sense = strand_sense;
             m.atoms.push(new_atom);
           }
         }
@@ -366,6 +370,8 @@ class Atom {
   
   
   
+  
+  
 
   constructor() {
     this.name = '';
@@ -374,6 +380,8 @@ class Atom {
     this.chain = '';
     this.chain_index = -1;
     this.seqid = '';
+    this.ss = 'Coil';
+    this.strand_sense = 'NotStrand';
     this.xyz = [0, 0, 0];
     this.occ = 1.0;
     this.b = 0;
@@ -420,6 +428,17 @@ class Atom {
 
   is_main_conformer() {
     return this.altloc === '' || this.altloc === 'A';
+  }
+
+  is_backbone() {
+    if (this.resname.length === 3) {
+      return ['N', 'CA', 'C', 'O', 'OXT'].indexOf(this.name) !== -1;
+    }
+    return [
+      'P', 'OP1', 'OP2', 'O1P', 'O2P', 'O5\'', 'C5\'', 'C4\'', 'O4\'',
+      'C3\'', 'O3\'', 'C2\'', 'O2\'', 'C1\'',
+      'O5*', 'C5*', 'C4*', 'O4*', 'C3*', 'O3*', 'C2*', 'O2*', 'C1*',
+    ].indexOf(this.name) !== -1;
   }
 
   bond_radius() { // rather crude
@@ -4843,6 +4862,62 @@ function make_quad_index_buffer(len) {
   return new BufferAttribute(index, 1);
 }
 
+function normalize_vec(v, fallback) {
+  const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+  if (len < 1e-6) return [fallback[0], fallback[1], fallback[2]];
+  return [v[0]/len, v[1]/len, v[2]/len];
+}
+
+function scale_vec(v, factor) {
+  return [factor * v[0], factor * v[1], factor * v[2]];
+}
+
+function add_vec(a, b) {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function cross_vec(a, b) {
+  return [a[1]*b[2] - a[2]*b[1],
+          a[2]*b[0] - a[0]*b[2],
+          a[0]*b[1] - a[1]*b[0]];
+}
+
+function rotate_about_axis(v, axis, angle) {
+  const cos_a = Math.cos(angle);
+  const sin_a = Math.sin(angle);
+  const dot = v[0]*axis[0] + v[1]*axis[1] + v[2]*axis[2];
+  const cross = cross_vec(axis, v);
+  return [
+    v[0] * cos_a + cross[0] * sin_a + axis[0] * dot * (1 - cos_a),
+    v[1] * cos_a + cross[1] * sin_a + axis[1] * dot * (1 - cos_a),
+    v[2] * cos_a + cross[2] * sin_a + axis[2] * dot * (1 - cos_a),
+  ];
+}
+
+
+
+function cartoon_kind(atom) {
+  return atom.ss === 'Helix' ? 'h' : atom.ss === 'Strand' ? 's' : 'c';
+}
+
+function compute_cartoon_kinds(vertices) {
+  const kinds = vertices.map(cartoon_kind);
+  let strand_start = -1;
+  for (let i = 0; i <= vertices.length; i++) {
+    const in_strand = i < vertices.length && kinds[i] === 's';
+    if (in_strand) {
+      if (strand_start < 0) strand_start = i;
+      continue;
+    }
+    if (strand_start >= 0 && i - strand_start >= 2) {
+      kinds[i - 2] = 'arrow start';
+      kinds[i - 1] = 'arrow end';
+    }
+    strand_start = -1;
+  }
+  return kinds;
+}
+
 
 const wide_segments_vert = `
 attribute vec3 color;
@@ -4867,9 +4942,13 @@ function interpolate_vertices(segment, smooth) {
     const xyz = segment[i].xyz;
     vertices.push(new Vector3(xyz[0], xyz[1], xyz[2]));
   }
-  if (!smooth || smooth < 2) return vertices;
-  const curve = new CatmullRomCurve3(vertices);
-  return curve.getPoints((segment.length - 1) * smooth);
+  return interpolate_points(vertices, smooth);
+}
+
+function interpolate_points(points, smooth) {
+  if (!smooth || smooth < 2) return points;
+  const curve = new CatmullRomCurve3(points);
+  return curve.getPoints((points.length - 1) * smooth);
 }
 
 function interpolate_colors(colors, smooth) {
@@ -4882,6 +4961,23 @@ function interpolate_colors(colors, smooth) {
     }
   }
   ret.push(colors[colors.length - 1]);
+  return ret;
+}
+
+function interpolate_numbers(values, smooth) {
+  if (!smooth || smooth < 2) return values;
+  const ret = [];
+  let i;
+  for (i = 0; i < values.length - 1; i++) {
+    const p = values[i];
+    const n = values[i+1];
+    for (let j = 0; j < smooth; j++) {
+      const an = j / smooth;
+      const ap = 1 - an;
+      ret.push(ap * p + an * n);
+    }
+  }
+  ret.push(values[i]);
   return ret;
 }
 
@@ -4958,6 +5054,219 @@ function makeRibbon(vertices,
     obj.add(new Line(geometry, material));
   }
   return obj;
+}
+
+const cartoon_vert = `
+attribute vec3 color;
+attribute vec3 normal;
+varying vec3 vcolor;
+varying vec3 vnormal;
+void main() {
+  vcolor = color;
+  vnormal = normalize((modelViewMatrix * vec4(normal, 0.0)).xyz);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const cartoon_frag = `
+${fog_pars_fragment}
+uniform vec3 lightDir;
+varying vec3 vcolor;
+varying vec3 vnormal;
+void main() {
+  float weight = abs(dot(normalize(vnormal), normalize(lightDir))) * 0.6 + 0.4;
+  gl_FragColor = vec4(weight * vcolor, 1.0);
+${fog_end_fragment}
+}`;
+
+function makeCartoon(vertices,
+                            colors,
+                            tangents,
+                            smoothness) {
+  if (vertices.length < 2) return new Object3D();
+  const kinds = compute_cartoon_kinds(vertices);
+  const sample_centers = [];
+  const sample_sides = [];
+  const sample_widths = [];
+  const sample_thicknesses = [];
+  const sample_colors = [];
+  let last_side = [0, 0, 1];
+  for (let i = 0; i < vertices.length; i++) {
+    let side = normalize_vec(tangents[i], last_side);
+    if (side[0]*last_side[0] + side[1]*last_side[1] + side[2]*last_side[2] < 0) {
+      side[0] = -side[0];
+      side[1] = -side[1];
+      side[2] = -side[2];
+    }
+    let center = [vertices[i].xyz[0], vertices[i].xyz[1], vertices[i].xyz[2]];
+    const prev = vertices[Math.max(i - 1, 0)].xyz;
+    const next = vertices[Math.min(i + 1, vertices.length - 1)].xyz;
+    const forward = normalize_vec([next[0] - prev[0], next[1] - prev[1], next[2] - prev[2]],
+                                  [1, 0, 0]);
+    const kind = kinds[i];
+    let width = 0.5;
+    let thickness = 0.16;
+    if (kind === 'h') {
+      width = 1.3;
+      thickness = 0.20;
+    } else if (kind === 's' || kind === 'arrow start') {
+      width = 1.3;
+      thickness = 0.16;
+    } else if (kind === 'arrow end') {
+      width = 0.5;
+      thickness = 0.12;
+    }
+    if (kind === 'arrow start') {
+      center = add_vec(center, cross_vec(scale_vec(forward, 0.3), side));
+      const up = normalize_vec(cross_vec(forward, side), [0, 0, 1]);
+      side = normalize_vec(rotate_about_axis(side, up, 0.43), side);
+    }
+    sample_centers.push(new Vector3(center[0], center[1], center[2]));
+    sample_sides.push(side);
+    sample_widths.push(width);
+    sample_thicknesses.push(thickness);
+    sample_colors.push(colors[i]);
+    if (kind === 'arrow start') {
+      sample_centers.push(new Vector3(center[0], center[1], center[2]));
+      sample_sides.push(side);
+      sample_widths.push(2.0 * width);
+      sample_thicknesses.push(0.9 * thickness);
+      sample_colors.push(colors[i]);
+    }
+    last_side = side;
+  }
+
+  const rail_count = 7;
+  const rails = [];
+  for (let j = 0; j < rail_count; j++) rails.push([]);
+  for (let i = 0; i < sample_centers.length; i++) {
+    const center = sample_centers[i];
+    const side = sample_sides[i];
+    const width = sample_widths[i];
+    for (let j = 0; j < rail_count; j++) {
+      const delta = -1 + 2 * j / (rail_count - 1);
+      rails[j].push(new Vector3(center.x + delta * width * side[0],
+                                center.y + delta * width * side[1],
+                                center.z + delta * width * side[2]));
+    }
+  }
+
+  const centerline = interpolate_points(sample_centers, smoothness);
+  if (centerline.length < 2) return new Object3D();
+  const color_arr = interpolate_colors(sample_colors, smoothness);
+  const thickness_arr = interpolate_numbers(sample_thicknesses, smoothness);
+  const interp_rails = rails.map((rail) => interpolate_points(rail, smoothness));
+  const ups = [];
+  const axes = [];
+  let last_up = [0, 0, 1];
+  for (let i = 0; i < centerline.length; i++) {
+    const left = interp_rails[0][i];
+    const right = interp_rails[rail_count - 1][i];
+    const axis = normalize_vec([right.x - left.x, right.y - left.y, right.z - left.z],
+                               [1, 0, 0]);
+    const prev = centerline[Math.max(i - 1, 0)];
+    const next = centerline[Math.min(i + 1, centerline.length - 1)];
+    const forward = normalize_vec([next.x - prev.x, next.y - prev.y, next.z - prev.z],
+                                  [0, 1, 0]);
+    const up = normalize_vec(cross_vec(axis, forward), last_up);
+    if (up[0]*last_up[0] + up[1]*last_up[1] + up[2]*last_up[2] < 0) {
+      up[0] = -up[0];
+      up[1] = -up[1];
+      up[2] = -up[2];
+    }
+    axes.push(axis);
+    ups.push(up);
+    last_up = up;
+  }
+
+  const profile = [];
+  for (let j = 0; j < rail_count; j++) {
+    profile.push(0.5);
+  }
+  const quad_count = (centerline.length - 1) * (2 * (rail_count - 1) + 2);
+  const pos = new Float32Array(quad_count * 12);
+  const col = new Float32Array(quad_count * 12);
+  const norm = new Float32Array(quad_count * 12);
+  function add_quad(quad_id, quad, quad_normals,
+                    c0, c1) {
+    const quad_colors = [c0, c0, c1, c1];
+    for (let j = 0; j < 4; j++) {
+      const k = 12*quad_id + 3*j;
+      pos[k+0] = quad[j][0];
+      pos[k+1] = quad[j][1];
+      pos[k+2] = quad[j][2];
+      col[k+0] = quad_colors[j].r;
+      col[k+1] = quad_colors[j].g;
+      col[k+2] = quad_colors[j].b;
+      norm[k+0] = quad_normals[j][0];
+      norm[k+1] = quad_normals[j][1];
+      norm[k+2] = quad_normals[j][2];
+    }
+  }
+
+  let quad_id = 0;
+  for (let i = 0; i < centerline.length - 1; i++) {
+    const c0 = color_arr[i];
+    const c1 = color_arr[i+1];
+    const top0 = [];
+    const top1 = [];
+    const bot0 = [];
+    const bot1 = [];
+    for (let j = 0; j < rail_count; j++) {
+      const p0 = interp_rails[j][i];
+      const p1 = interp_rails[j][i+1];
+      const u0 = scale_vec(ups[i], thickness_arr[i] * profile[j]);
+      const u1 = scale_vec(ups[i+1], thickness_arr[i+1] * profile[j]);
+      top0.push([p0.x + u0[0], p0.y + u0[1], p0.z + u0[2]]);
+      top1.push([p1.x + u1[0], p1.y + u1[1], p1.z + u1[2]]);
+      bot0.push([p0.x - u0[0], p0.y - u0[1], p0.z - u0[2]]);
+      bot1.push([p1.x - u1[0], p1.y - u1[1], p1.z - u1[2]]);
+    }
+    for (let j = 0; j < rail_count - 1; j++) {
+      add_quad(quad_id++,
+               [top0[j], top0[j+1], top1[j+1], top1[j]],
+               [ups[i], ups[i], ups[i+1], ups[i+1]],
+               c0, c1);
+      add_quad(quad_id++,
+               [bot0[j], bot1[j], bot1[j+1], bot0[j+1]],
+               [[-ups[i][0], -ups[i][1], -ups[i][2]],
+                [-ups[i+1][0], -ups[i+1][1], -ups[i+1][2]],
+                [-ups[i+1][0], -ups[i+1][1], -ups[i+1][2]],
+                [-ups[i][0], -ups[i][1], -ups[i][2]]],
+               c0, c1);
+    }
+    add_quad(quad_id++,
+             [top0[0], top1[0], bot1[0], bot0[0]],
+             [[-axes[i][0], -axes[i][1], -axes[i][2]],
+              [-axes[i+1][0], -axes[i+1][1], -axes[i+1][2]],
+              [-axes[i+1][0], -axes[i+1][1], -axes[i+1][2]],
+              [-axes[i][0], -axes[i][1], -axes[i][2]]],
+             c0, c1);
+    add_quad(quad_id++,
+             [top0[rail_count - 1], bot0[rail_count - 1],
+              bot1[rail_count - 1], top1[rail_count - 1]],
+             [axes[i], axes[i], axes[i+1], axes[i+1]],
+             c0, c1);
+  }
+
+  if (quad_id === 0) {
+    return new Object3D();
+  }
+  const used_pos = pos.subarray(0, quad_id * 12);
+  const used_col = col.subarray(0, quad_id * 12);
+  const used_norm = norm.subarray(0, quad_id * 12);
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(used_pos, 3));
+  geometry.setAttribute('color', new BufferAttribute(used_col, 3));
+  geometry.setAttribute('normal', new BufferAttribute(used_norm, 3));
+  geometry.setIndex(make_quad_index_buffer(quad_id));
+  const material = new ShaderMaterial({
+    uniforms: makeUniforms({lightDir: light_dir}),
+    vertexShader: cartoon_vert,
+    fragmentShader: cartoon_frag,
+    fog: true,
+    type: 'um_cartoon',
+  });
+  return new Mesh(geometry, material);
 }
 
 
@@ -5773,8 +6082,10 @@ const INIT_HUD_TEXT = 'This is GemmiMol not Coot. ' +
 
 // options handled by select_next()
 
-const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy', 'index', 'chain'];
-const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'ribbon', 'ball&stick'];
+const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
+                     'index', 'chain', 'secondary structure'];
+const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks',
+                       'ribbon', 'ball&stick'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['cross', 'dot', 'invisible'];
 const MAP_STYLES = ['marching cubes', 'squarish'/*, 'snapped MC'*/];
@@ -5831,6 +6142,15 @@ function color_by(prop, atoms, elem_colors,
   } else if (prop === 'chain') {
     color_func = function (atom) {
       return rainbow_value(atom.chain_index, 0, last_atom.chain_index);
+    };
+  } else if (prop === 'secondary structure') {
+    const ss_colors = {
+      Helix: new Color(0xD64A4A),
+      Strand: new Color(0xD4A62A),
+      Coil: new Color(0x70A5C8),
+    };
+    color_func = function (atom) {
+      return ss_colors[atom.ss] || ss_colors.Coil;
     };
   } else { // element
     if (hue_shift === 0) {
@@ -6010,7 +6330,8 @@ class ModelBag {
     sphere_arr.forEach(function (v) { this.atom_array.push(v); }, this);
   }
 
-  add_sticks(polymers, ligands, radius) {
+  add_sticks(polymers, ligands, radius,
+             atom_filter) {
     const visible_atoms = this.get_visible_atoms();
     const colors = color_by(this.conf.color_prop, visible_atoms,
                             this.conf.colors, this.hue_shift);
@@ -6027,6 +6348,7 @@ class ModelBag {
       const atom = visible_atoms[i];
       const color = colors[i];
       if (!(atom.is_ligand ? ligands : polymers)) continue;
+      if (atom_filter && !atom_filter(atom)) continue;
       if (atom.is_water() && this.conf.water_style === 'invisible') continue;
       atom_arr.push(atom);
       if (atom.bonds.length === 0) continue;
@@ -6206,6 +6528,36 @@ class ModelBag {
       const obj = makeRibbon(seg, color_slice, tangents, smoothness);
       this.objects.push(obj);
     }
+    this.atom_array = visible_atoms;
+  }
+
+  add_cartoon(smoothness) {
+    const segments = this.model.extract_trace();
+    const res_map = this.model.get_residues();
+    const visible_atoms = [].concat.apply([], segments);
+    const colors = color_by(this.conf.color_prop, visible_atoms,
+                            this.conf.colors, this.hue_shift);
+    let k = 0;
+    for (const seg of segments) {
+      const tangents = [];
+      let last = [0, 0, 0];
+      for (const atom of seg) {
+        const residue = res_map[atom.resid()];
+        const tang = this.model.calculate_tangent_vector(residue);
+        if (tang[0]*last[0] + tang[1]*last[1] + tang[2]*last[2] < 0) {
+          tang[0] = -tang[0];
+          tang[1] = -tang[1];
+          tang[2] = -tang[2];
+        }
+        tangents.push(tang);
+        last = tang;
+      }
+      const color_slice = colors.slice(k, k + seg.length);
+      k += seg.length;
+      const obj = makeCartoon(seg, color_slice, tangents, smoothness);
+      this.objects.push(obj);
+    }
+    this.atom_array = visible_atoms;
   }
 }
 
@@ -6656,6 +7008,25 @@ class Viewer {
         } else {
           model_bag.add_bonds(false, true, ligand_balls);
         }
+        break;
+      case 'cartoon':
+        model_bag.add_cartoon(8);
+        if (ligand_sticks) {
+          model_bag.add_sticks(false, true, this.config.stick_radius);
+        } else {
+          model_bag.add_bonds(false, true, ligand_balls);
+        }
+        break;
+      case 'cartoon+sticks':
+        model_bag.add_cartoon(8);
+        model_bag.add_sticks(true, false, this.config.stick_radius,
+                             (atom) => !atom.is_backbone());
+        if (ligand_sticks) {
+          model_bag.add_sticks(false, true, this.config.stick_radius);
+        } else {
+          model_bag.add_bonds(false, true, ligand_balls);
+        }
+        model_bag.atom_array = model_bag.get_visible_atoms();
         break;
     }
     for (const o of model_bag.objects) {
@@ -8615,6 +8986,7 @@ exports.fog_pars_fragment = fog_pars_fragment;
 exports.load_maps_from_mtz = load_maps_from_mtz;
 exports.load_maps_from_mtz_buffer = load_maps_from_mtz_buffer;
 exports.makeBalls = makeBalls;
+exports.makeCartoon = makeCartoon;
 exports.makeChickenWire = makeChickenWire;
 exports.makeCube = makeCube;
 exports.makeGrid = makeGrid;

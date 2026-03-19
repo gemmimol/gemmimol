@@ -1,6 +1,6 @@
 import { OrthographicCamera, Scene, Color, Vector3,
          Ray, WebGLRenderer, Fog } from './three-r162/main';
-import { makeLineMaterial, makeLineSegments, makeRibbon,
+import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
          makeChickenWire, makeGrid, makeSticks, makeBalls, makeWheels, makeCube,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
@@ -149,8 +149,10 @@ const INIT_HUD_TEXT = 'This is GemmiMol not Coot. ' +
 
 // options handled by select_next()
 
-const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy', 'index', 'chain'];
-const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'ribbon', 'ball&stick'];
+const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
+                     'index', 'chain', 'secondary structure'];
+const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks',
+                       'ribbon', 'ball&stick'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['cross', 'dot', 'invisible'];
 const MAP_STYLES = ['marching cubes', 'squarish'/*, 'snapped MC'*/];
@@ -207,6 +209,15 @@ function color_by(prop: string, atoms: Atom[], elem_colors: ColorScheme,
   } else if (prop === 'chain') {
     color_func = function (atom: Atom) {
       return rainbow_value(atom.chain_index, 0, last_atom.chain_index);
+    };
+  } else if (prop === 'secondary structure') {
+    const ss_colors = {
+      Helix: new Color(0xD64A4A),
+      Strand: new Color(0xD4A62A),
+      Coil: new Color(0x70A5C8),
+    };
+    color_func = function (atom: Atom) {
+      return ss_colors[atom.ss] || ss_colors.Coil;
     };
   } else { // element
     if (hue_shift === 0) {
@@ -386,7 +397,8 @@ class ModelBag {
     sphere_arr.forEach(function (v) { this.atom_array.push(v); }, this);
   }
 
-  add_sticks(polymers: boolean, ligands: boolean, radius: number) {
+  add_sticks(polymers: boolean, ligands: boolean, radius: number,
+             atom_filter?: (atom: Atom) => boolean) {
     const visible_atoms = this.get_visible_atoms();
     const colors = color_by(this.conf.color_prop, visible_atoms,
                             this.conf.colors, this.hue_shift);
@@ -403,6 +415,7 @@ class ModelBag {
       const atom = visible_atoms[i];
       const color = colors[i];
       if (!(atom.is_ligand ? ligands : polymers)) continue;
+      if (atom_filter && !atom_filter(atom)) continue;
       if (atom.is_water() && this.conf.water_style === 'invisible') continue;
       atom_arr.push(atom);
       if (atom.bonds.length === 0) continue;
@@ -582,6 +595,36 @@ class ModelBag {
       const obj = makeRibbon(seg, color_slice, tangents, smoothness);
       this.objects.push(obj);
     }
+    this.atom_array = visible_atoms;
+  }
+
+  add_cartoon(smoothness: number) {
+    const segments = this.model.extract_trace();
+    const res_map = this.model.get_residues();
+    const visible_atoms = [].concat.apply([], segments);
+    const colors = color_by(this.conf.color_prop, visible_atoms,
+                            this.conf.colors, this.hue_shift);
+    let k = 0;
+    for (const seg of segments) {
+      const tangents = [];
+      let last = [0, 0, 0];
+      for (const atom of seg) {
+        const residue = res_map[atom.resid()];
+        const tang = this.model.calculate_tangent_vector(residue);
+        if (tang[0]*last[0] + tang[1]*last[1] + tang[2]*last[2] < 0) {
+          tang[0] = -tang[0];
+          tang[1] = -tang[1];
+          tang[2] = -tang[2];
+        }
+        tangents.push(tang);
+        last = tang;
+      }
+      const color_slice = colors.slice(k, k + seg.length);
+      k += seg.length;
+      const obj = makeCartoon(seg, color_slice, tangents, smoothness);
+      this.objects.push(obj);
+    }
+    this.atom_array = visible_atoms;
   }
 }
 
@@ -1032,6 +1075,25 @@ export class Viewer {
         } else {
           model_bag.add_bonds(false, true, ligand_balls);
         }
+        break;
+      case 'cartoon':
+        model_bag.add_cartoon(8);
+        if (ligand_sticks) {
+          model_bag.add_sticks(false, true, this.config.stick_radius);
+        } else {
+          model_bag.add_bonds(false, true, ligand_balls);
+        }
+        break;
+      case 'cartoon+sticks':
+        model_bag.add_cartoon(8);
+        model_bag.add_sticks(true, false, this.config.stick_radius,
+                             (atom) => !atom.is_backbone());
+        if (ligand_sticks) {
+          model_bag.add_sticks(false, true, this.config.stick_radius);
+        } else {
+          model_bag.add_bonds(false, true, ligand_balls);
+        }
+        model_bag.atom_array = model_bag.get_visible_atoms();
         break;
     }
     for (const o of model_bag.objects) {

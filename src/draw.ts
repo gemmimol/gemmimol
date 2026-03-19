@@ -184,6 +184,62 @@ function make_quad_index_buffer(len: number) {
   return new BufferAttribute(index, 1);
 }
 
+function normalize_vec(v: Num3, fallback: Num3): Num3 {
+  const len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+  if (len < 1e-6) return [fallback[0], fallback[1], fallback[2]];
+  return [v[0]/len, v[1]/len, v[2]/len];
+}
+
+function scale_vec(v: Num3, factor: number): Num3 {
+  return [factor * v[0], factor * v[1], factor * v[2]];
+}
+
+function add_vec(a: Num3, b: Num3): Num3 {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+
+function cross_vec(a: Num3, b: Num3): Num3 {
+  return [a[1]*b[2] - a[2]*b[1],
+          a[2]*b[0] - a[0]*b[2],
+          a[0]*b[1] - a[1]*b[0]];
+}
+
+function rotate_about_axis(v: Num3, axis: Num3, angle: number): Num3 {
+  const cos_a = Math.cos(angle);
+  const sin_a = Math.sin(angle);
+  const dot = v[0]*axis[0] + v[1]*axis[1] + v[2]*axis[2];
+  const cross = cross_vec(axis, v);
+  return [
+    v[0] * cos_a + cross[0] * sin_a + axis[0] * dot * (1 - cos_a),
+    v[1] * cos_a + cross[1] * sin_a + axis[1] * dot * (1 - cos_a),
+    v[2] * cos_a + cross[2] * sin_a + axis[2] * dot * (1 - cos_a),
+  ];
+}
+
+type CartoonKind = 'h' | 's' | 'c' | 'arrow start' | 'arrow end';
+
+function cartoon_kind(atom: Atom): CartoonKind {
+  return atom.ss === 'Helix' ? 'h' : atom.ss === 'Strand' ? 's' : 'c';
+}
+
+function compute_cartoon_kinds(vertices: Atom[]): CartoonKind[] {
+  const kinds: CartoonKind[] = vertices.map(cartoon_kind);
+  let strand_start = -1;
+  for (let i = 0; i <= vertices.length; i++) {
+    const in_strand = i < vertices.length && kinds[i] === 's';
+    if (in_strand) {
+      if (strand_start < 0) strand_start = i;
+      continue;
+    }
+    if (strand_start >= 0 && i - strand_start >= 2) {
+      kinds[i - 2] = 'arrow start';
+      kinds[i - 1] = 'arrow end';
+    }
+    strand_start = -1;
+  }
+  return kinds;
+}
+
 
 const wide_segments_vert = `
 attribute vec3 color;
@@ -208,9 +264,13 @@ function interpolate_vertices(segment: Atom[], smooth: number): Vector3[] {
     const xyz = segment[i].xyz;
     vertices.push(new Vector3(xyz[0], xyz[1], xyz[2]));
   }
-  if (!smooth || smooth < 2) return vertices;
-  const curve = new CatmullRomCurve3(vertices);
-  return curve.getPoints((segment.length - 1) * smooth);
+  return interpolate_points(vertices, smooth);
+}
+
+function interpolate_points(points: Vector3[], smooth: number): Vector3[] {
+  if (!smooth || smooth < 2) return points;
+  const curve = new CatmullRomCurve3(points);
+  return curve.getPoints((points.length - 1) * smooth);
 }
 
 function interpolate_colors(colors: Color[], smooth: number) {
@@ -223,6 +283,23 @@ function interpolate_colors(colors: Color[], smooth: number) {
     }
   }
   ret.push(colors[colors.length - 1]);
+  return ret;
+}
+
+function interpolate_numbers(values: number[], smooth: number) {
+  if (!smooth || smooth < 2) return values;
+  const ret = [];
+  let i;
+  for (i = 0; i < values.length - 1; i++) {
+    const p = values[i];
+    const n = values[i+1];
+    for (let j = 0; j < smooth; j++) {
+      const an = j / smooth;
+      const ap = 1 - an;
+      ret.push(ap * p + an * n);
+    }
+  }
+  ret.push(values[i]);
   return ret;
 }
 
@@ -299,6 +376,219 @@ export function makeRibbon(vertices: Atom[],
     obj.add(new Line(geometry, material));
   }
   return obj;
+}
+
+const cartoon_vert = `
+attribute vec3 color;
+attribute vec3 normal;
+varying vec3 vcolor;
+varying vec3 vnormal;
+void main() {
+  vcolor = color;
+  vnormal = normalize((modelViewMatrix * vec4(normal, 0.0)).xyz);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const cartoon_frag = `
+${fog_pars_fragment}
+uniform vec3 lightDir;
+varying vec3 vcolor;
+varying vec3 vnormal;
+void main() {
+  float weight = abs(dot(normalize(vnormal), normalize(lightDir))) * 0.6 + 0.4;
+  gl_FragColor = vec4(weight * vcolor, 1.0);
+${fog_end_fragment}
+}`;
+
+export function makeCartoon(vertices: Atom[],
+                            colors: Color[],
+                            tangents: Num3[],
+                            smoothness: number) {
+  if (vertices.length < 2) return new Object3D();
+  const kinds = compute_cartoon_kinds(vertices);
+  const sample_centers: Vector3[] = [];
+  const sample_sides: Num3[] = [];
+  const sample_widths: number[] = [];
+  const sample_thicknesses: number[] = [];
+  const sample_colors: Color[] = [];
+  let last_side: Num3 = [0, 0, 1];
+  for (let i = 0; i < vertices.length; i++) {
+    let side = normalize_vec(tangents[i], last_side);
+    if (side[0]*last_side[0] + side[1]*last_side[1] + side[2]*last_side[2] < 0) {
+      side[0] = -side[0];
+      side[1] = -side[1];
+      side[2] = -side[2];
+    }
+    let center: Num3 = [vertices[i].xyz[0], vertices[i].xyz[1], vertices[i].xyz[2]];
+    const prev = vertices[Math.max(i - 1, 0)].xyz;
+    const next = vertices[Math.min(i + 1, vertices.length - 1)].xyz;
+    const forward = normalize_vec([next[0] - prev[0], next[1] - prev[1], next[2] - prev[2]],
+                                  [1, 0, 0]);
+    const kind = kinds[i];
+    let width = 0.5;
+    let thickness = 0.16;
+    if (kind === 'h') {
+      width = 1.3;
+      thickness = 0.20;
+    } else if (kind === 's' || kind === 'arrow start') {
+      width = 1.3;
+      thickness = 0.16;
+    } else if (kind === 'arrow end') {
+      width = 0.5;
+      thickness = 0.12;
+    }
+    if (kind === 'arrow start') {
+      center = add_vec(center, cross_vec(scale_vec(forward, 0.3), side));
+      const up = normalize_vec(cross_vec(forward, side), [0, 0, 1]);
+      side = normalize_vec(rotate_about_axis(side, up, 0.43), side);
+    }
+    sample_centers.push(new Vector3(center[0], center[1], center[2]));
+    sample_sides.push(side);
+    sample_widths.push(width);
+    sample_thicknesses.push(thickness);
+    sample_colors.push(colors[i]);
+    if (kind === 'arrow start') {
+      sample_centers.push(new Vector3(center[0], center[1], center[2]));
+      sample_sides.push(side);
+      sample_widths.push(2.0 * width);
+      sample_thicknesses.push(0.9 * thickness);
+      sample_colors.push(colors[i]);
+    }
+    last_side = side;
+  }
+
+  const rail_count = 7;
+  const rails: Vector3[][] = [];
+  for (let j = 0; j < rail_count; j++) rails.push([]);
+  for (let i = 0; i < sample_centers.length; i++) {
+    const center = sample_centers[i];
+    const side = sample_sides[i];
+    const width = sample_widths[i];
+    for (let j = 0; j < rail_count; j++) {
+      const delta = -1 + 2 * j / (rail_count - 1);
+      rails[j].push(new Vector3(center.x + delta * width * side[0],
+                                center.y + delta * width * side[1],
+                                center.z + delta * width * side[2]));
+    }
+  }
+
+  const centerline = interpolate_points(sample_centers, smoothness);
+  if (centerline.length < 2) return new Object3D();
+  const color_arr = interpolate_colors(sample_colors, smoothness);
+  const thickness_arr = interpolate_numbers(sample_thicknesses, smoothness);
+  const interp_rails = rails.map((rail) => interpolate_points(rail, smoothness));
+  const ups: Num3[] = [];
+  const axes: Num3[] = [];
+  let last_up: Num3 = [0, 0, 1];
+  for (let i = 0; i < centerline.length; i++) {
+    const left = interp_rails[0][i];
+    const right = interp_rails[rail_count - 1][i];
+    const axis = normalize_vec([right.x - left.x, right.y - left.y, right.z - left.z],
+                               [1, 0, 0]);
+    const prev = centerline[Math.max(i - 1, 0)];
+    const next = centerline[Math.min(i + 1, centerline.length - 1)];
+    const forward = normalize_vec([next.x - prev.x, next.y - prev.y, next.z - prev.z],
+                                  [0, 1, 0]);
+    const up = normalize_vec(cross_vec(axis, forward), last_up);
+    if (up[0]*last_up[0] + up[1]*last_up[1] + up[2]*last_up[2] < 0) {
+      up[0] = -up[0];
+      up[1] = -up[1];
+      up[2] = -up[2];
+    }
+    axes.push(axis);
+    ups.push(up);
+    last_up = up;
+  }
+
+  const profile = [];
+  for (let j = 0; j < rail_count; j++) {
+    profile.push(0.5);
+  }
+  const quad_count = (centerline.length - 1) * (2 * (rail_count - 1) + 2);
+  const pos = new Float32Array(quad_count * 12);
+  const col = new Float32Array(quad_count * 12);
+  const norm = new Float32Array(quad_count * 12);
+  function add_quad(quad_id: number, quad: Num3[], quad_normals: Num3[],
+                    c0: Color, c1: Color) {
+    const quad_colors = [c0, c0, c1, c1];
+    for (let j = 0; j < 4; j++) {
+      const k = 12*quad_id + 3*j;
+      pos[k+0] = quad[j][0];
+      pos[k+1] = quad[j][1];
+      pos[k+2] = quad[j][2];
+      col[k+0] = quad_colors[j].r;
+      col[k+1] = quad_colors[j].g;
+      col[k+2] = quad_colors[j].b;
+      norm[k+0] = quad_normals[j][0];
+      norm[k+1] = quad_normals[j][1];
+      norm[k+2] = quad_normals[j][2];
+    }
+  }
+
+  let quad_id = 0;
+  for (let i = 0; i < centerline.length - 1; i++) {
+    const c0 = color_arr[i];
+    const c1 = color_arr[i+1];
+    const top0: Num3[] = [];
+    const top1: Num3[] = [];
+    const bot0: Num3[] = [];
+    const bot1: Num3[] = [];
+    for (let j = 0; j < rail_count; j++) {
+      const p0 = interp_rails[j][i];
+      const p1 = interp_rails[j][i+1];
+      const u0 = scale_vec(ups[i], thickness_arr[i] * profile[j]);
+      const u1 = scale_vec(ups[i+1], thickness_arr[i+1] * profile[j]);
+      top0.push([p0.x + u0[0], p0.y + u0[1], p0.z + u0[2]]);
+      top1.push([p1.x + u1[0], p1.y + u1[1], p1.z + u1[2]]);
+      bot0.push([p0.x - u0[0], p0.y - u0[1], p0.z - u0[2]]);
+      bot1.push([p1.x - u1[0], p1.y - u1[1], p1.z - u1[2]]);
+    }
+    for (let j = 0; j < rail_count - 1; j++) {
+      add_quad(quad_id++,
+               [top0[j], top0[j+1], top1[j+1], top1[j]],
+               [ups[i], ups[i], ups[i+1], ups[i+1]],
+               c0, c1);
+      add_quad(quad_id++,
+               [bot0[j], bot1[j], bot1[j+1], bot0[j+1]],
+               [[-ups[i][0], -ups[i][1], -ups[i][2]],
+                [-ups[i+1][0], -ups[i+1][1], -ups[i+1][2]],
+                [-ups[i+1][0], -ups[i+1][1], -ups[i+1][2]],
+                [-ups[i][0], -ups[i][1], -ups[i][2]]],
+               c0, c1);
+    }
+    add_quad(quad_id++,
+             [top0[0], top1[0], bot1[0], bot0[0]],
+             [[-axes[i][0], -axes[i][1], -axes[i][2]],
+              [-axes[i+1][0], -axes[i+1][1], -axes[i+1][2]],
+              [-axes[i+1][0], -axes[i+1][1], -axes[i+1][2]],
+              [-axes[i][0], -axes[i][1], -axes[i][2]]],
+             c0, c1);
+    add_quad(quad_id++,
+             [top0[rail_count - 1], bot0[rail_count - 1],
+              bot1[rail_count - 1], top1[rail_count - 1]],
+             [axes[i], axes[i], axes[i+1], axes[i+1]],
+             c0, c1);
+  }
+
+  if (quad_id === 0) {
+    return new Object3D();
+  }
+  const used_pos = pos.subarray(0, quad_id * 12);
+  const used_col = col.subarray(0, quad_id * 12);
+  const used_norm = norm.subarray(0, quad_id * 12);
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(used_pos, 3));
+  geometry.setAttribute('color', new BufferAttribute(used_col, 3));
+  geometry.setAttribute('normal', new BufferAttribute(used_norm, 3));
+  geometry.setIndex(make_quad_index_buffer(quad_id));
+  const material = new ShaderMaterial({
+    uniforms: makeUniforms({lightDir: light_dir}),
+    vertexShader: cartoon_vert,
+    fragmentShader: cartoon_frag,
+    fog: true,
+    type: 'um_cartoon',
+  });
+  return new Mesh(geometry, material);
 }
 
 

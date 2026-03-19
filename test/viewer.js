@@ -34,6 +34,10 @@ describe('Viewer', () => {
     viewer.change_isolevel_by(0, 0.1);
     viewer.center_next_residue();
     viewer.add_model(model);
+    viewer.model_bags[0].conf.render_style = 'cartoon';
+    viewer.redraw_models();
+    viewer.model_bags[0].conf.render_style = 'cartoon+sticks';
+    viewer.redraw_models();
     viewer.center_next_residue();
     viewer.recenter();
     viewer.recenter([11, 22, 33]);

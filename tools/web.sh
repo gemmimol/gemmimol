@@ -13,7 +13,7 @@ layout: default
 $(cat README.md | grep -v '^\[!\[' | sed s,https://gemmimol.github.io/,,)
 EOF
 
-cp src/*.js $outdir/src/
+cp src/*.ts $outdir/src/
 for path in benchmark/benchmark.js lodash/lodash.min.js platform/platform.js; do
     npath=node_modules/$path
     diff -q $npath $outdir/$npath || cp $npath $outdir/$npath
@@ -41,5 +41,5 @@ git status -s
 echo
 git diff --stat
 echo
-jekyll build
-du -sh _site/
+#jekyll build
+#du -sh _site/

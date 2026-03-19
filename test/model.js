@@ -49,4 +49,11 @@ describe('Model', () => {
       expect(a).toEqual(nearest);
     }
   });
+  it('secondary structure annotations', () => {
+    for (var i = 0; i < model.atoms.length; i++) {
+      var atom = model.atoms[i];
+      expect(typeof atom.ss).toEqual('string');
+      expect(typeof atom.strand_sense).toEqual('string');
+    }
+  });
 });

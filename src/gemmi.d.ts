@@ -74,9 +74,13 @@ export interface ResidueId extends ClassHandle {
 }
 
 export interface Residue extends ResidueId {
+  ss_from_file: number;
+  strand_sense_from_file: number;
   readonly length: number;
   get subchain(): string;
   set subchain(value: EmbindString);
+  readonly ss_from_file_string: string;
+  readonly strand_sense_from_file_string: string;
   readonly entity_type_string: string;
   at(_0: number): Atom | null;
 }
