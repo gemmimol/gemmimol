@@ -79,10 +79,9 @@
     V = new GM.Viewer({viewer: "viewer", hud: "hud", help: "help"});
     G = null;
     function load_from_pdbe(id, callback) {
-      V.load_pdb([
-            'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + id + '.ent',
-            'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif'
-          ], {}, function () {
+      V.load_pdb(
+          'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif',
+          {}, function () {
           GM.load_maps_from_mtz(G, V,
             'https://www.ebi.ac.uk/pdbe/coordinates/files/' + id + '_map.mtz',
             null, callback);
