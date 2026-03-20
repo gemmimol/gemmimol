@@ -60,8 +60,8 @@ describe('Model', () => {
   });
 
   it('skips CCD fetches for embedded chem comps', () => {
-    var cif_path = path.resolve(__dirname, '..', '..', 'gemmi', 'tests', '5i55.cif');
     var requested = null;
+    var cif_path = path.resolve(__dirname, '5i55.cif');
     return util.load_gemmi().then(function (gemmi) {
       return GM.modelsFromGemmi(gemmi, util.open_as_array_buffer(cif_path), cif_path,
                                 function (resnames) {
