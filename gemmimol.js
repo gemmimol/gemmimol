@@ -39,8 +39,8 @@ function getGemmiBondData(gemmi, st,
     });
   }
   const bond_info = new gemmi.BondInfo();
-  const resnames = (getMonomerCifs && typeof gemmi.get_residue_names === 'function') ?
-    gemmi.get_residue_names(st).split(',').filter(Boolean) :
+  const resnames = getMonomerCifs ?
+    gemmi.get_missing_monomer_names(st).split(',').filter(Boolean) :
     [];
   const monomers_requested = Array.from(new Set(resnames)).length;
   let loaded_monomers = 0;

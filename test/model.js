@@ -1,5 +1,7 @@
 
 var util = require('../perf/util');
+var GM = require('../gemmimol');
+var path = require('path');
 
 describe('Model', () => {
   'use strict';
@@ -55,5 +57,21 @@ describe('Model', () => {
       expect(typeof atom.ss).toEqual('string');
       expect(typeof atom.strand_sense).toEqual('string');
     }
+  });
+
+  it('skips CCD fetches for embedded chem comps', () => {
+    var cif_path = path.resolve(__dirname, '..', '..', 'gemmi', 'tests', '5i55.cif');
+    var requested = null;
+    return util.load_gemmi().then(function (gemmi) {
+      return GM.modelsFromGemmi(gemmi, util.open_as_array_buffer(cif_path), cif_path,
+                                function (resnames) {
+                                  requested = resnames.slice();
+                                  return Promise.resolve([]);
+                                });
+    }).then(function (result) {
+      expect(result.bonding.monomers_requested).toEqual(0);
+      expect(requested).toEqual(null);
+      result.structure.delete();
+    });
   });
 });

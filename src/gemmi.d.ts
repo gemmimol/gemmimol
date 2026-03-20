@@ -218,7 +218,7 @@ interface EmbindModule {
     new(_0: EmbindString): Mtz;
   };
   MtzMap: {};
-  get_residue_names(_0: Structure): string;
+  get_missing_monomer_names(_0: Structure): string;
   _read_structure(_0: EmbindString, _1: EmbindString, _2: EmbindString): Structure;
 }
 
