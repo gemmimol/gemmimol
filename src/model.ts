@@ -4,7 +4,7 @@ type Num3 = [number, number, number];
 
 type MonomerFetcher = (resnames: string[]) => Promise<string[]>;
 export type GemmiBondingInfo = {
-  source: 'gemmi' | 'fallback' | 'unavailable',
+  source: 'gemmi' | 'unavailable',
   monomers_requested: number,
   monomers_loaded: number,
   bond_count: number,
@@ -49,7 +49,7 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
     }
     bond_info.get_bond_lines(st);
     const len = bond_info.bond_data_size();
-    const source = (len !== 0 ? 'gemmi' : 'fallback');
+    const source = 'gemmi' as const;
     const info: GemmiBondingInfo = {
       source: source,
       monomers_requested: monomers_requested,
@@ -72,12 +72,6 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
     const bond_data = bond_result.bond_data;
     const cell = st.cell;  // TODO: check if a copy of cell is created here
     const models: Model[] = [];
-    let max_bond_atom = -1;
-    if (bond_data != null) {
-      for (let i = 0; i < bond_data.length; i += 3) {
-        max_bond_atom = Math.max(max_bond_atom, bond_data[i], bond_data[i+1]);
-      }
-    }
     for (let i_model = 0; i_model < st.length; ++i_model) {
       const model = st.at(i_model);
       const m = new Model();
@@ -117,10 +111,11 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
         }
       }
       m.calculate_bounds();
-      if (i_model === 0 && bond_data != null && max_bond_atom < m.atoms.length) {
+      if (bond_data != null) {
         m.apply_bond_data(bond_data);
+        m.bond_data = bond_data;
       } else {
-        m.calculate_connectivity();
+        m.calculate_cubicles();
       }
       models.push(m);
     }
@@ -132,6 +127,54 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
   });
 }
 
+export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
+                                        bond_data?: Int32Array | null): Model {
+  const cell = st.cell;
+  const gm = st.at(0);
+  const m = new Model();
+  m.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
+  let atom_i_seq = 0;
+  for (let i_chain = 0; i_chain < gm.length; ++i_chain) {
+    const chain = gm.at(i_chain);
+    const chain_name = chain.name;
+    for (let i_res = 0; i_res < chain.length; ++i_res) {
+      const res = chain.at(i_res);
+      const seqid = res.seqid_string;
+      const resname = res.name;
+      const ent_type = res.entity_type_string;
+      const ss = res.ss_from_file_string || 'Coil';
+      const strand_sense = res.strand_sense_from_file_string || 'NotStrand';
+      const is_ligand = (ent_type === 'non-polymer' || ent_type === 'branched');
+      for (let i_atom = 0; i_atom < res.length; ++i_atom) {
+        const atom = res.at(i_atom);
+        const new_atom = new Atom();
+        new_atom.i_seq = atom_i_seq++;
+        new_atom.chain = chain_name;
+        new_atom.chain_index = i_chain + 1;
+        new_atom.resname = resname;
+        new_atom.seqid = seqid;
+        new_atom.name = atom.name;
+        new_atom.altloc = atom.altloc === 0 ? '' : String.fromCharCode(atom.altloc);
+        new_atom.xyz = atom.pos;
+        new_atom.occ = atom.occ;
+        new_atom.b = atom.b_iso;
+        new_atom.element = atom.element_uname;
+        new_atom.is_ligand = is_ligand;
+        new_atom.ss = ss;
+        new_atom.strand_sense = strand_sense;
+        m.atoms.push(new_atom);
+      }
+    }
+  }
+  m.calculate_bounds();
+  if (bond_data != null) {
+    m.apply_bond_data(bond_data);
+  } else {
+    m.calculate_cubicles();
+  }
+  return m;
+}
+
 export class Model {
   atoms: Atom[];
   unit_cell: UnitCell | null;
@@ -141,6 +184,7 @@ export class Model {
   residue_map: Record<string, Atom[]> | null;
   cubes: Cubicles | null;
   source_model_index: number | null;
+  bond_data: Int32Array | null;
 
   constructor() {
     this.atoms = [];
@@ -148,6 +192,7 @@ export class Model {
     this.has_hydrogens = false;
     this.lower_bound = [0, 0, 0];
     this.upper_bound = [0, 0, 0];
+    this.bond_data = null;
     this.residue_map = null;
     this.cubes = null;
     this.source_model_index = null;
@@ -267,32 +312,6 @@ export class Model {
       zsum += xyz[2];
     }
     return [xsum / n_atoms, ysum / n_atoms, zsum / n_atoms];
-  }
-
-  calculate_connectivity() {
-    const atoms = this.atoms;
-    const cubes = this.calculate_cubicles();
-    for (const atom of atoms) {
-      atom.bonds = [];
-      atom.bond_types = [];
-    }
-    //let cnt = 0;
-    for (let i = 0; i < cubes.boxes.length; i++) {
-      const box = cubes.boxes[i];
-      if (box.length === 0) continue;
-      const nearby_atoms = cubes.get_nearby_atoms(i);
-      for (let a = 0; a < box.length; a++) {
-        const atom_id = box[a];
-        for (let k = 0; k < nearby_atoms.length; k++) {
-          const j = nearby_atoms[k];
-          if (j > atom_id && atoms[atom_id].is_bonded_to(atoms[j])) {
-            this.add_bond(atom_id, j, BondType.Unspec);
-            //cnt++;
-          }
-        }
-      }
-    }
-    //console.log(atoms.length + ' atoms, ' + cnt + ' bonds.');
   }
 
   calculate_cubicles() {
@@ -436,27 +455,15 @@ class Atom {
     ].indexOf(this.name) !== -1;
   }
 
-  bond_radius() { // rather crude
-    if (this.element === 'H') return 1.3;
-    if (this.element === 'S' || this.element === 'P') return 2.43;
-    return 1.99;
-  }
-
-  is_bonded_to(other: Atom) {
-    const MAX_DIST = 2.2 * 2.2;
-    if (!this.is_same_conformer(other)) return false;
-    const dxyz2 = this.distance_sq(other);
-    if (dxyz2 > MAX_DIST) return false;
-    if (this.element === 'H' && other.element === 'H') return false;
-    return dxyz2 <= this.bond_radius() * other.bond_radius();
-  }
 
   resid() {
     return this.seqid + '/' + this.chain;
   }
 
-  long_label() {
+  long_label(symop?: string) {
+    const symop_str = symop ? ' [' + symop + ']' : '';
     return this.name + ' /' + this.seqid + ' ' + this.resname + '/' + this.chain +
+           symop_str +
            ' - occ: ' + this.occ.toFixed(2) + ' bf: ' + this.b.toFixed(2) +
            ' ele: ' + this.element + ' pos: (' + this.xyz[0].toFixed(2) + ',' +
            this.xyz[1].toFixed(2) + ',' + this.xyz[2].toFixed(2) + ')';

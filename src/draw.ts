@@ -830,6 +830,9 @@ ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
 uniform float radius;
+uniform float shineStrength;
+uniform float shinePower;
+uniform vec3 shineColor;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -841,16 +844,29 @@ void main() {
   vec4 projPos = projectionMatrix * pos;
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  float weight = length(cross(vaxis, lightDir)) * central * 0.8 + 0.2;
-  gl_FragColor = vec4(min(weight, 1.0) * vcolor, 1.0);
+  float diffuse = length(cross(vaxis, lightDir)) * central;
+  float weight = diffuse * 0.8 + 0.2;
+  float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
+  vec3 shaded = min(weight, 1.0) * vcolor;
+  gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
 ${fog_end_fragment}
 }`;
 
+type StickOptions = {
+  shineStrength?: number,
+  shinePower?: number,
+  shineColor?: Color,
+};
+
 export
-function makeSticks(vertex_arr: Num3[], color_arr: Color[], radius: number) {
+function makeSticks(vertex_arr: Num3[], color_arr: Color[], radius: number,
+                    options: StickOptions = {}) {
   const uniforms = makeUniforms({
     radius: radius,
     lightDir: light_dir,
+    shineStrength: options.shineStrength || 0.0,
+    shinePower: options.shinePower || 8.0,
+    shineColor: options.shineColor || new Color(0xffffff),
   });
   const material = new ShaderMaterial({
     uniforms: uniforms,

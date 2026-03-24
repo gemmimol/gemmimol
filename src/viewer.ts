@@ -5,7 +5,7 @@ import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
 import { ElMap } from './elmap';
-import { BondType, modelsFromGemmi } from './model';
+import { BondType, modelsFromGemmi, modelFromGemmiStructure } from './model';
 
 import type { GemmiModule, Structure } from './gemmi';
 import type { Atom, Model } from './model';
@@ -272,6 +272,7 @@ class ModelBag {
   objects: object[];
   atom_array: Atom[]
   gemmi_selection: GemmiSelectionContext | null;
+  symop: string;
   static ctor_counter: number;
 
   constructor(model: Model, config: ViewerConfig, win_size: Num2) {
@@ -279,6 +280,7 @@ class ModelBag {
     this.label = '(model #' + ++ModelBag.ctor_counter + ')';
     this.visible = true;
     this.hue_shift = 0;
+    this.symop = '';
     this.conf = config;
     this.win_size = win_size;
     this.objects = []; // list of three.js objects
@@ -312,7 +314,6 @@ class ModelBag {
     const metal_bond_type_arr = [];
     const sphere_arr = [];
     const sphere_color_arr = [];
-    const metal_color = this.conf.colors.center;
     const hydrogens = this.conf.hydrogens;
     for (let i = 0; i < visible_atoms.length; i++) {
       const atom = visible_atoms[i];
@@ -338,7 +339,7 @@ class ModelBag {
               atom.midpoint(other) :
               this.bond_half_end(atom, other, ball_size * 0.3);
             metal_vertex_arr.push(atom.xyz, mid);
-            metal_color_arr.push(metal_color, metal_color);
+            metal_color_arr.push(color, color);
             metal_bond_type_arr.push(bond_type, bond_type);
           } else {
             const mid = ball_size == null ?
@@ -362,7 +363,7 @@ class ModelBag {
       }
       if (metal_vertex_arr.length !== 0) {
         const metal_obj = makeSticks(metal_vertex_arr, metal_color_arr,
-                                     ball_size * 0.3);
+                                     ball_size * 0.25);
         metal_obj.userData.bond_types = metal_bond_type_arr;
         this.objects.push(metal_obj);
       }
@@ -382,7 +383,7 @@ class ModelBag {
       }
       if (metal_vertex_arr.length !== 0) {
         const metal_material = makeLineMaterial({
-          linewidth: linewidth * 0.6,
+          linewidth: linewidth * 0.5,
           win_size: this.win_size,
         });
         const metal_obj = makeLineSegments(metal_material, metal_vertex_arr,
@@ -409,7 +410,6 @@ class ModelBag {
     const metal_color_arr = [];
     const metal_bond_type_arr = [];
     const atom_arr = [];
-    const metal_color = this.conf.colors.center;
     const hydrogens = this.conf.hydrogens;
     for (let i = 0; i < visible_atoms.length; i++) {
       const atom = visible_atoms[i];
@@ -424,9 +424,9 @@ class ModelBag {
         if (!hydrogens && other.element === 'H') continue;
         const bond_type = atom.bond_types[j];
         if (bond_type === BondType.Metal) {
-          const mid = this.bond_half_end(atom, other, radius * 0.6);
+          const mid = this.bond_half_end(atom, other, radius * 0.5);
           metal_vertex_arr.push(atom.xyz, mid);
-          metal_color_arr.push(metal_color, metal_color);
+          metal_color_arr.push(color, color);
           metal_bond_type_arr.push(bond_type, bond_type);
         } else if (bond_type === BondType.Double) {
           this.add_offset_stick(vertex_arr, color_arr, bond_type_arr,
@@ -461,7 +461,7 @@ class ModelBag {
     }
     if (metal_vertex_arr.length !== 0) {
       const metal_obj = makeSticks(metal_vertex_arr, metal_color_arr,
-                                   radius * 0.6);
+                                   radius * 0.5);
       metal_obj.userData.bond_types = metal_bond_type_arr;
       this.objects.push(metal_obj);
     }
@@ -679,6 +679,8 @@ export class Viewer {
   xhr_headers: Record<string, string>;
   monomer_cif_cache: Record<string, Promise<string | null>>;
   last_bonding_info: GemmiBondingInfo | null;
+  sym_model_bags: ModelBag[];
+
   gemmi_factory: (() => Promise<GemmiModule>) | null;
   gemmi_module: GemmiModule | null;
   gemmi_loading: Promise<GemmiModule> | null;
@@ -728,6 +730,7 @@ export class Viewer {
     this.xhr_headers = {};
     this.monomer_cif_cache = {};
     this.last_bonding_info = null;
+    this.sym_model_bags = [];
     this.gemmi_factory = null;
     this.gemmi_module = null;
     this.gemmi_loading = null;
@@ -1019,6 +1022,33 @@ export class Viewer {
     return this.renderer && this.renderer.extensions.get('EXT_frag_depth');
   }
 
+  make_objects_translucent(objects: object[]) {
+    for (const obj of objects) {
+      const o = obj as any;
+      if (o.material) {
+        this.set_material_opacity(o.material, 0.5);
+      }
+      if (o.children) {
+        for (const child of o.children) {
+          if (child.material) {
+            this.set_material_opacity(child.material, 0.5);
+          }
+        }
+      }
+    }
+  }
+
+  set_material_opacity(material: any, opacity: number) {
+    material.transparent = true;
+    if (material.fragmentShader) {
+      material.fragmentShader = material.fragmentShader.replace(
+        /gl_FragColor\s*=\s*vec4\(([^,]+),\s*1\.0\)/g,
+        'gl_FragColor = vec4($1, ' + opacity.toFixed(1) + ')'
+      );
+      material.needsUpdate = true;
+    }
+  }
+
   set_model_objects(model_bag: ModelBag) {
     model_bag.objects = [];
     model_bag.atom_array = [];
@@ -1104,7 +1134,8 @@ export class Viewer {
   // Add/remove label if `show` is specified, toggle otherwise.
   toggle_label(pick: {bag?: ModelBag, atom?: Atom}, show?: boolean) {
     if (pick.atom == null) return;
-    const text = pick.atom.short_label();
+    const symop = pick.bag && pick.bag.symop ? ' ' + pick.bag.symop : '';
+    const text = pick.atom.short_label() + symop;
     const uid = text; // we assume that the labels inside one model are unique
     const is_shown = (uid in this.labels);
     if (show === undefined) show = !is_shown;
@@ -1350,6 +1381,58 @@ export class Viewer {
       this.toggle_model_visibility(model_bag, show);
     }
     this.hud(show_all ? 'All models visible' : 'Inactive models hidden');
+  }
+
+  toggle_symmetry() {
+    // If symmetry mates are already shown, remove them
+    if (this.sym_model_bags.length > 0) {
+      for (const bag of this.sym_model_bags) {
+        this.clear_model_objects(bag);
+        const idx = this.model_bags.indexOf(bag);
+        if (idx !== -1) this.model_bags.splice(idx, 1);
+      }
+      this.sym_model_bags = [];
+      this.hud('symmetry mates hidden');
+      this.request_render();
+      return;
+    }
+    const bag = this.selected.bag || this.model_bags[0];
+    if (bag == null || bag.gemmi_selection == null) {
+      this.hud('No model with gemmi data loaded.');
+      return;
+    }
+    const gemmi = bag.gemmi_selection.gemmi;
+    const structure = bag.gemmi_selection.structure;
+    if (!gemmi.get_nearby_sym_ops) {
+      this.hud('Symmetry functions not available in this gemmi build.');
+      return;
+    }
+    const pos: [number, number, number] = [this.target.x, this.target.y, this.target.z];
+    const radius = 10;
+    const images = gemmi.get_nearby_sym_ops(structure, pos, radius);
+    if (images.size() === 0) {
+      this.hud('No symmetry mates within ' + radius + '\u00C5');
+      images.delete();
+      return;
+    }
+    const n = images.size();
+    for (let i = 0; i < n; i++) {
+      const image = images.get(i)!;
+      const sym_st = gemmi.get_sym_image(structure, image);
+      const model = modelFromGemmiStructure(gemmi, sym_st, bag.model.bond_data);
+      sym_st.delete();
+      const sym_bag = new ModelBag(model, this.config, this.window_size);
+      sym_bag.hue_shift = 0;
+      sym_bag.symop = image.symmetry_code(true);
+      sym_bag.visible = true;
+      this.model_bags.push(sym_bag);
+      this.set_model_objects(sym_bag);
+      this.make_objects_translucent(sym_bag.objects);
+      this.sym_model_bags.push(sym_bag);
+    }
+    this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') + ' shown');
+    images.delete();
+    this.request_render();
   }
 
   permalink() {
@@ -1681,6 +1764,10 @@ export class Viewer {
                ' hydrogens (if any)');
       this.redraw_models();
     };
+    // backslash
+    kb[220] = function (this: Viewer) {
+      this.toggle_symmetry();
+    };
     // comma
     kb[188] = function (this: Viewer, evt: KeyboardEvent) {
       if (evt.shiftKey) this.shift_clip(1);
@@ -1727,7 +1814,7 @@ export class Viewer {
     const pick = this.pick_atom(mouse, this.camera);
     if (pick) {
       const atom = pick.atom;
-      this.hud(pick.bag.label + ' ' + atom.long_label());
+      this.hud(pick.bag.label + ' ' + atom.long_label(pick.bag.symop));
       this.dbl_click_callback(pick);
       const color = this.config.colors[atom.element] || this.config.colors.def;
       const size = 2.5 * scale_by_height(this.config.bond_line,
@@ -1857,7 +1944,7 @@ export class Viewer {
   }
 
   select_atom(pick: {bag: ModelBag, atom: Atom}, options: {steps?: number}={}) {
-    this.hud('-> ' + pick.bag.label + ' ' + pick.atom.long_label());
+    this.hud('-> ' + pick.bag.label + ' ' + pick.atom.long_label(pick.bag.symop));
     const xyz = pick.atom.xyz;
     this.controls.go_to(new Vector3(xyz[0], xyz[1], xyz[2]),
                         null, null, options.steps);
@@ -2379,6 +2466,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   '&lt;/> = move clip',
   'M/N = zoom',
   'U = unitcell box',
+  '\\ = toggle symmetry',
   'Y = hydrogens',
   'V = inactive models',
   'R = center view',
