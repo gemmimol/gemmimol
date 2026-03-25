@@ -703,6 +703,8 @@ export class Viewer {
   help_el: HTMLElement | null;
   cid_dialog_el: HTMLDivElement | null;
   cid_input_el: HTMLInputElement | null;
+  metals_select_el: HTMLSelectElement | null;
+  ligands_select_el: HTMLSelectElement | null;
   initial_hud_html: string;
   fps_text: string;
   last_frame_time: number;
@@ -806,6 +808,8 @@ export class Viewer {
     this.help_el = get_elem('help');
     this.cid_dialog_el = null;
     this.cid_input_el = null;
+    this.metals_select_el = null;
+    this.ligands_select_el = null;
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
@@ -834,6 +838,8 @@ export class Viewer {
       el.tabIndex = 0;
     }
     this.create_cid_dialog();
+    this.create_metals_menu();
+    this.create_ligands_menu();
     this.decor.zoom_grid.visible = false;
     this.scene.add(this.decor.zoom_grid);
 
@@ -1535,6 +1541,89 @@ export class Viewer {
     this.cid_input_el = input;
   }
 
+  create_nav_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+    select.style.color = '#ddd';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    select.addEventListener('change', () => {
+      const idx = parseInt(select.value, 10);
+      const bag = this.selected.bag || this.model_bags[0];
+      if (bag && idx >= 0 && idx < bag.model.atoms.length) {
+        this.select_atom({bag, atom: bag.model.atoms[idx]}, {steps: 30});
+      }
+      select.selectedIndex = 0;
+    });
+    select.addEventListener('keydown', (evt: KeyboardEvent) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
+  create_metals_menu() {
+    if (typeof document === 'undefined' || this.container == null) return;
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'absolute';
+    wrapper.style.left = '5px';
+    wrapper.style.top = '5px';
+    wrapper.style.zIndex = '20';
+    wrapper.style.display = 'flex';
+    wrapper.style.gap = '4px';
+    this.metals_select_el = this.create_nav_select();
+    this.ligands_select_el = this.create_nav_select();
+    wrapper.appendChild(this.metals_select_el);
+    wrapper.appendChild(this.ligands_select_el);
+    this.container.appendChild(wrapper);
+  }
+
+  create_ligands_menu() {
+    // created together with metals menu
+  }
+
+  update_nav_menus() {
+    const bag = this.model_bags[this.model_bags.length - 1];
+    this.update_nav_select(this.metals_select_el, 'Metals', bag,
+      (atom) => atom.is_ion());
+    this.update_nav_select(this.ligands_select_el, 'Ligands', bag,
+      (atom) => atom.is_ligand && !atom.is_ion() && !atom.is_water());
+  }
+
+  update_nav_select(select: HTMLSelectElement | null, label: string,
+                    bag: ModelBag | undefined,
+                    filter: (atom: Atom) => boolean) {
+    if (select == null) return;
+    select.innerHTML = '';
+    if (bag == null) { select.style.display = 'none'; return; }
+    // collect unique residues matching the filter
+    const seen = new Set<string>();
+    const items: {label: string, index: number}[] = [];
+    for (let i = 0; i < bag.model.atoms.length; i++) {
+      const atom = bag.model.atoms[i];
+      if (!filter(atom)) continue;
+      const resid = atom.resname + '/' + atom.seqid + '/' + atom.chain;
+      if (seen.has(resid)) continue;
+      seen.add(resid);
+      items.push({label: atom.short_label(), index: i});
+    }
+    if (items.length === 0) { select.style.display = 'none'; return; }
+    const header = document.createElement('option');
+    header.textContent = label + ' (' + items.length + ')';
+    header.disabled = true;
+    header.selected = true;
+    select.appendChild(header);
+    for (const item of items) {
+      const opt = document.createElement('option');
+      opt.value = String(item.index);
+      opt.textContent = item.label;
+      select.appendChild(opt);
+    }
+    select.style.display = '';
+  }
+
   open_cid_dialog() {
     if (this.cid_dialog_el == null || this.cid_input_el == null) return;
     if (this.selected.bag == null || this.selected.bag.gemmi_selection == null) {
@@ -1563,7 +1652,8 @@ export class Viewer {
     try {
       const sel = this.selection_atoms(cid);
       if (sel.atoms.length === 0) {
-        this.hud('No atoms match selection: ' + cid);
+        this.close_cid_dialog();
+        this.hud('No atoms match selection: ' + cid, 'ERR');
         return;
       }
       if (sel.atoms.length === 1) {
@@ -1573,7 +1663,9 @@ export class Viewer {
       }
       this.close_cid_dialog();
     } catch (e) {
-      this.hud(e.message, 'ERR');
+      this.close_cid_dialog();
+      const msg = (e instanceof Error) ? e.message : 'Invalid CID selection: ' + cid;
+      this.hud(msg, 'ERR');
     }
   }
 
@@ -2026,6 +2118,33 @@ export class Viewer {
     return { bag: bag, atoms: atoms, indices: indices };
   }
 
+  selection_anchor(bag: ModelBag, atoms: Atom[]) {
+    for (const atom of atoms) {
+      if (atom.is_main_conformer() &&
+          ((atom.name === 'CA' && atom.element === 'C') || atom.name === 'P')) {
+        return atom;
+      }
+    }
+    let x = 0, y = 0, z = 0;
+    for (const atom of atoms) {
+      x += atom.xyz[0];
+      y += atom.xyz[1];
+      z += atom.xyz[2];
+    }
+    const n = atoms.length;
+    let anchor = bag.model.get_nearest_atom(x / n, y / n, z / n, 'CA');
+    if (anchor == null) {
+      anchor = bag.model.get_nearest_atom(x / n, y / n, z / n, 'P');
+    }
+    if (anchor != null && anchor.is_main_conformer()) {
+      return anchor;
+    }
+    for (const atom of atoms) {
+      if (atom.is_main_conformer()) return atom;
+    }
+    return atoms[0];
+  }
+
   center_on_selection(cid: string, options: {bag?: ModelBag | null, steps?: number}={}) {
     const sel = this.selection_atoms(cid, options.bag);
     if (sel.atoms.length === 0) {
@@ -2040,6 +2159,8 @@ export class Viewer {
     }
     const n = sel.atoms.length;
     this.hud('selection ' + cid + ': ' + n + ' atoms');
+    this.toggle_label(this.selected, false);
+    this.selected = {bag: sel.bag, atom: this.selection_anchor(sel.bag, sel.atoms)};
     this.controls.go_to(new Vector3(x / n, y / n, z / n),
                         null, null, options.steps);
     this.request_render();
@@ -2103,6 +2224,7 @@ export class Viewer {
     model_bag.gemmi_selection = options.gemmi_selection || null;
     this.model_bags.push(model_bag);
     this.set_model_objects(model_bag);
+    this.update_nav_menus();
     this.request_render();
   }
 
