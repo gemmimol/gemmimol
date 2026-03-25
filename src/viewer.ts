@@ -1445,6 +1445,8 @@ export class Viewer {
           const csb_data = new Int32Array(gemmi.HEAPU8.buffer, csb_ptr, csb_len).slice();
           const vertex_arr: [number, number, number][] = [];
           const color_arr: Color[] = [];
+          const stick_radius = Math.max(this.config.stick_radius,
+                                        this.config.ball_size * 0.5);
           for (let j = 0; j < csb_data.length; j += 3) {
             const a1 = bag.model.atoms[csb_data[j]];
             const a2 = model.atoms[csb_data[j+1]];
@@ -1462,12 +1464,7 @@ export class Viewer {
             color_arr.push(c2[0], c2[0]);
           }
           if (vertex_arr.length > 0) {
-            const linewidth = scale_by_height(this.config.bond_line, this.window_size) * 0.5;
-            const material = makeLineMaterial({
-              linewidth: linewidth,
-              win_size: this.window_size,
-            });
-            const obj = makeLineSegments(material, vertex_arr, color_arr);
+            const obj = makeSticks(vertex_arr, color_arr, stick_radius);
             this.scene.add(obj);
             this.sym_bond_objects.push(obj);
           }
