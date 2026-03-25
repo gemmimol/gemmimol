@@ -1,3 +1,4 @@
 three.js is a link to a clone of THREE - jsometimes useful when analysing src/three-*
-avoid editing generated files like gemmimol.js, instead edit files in src/ and rebuild *.js
-i'm testing it running server from ../gemmimol.github.io/ 
+avoid editing generated files like gemmimol.js, instead edit files in src/ and rebuild js
+i'm testing it running server from ..emmimol.github.io/ 
+wasmfiles are built in../gemmi/wasm/

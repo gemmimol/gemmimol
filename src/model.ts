@@ -103,6 +103,7 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
             new_atom.occ = atom.occ;
             new_atom.b = atom.b_iso;
             new_atom.element = atom.element_uname;
+            new_atom.is_metal = atom.is_metal;
             new_atom.is_ligand = is_ligand;
             new_atom.ss = ss;
             new_atom.strand_sense = strand_sense;
@@ -159,6 +160,7 @@ export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
         new_atom.occ = atom.occ;
         new_atom.b = atom.b_iso;
         new_atom.element = atom.element_uname;
+        new_atom.is_metal = atom.is_metal;
         new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
@@ -382,6 +384,7 @@ class Atom {
   occ: number;
   b: number;
   element: string;
+  is_metal: boolean;
   i_seq: number;
   is_ligand: boolean | null;
   bonds: number[];
@@ -400,6 +403,7 @@ class Atom {
     this.occ = 1.0;
     this.b = 0;
     this.element = '';
+    this.is_metal = false;
     this.i_seq = -1;
     this.is_ligand = null;
     this.bonds = [];

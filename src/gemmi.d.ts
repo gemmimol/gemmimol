@@ -114,6 +114,7 @@ export interface Residue extends ResidueId {
 }
 
 export interface Atom extends ClassHandle {
+  readonly is_metal: boolean;
   altloc: number;
   charge: number;
   serial: number;
@@ -264,4 +265,10 @@ interface EmbindModule {
 }
 
 export type MainModule = WasmModule & typeof RuntimeExports & EmbindModule;
-export default function MainModuleFactory (options?: unknown): Promise<MainModule>;
+export type GemmiModule = MainModule & {
+  read_structure(buf: string | ArrayBuffer, name: string, format?: string): Structure;
+  readCcp4Map(map_buf: string | ArrayBuffer, expand_symmetry?: boolean): Ccp4Map;
+  readDsn6Map(map_buf: string | ArrayBuffer): Dsn6Map;
+  readMtz(mtz_buf: string | ArrayBuffer): Mtz;
+};
+export default function MainModuleFactory (options?: unknown): Promise<GemmiModule>;

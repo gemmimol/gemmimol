@@ -108,6 +108,7 @@ function modelsFromGemmi(gemmi, buffer, name,
             new_atom.occ = atom.occ;
             new_atom.b = atom.b_iso;
             new_atom.element = atom.element_uname;
+            new_atom.is_metal = atom.is_metal;
             new_atom.is_ligand = is_ligand;
             new_atom.ss = ss;
             new_atom.strand_sense = strand_sense;
@@ -164,6 +165,7 @@ function modelFromGemmiStructure(gemmi, st,
         new_atom.occ = atom.occ;
         new_atom.b = atom.b_iso;
         new_atom.element = atom.element_uname;
+        new_atom.is_metal = atom.is_metal;
         new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
@@ -391,6 +393,7 @@ class Atom {
   
   
   
+  
 
   constructor() {
     this.name = '';
@@ -405,6 +408,7 @@ class Atom {
     this.occ = 1.0;
     this.b = 0;
     this.element = '';
+    this.is_metal = false;
     this.i_seq = -1;
     this.is_ligand = null;
     this.bonds = [];
@@ -7376,7 +7380,7 @@ class Viewer {
       return;
     }
     const pos = [this.target.x, this.target.y, this.target.z];
-    const radius = 10;
+    const radius = this.config.map_radius;
     const images = gemmi.get_nearby_sym_ops(structure, pos, radius);
     if (images.size() === 0) {
       this.hud('No symmetry mates within ' + radius + '\u00C5');
@@ -7528,11 +7532,17 @@ class Viewer {
     wrapper.style.top = '5px';
     wrapper.style.zIndex = '20';
     wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.alignItems = 'flex-start';
     wrapper.style.gap = '4px';
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.gap = '4px';
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
-    wrapper.appendChild(this.metals_select_el);
-    wrapper.appendChild(this.ligands_select_el);
+    row.appendChild(this.metals_select_el);
+    row.appendChild(this.ligands_select_el);
+    wrapper.appendChild(row);
     this.container.appendChild(wrapper);
   }
 
@@ -7542,19 +7552,14 @@ class Viewer {
 
   update_nav_menus() {
     const bag = this.model_bags[this.model_bags.length - 1];
-    this.update_nav_select(this.metals_select_el, 'Metals', bag,
-      (atom) => atom.is_ion());
-    this.update_nav_select(this.ligands_select_el, 'Ligands', bag,
-      (atom) => atom.is_ligand && !atom.is_ion() && !atom.is_water());
+    const metal_items = bag ? this.collect_nav_items(bag, (atom) => atom.is_metal) : [];
+    const ligand_items = bag ? this.collect_nav_items(
+      bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
+    this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
+    this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
   }
 
-  update_nav_select(select, label,
-                    bag,
-                    filter) {
-    if (select == null) return;
-    select.innerHTML = '';
-    if (bag == null) { select.style.display = 'none'; return; }
-    // collect unique residues matching the filter
+  collect_nav_items(bag, filter) {
     const seen = new Set();
     const items = [];
     for (let i = 0; i < bag.model.atoms.length; i++) {
@@ -7565,7 +7570,19 @@ class Viewer {
       seen.add(resid);
       items.push({label: atom.short_label(), index: i});
     }
-    if (items.length === 0) { select.style.display = 'none'; return; }
+    return items;
+  }
+
+  update_nav_select(select, label,
+                    bag,
+                    items) {
+    if (select == null) return;
+    select.innerHTML = '';
+    if (bag == null) {
+      select.style.display = 'none';
+      select.disabled = true;
+      return;
+    }
     const header = document.createElement('option');
     header.textContent = label + ' (' + items.length + ')';
     header.disabled = true;
@@ -7577,6 +7594,7 @@ class Viewer {
       opt.textContent = item.label;
       select.appendChild(opt);
     }
+    select.disabled = (items.length === 0);
     select.style.display = '';
   }
 

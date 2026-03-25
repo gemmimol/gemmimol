@@ -1420,7 +1420,7 @@ export class Viewer {
       return;
     }
     const pos: [number, number, number] = [this.target.x, this.target.y, this.target.z];
-    const radius = 10;
+    const radius = this.config.map_radius;
     const images = gemmi.get_nearby_sym_ops(structure, pos, radius);
     if (images.size() === 0) {
       this.hud('No symmetry mates within ' + radius + '\u00C5');
@@ -1572,11 +1572,17 @@ export class Viewer {
     wrapper.style.top = '5px';
     wrapper.style.zIndex = '20';
     wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.alignItems = 'flex-start';
     wrapper.style.gap = '4px';
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.gap = '4px';
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
-    wrapper.appendChild(this.metals_select_el);
-    wrapper.appendChild(this.ligands_select_el);
+    row.appendChild(this.metals_select_el);
+    row.appendChild(this.ligands_select_el);
+    wrapper.appendChild(row);
     this.container.appendChild(wrapper);
   }
 
@@ -1586,19 +1592,14 @@ export class Viewer {
 
   update_nav_menus() {
     const bag = this.model_bags[this.model_bags.length - 1];
-    this.update_nav_select(this.metals_select_el, 'Metals', bag,
-      (atom) => atom.is_ion());
-    this.update_nav_select(this.ligands_select_el, 'Ligands', bag,
-      (atom) => atom.is_ligand && !atom.is_ion() && !atom.is_water());
+    const metal_items = bag ? this.collect_nav_items(bag, (atom) => atom.is_metal) : [];
+    const ligand_items = bag ? this.collect_nav_items(
+      bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
+    this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
+    this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
   }
 
-  update_nav_select(select: HTMLSelectElement | null, label: string,
-                    bag: ModelBag | undefined,
-                    filter: (atom: Atom) => boolean) {
-    if (select == null) return;
-    select.innerHTML = '';
-    if (bag == null) { select.style.display = 'none'; return; }
-    // collect unique residues matching the filter
+  collect_nav_items(bag: ModelBag, filter: (atom: Atom) => boolean) {
     const seen = new Set<string>();
     const items: {label: string, index: number}[] = [];
     for (let i = 0; i < bag.model.atoms.length; i++) {
@@ -1609,7 +1610,19 @@ export class Viewer {
       seen.add(resid);
       items.push({label: atom.short_label(), index: i});
     }
-    if (items.length === 0) { select.style.display = 'none'; return; }
+    return items;
+  }
+
+  update_nav_select(select: HTMLSelectElement | null, label: string,
+                    bag: ModelBag | undefined,
+                    items: {label: string, index: number}[]) {
+    if (select == null) return;
+    select.innerHTML = '';
+    if (bag == null) {
+      select.style.display = 'none';
+      select.disabled = true;
+      return;
+    }
     const header = document.createElement('option');
     header.textContent = label + ' (' + items.length + ')';
     header.disabled = true;
@@ -1621,6 +1634,7 @@ export class Viewer {
       opt.textContent = item.label;
       select.appendChild(opt);
     }
+    select.disabled = (items.length === 0);
     select.style.display = '';
   }
 
