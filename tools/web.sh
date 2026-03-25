@@ -26,9 +26,8 @@ for path in benchmark/benchmark.js lodash/lodash.min.js platform/platform.js; do
     diff -q "$npath" "$outdir/$npath" || cp "$npath" "$outdir/$npath"
 done
 
-cp gemmimol.js LICENSE perf.html 3kw8_mc_restraints.mmcif "$outdir/"
-cp 3kw8.htm "$outdir/3kw8.html"
-cp 3kw8.htm "$outdir/3kw8.htm"
+cp gemmimol.js LICENSE perf.html 3kw8.htm 3kw8_mc_restraints.mmcif "$outdir/"
+cp "$outdir/3kw8.htm" "$outdir/3kw8.html"
 #cp gemmimol.js.map gemmimol.min.js $outdir/
 cp vendor/wasm/gemmi.wasm vendor/wasm/gemmi.js "$outdir/vendor/wasm/"
 cp perf/* "$outdir/perf/"
