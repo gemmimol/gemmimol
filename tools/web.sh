@@ -4,38 +4,44 @@ outdir="$1"
 
 [ -e src/elmap.ts ] || { echo "Run me from top-level gemmimol dir"; exit 1; }
 
+strip_dev() {
+    grep -v -- -DEV- "$1" > "$2"
+}
+
+mkdir -p "$outdir/src" "$outdir/vendor/wasm" "$outdir/perf" \
+    "$outdir/test" "$outdir/view"
+
 # use README.md without badges
-cat >$outdir/index.md <<EOF
+cat >"$outdir/index.md" <<EOF
 ---
 layout: default
 ---
 
-$(cat README.md | grep -v '^\[!\[' | sed s,https://gemmimol.github.io/,,)
+$(sed '/^\[!\[/d; s,https://gemmimol.github.io/,,' README.md)
 EOF
 
-cp src/*.ts $outdir/src/
+cp src/*.ts "$outdir/src/"
 for path in benchmark/benchmark.js lodash/lodash.min.js platform/platform.js; do
     npath=node_modules/$path
-    diff -q $npath $outdir/$npath || cp $npath $outdir/$npath
+    diff -q "$npath" "$outdir/$npath" || cp "$npath" "$outdir/$npath"
 done
 
-cp gemmimol.js LICENSE perf.html $outdir/
+cp gemmimol.js LICENSE perf.html 3kw8.html 3kw8.htm 3kw8_mc_restraints.mmcif "$outdir/"
 #cp gemmimol.js.map gemmimol.min.js $outdir/
-mkdir -p $outdir/vendor/wasm
-cp vendor/wasm/gemmi.wasm vendor/wasm/gemmi.js $outdir/vendor/wasm/
-cp perf/* $outdir/perf/
-cp test/*.html $outdir/test/
+cp vendor/wasm/gemmi.wasm vendor/wasm/gemmi.js "$outdir/vendor/wasm/"
+cp perf/* "$outdir/perf/"
+cp test/*.html "$outdir/test/"
 
-grep -v -- -DEV- dev.html > $outdir/1mru.html
-grep -v -- -DEV- dual.html > $outdir/dual.html
-grep -v -- -DEV- reciprocal.html > $outdir/reciprocal.html
-grep -v -- -DEV- view.html > $outdir/view/index.html
-sed -e s/1mru/4un4_final/g -e s/\\.map/_m0.map/g <$outdir/1mru.html \
-    >$outdir/4un4.html
-sed -e s/1mru/dimple_thaum/g \
-    < $outdir/1mru.html > $outdir/dimple_thaum.html
+strip_dev dev.html "$outdir/1mru.html"
+strip_dev dual.html "$outdir/dual.html"
+strip_dev reciprocal.html "$outdir/reciprocal.html"
+strip_dev view.html "$outdir/view/index.html"
+sed -e 's/1mru/4un4_final/g' -e 's/\.map/_m0.map/g' \
+    <"$outdir/1mru.html" >"$outdir/4un4.html"
+sed -e 's/1mru/dimple_thaum/g' \
+    <"$outdir/1mru.html" >"$outdir/dimple_thaum.html"
 
-cd $outdir
+cd "$outdir"
 echo "=== $(pwd) ==="
 git status -s
 echo

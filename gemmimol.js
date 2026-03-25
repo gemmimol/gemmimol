@@ -7949,6 +7949,7 @@ class Viewer {
     this.toggle_label(this.selected, false);
     this.selected = pick;
     this.toggle_label(this.selected, true);
+    this.request_render();
   }
 
   selection_atom_indices(cid, model_bag) {
