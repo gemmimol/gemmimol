@@ -33,6 +33,7 @@ export interface NearestImageVector extends ClassHandle, Iterable<NearestImage> 
   get(_0: number): NearestImage | undefined;
   set(_0: number, _1: NearestImage): boolean;
 }
+
 export interface UnitCellParameters extends ClassHandle {
   a: number;
   b: number;
@@ -54,11 +55,21 @@ export interface Isosurface extends ClassHandle {
   resize_input(_0: number): void;
   set_size(_0: number, _1: number, _2: number): void;
   calculate(_0: number, _1: EmbindString): boolean;
-  input_points(): Float32Array;
-  input_values(): Float32Array;
-  vertices(): Float32Array;
-  segments(): Uint32Array;
+  input_points(): any;
+  input_values(): any;
+  vertices(): any;
+  segments(): any;
 }
+
+export interface ResidueSsValue<T extends number> {
+  value: T;
+}
+export type ResidueSs = ResidueSsValue<0>|ResidueSsValue<1>|ResidueSsValue<2>;
+
+export interface ResidueStrandSenseValue<T extends number> {
+  value: T;
+}
+export type ResidueStrandSense = ResidueStrandSenseValue<0>|ResidueStrandSenseValue<1>|ResidueStrandSenseValue<2>|ResidueStrandSenseValue<-1>;
 
 export interface Structure extends ClassHandle {
   cell: UnitCell;
@@ -91,8 +102,8 @@ export interface ResidueId extends ClassHandle {
 }
 
 export interface Residue extends ResidueId {
-  ss_from_file: number;
-  strand_sense_from_file: number;
+  ss_from_file: ResidueSs;
+  strand_sense_from_file: ResidueStrandSense;
   readonly length: number;
   get subchain(): string;
   set subchain(value: EmbindString);
@@ -124,13 +135,19 @@ export interface BondInfo extends ClassHandle {
   add_monomer_cif(_0: EmbindString): void;
 }
 
+export interface CrossSymBonds extends ClassHandle {
+  find(_0: Structure, _1: NearestImage): void;
+  bond_data_ptr(): number;
+  bond_data_size(): number;
+}
+
 export interface SelectionResult extends ClassHandle {
   atom_data_ptr(): number;
   atom_data_size(): number;
   set_atom_indices(_0: Structure, _1: EmbindString, _2: number): void;
 }
 
-export interface Ccp4Map extends ClassHandle {
+export interface MapData extends ClassHandle {
   readonly cell: UnitCell;
   readonly nx: number;
   readonly ny: number;
@@ -138,40 +155,18 @@ export interface Ccp4Map extends ClassHandle {
   readonly mean: number;
   readonly rms: number;
   readonly last_error: string;
+  extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
+  data(): any;
+  isosurface_vertices(): any;
+  isosurface_segments(): any;
+}
+
+export interface Ccp4Map extends MapData {
   read(_0: boolean): boolean;
-  extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
-  data(): Float32Array;
-  isosurface_vertices(): Float32Array;
-  isosurface_segments(): Uint32Array;
 }
 
-export interface Dsn6Map extends ClassHandle {
-  readonly cell: UnitCell;
-  readonly nx: number;
-  readonly ny: number;
-  readonly nz: number;
-  readonly mean: number;
-  readonly rms: number;
-  readonly last_error: string;
+export interface Dsn6Map extends MapData {
   read(): boolean;
-  data(): Float32Array;
-  extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
-  isosurface_vertices(): Float32Array;
-  isosurface_segments(): Uint32Array;
-}
-
-export interface Mtz extends ClassHandle {
-  readonly cell: UnitCell;
-  readonly nx: number;
-  readonly ny: number;
-  readonly nz: number;
-  readonly rmsd: number;
-  readonly last_error: string;
-  read(): boolean;
-  calculate_map(_0: boolean): Float32Array | null;
-  calculate_map_from_labels(_0: EmbindString, _1: EmbindString): Float32Array | null;
-  calculate_wasm_map(_0: boolean): MtzMap | null;
-  calculate_wasm_map_from_labels(_0: EmbindString, _1: EmbindString): MtzMap | null;
 }
 
 export interface MtzMap extends ClassHandle {
@@ -182,10 +177,24 @@ export interface MtzMap extends ClassHandle {
   readonly mean: number;
   readonly rms: number;
   readonly last_error: string;
-  data(): Float32Array;
   extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
-  isosurface_vertices(): Float32Array;
-  isosurface_segments(): Uint32Array;
+  data(): any;
+  isosurface_vertices(): any;
+  isosurface_segments(): any;
+}
+
+export interface Mtz extends ClassHandle {
+  readonly cell: UnitCell;
+  readonly nx: number;
+  readonly ny: number;
+  readonly nz: number;
+  readonly rmsd: number;
+  readonly last_error: string;
+  read(): boolean;
+  calculate_wasm_map(_0: boolean): MtzMap | null;
+  calculate_wasm_map_from_labels(_0: EmbindString, _1: EmbindString): MtzMap | null;
+  calculate_map(_0: boolean): any;
+  calculate_map_from_labels(_0: EmbindString, _1: EmbindString): any;
 }
 
 export type Fractional = [ number, number, number ];
@@ -206,6 +215,8 @@ interface EmbindModule {
   Isosurface: {
     new(): Isosurface;
   };
+  ResidueSs: {Coil: ResidueSsValue<0>, Helix: ResidueSsValue<1>, Strand: ResidueSsValue<2>};
+  ResidueStrandSense: {NotStrand: ResidueStrandSenseValue<0>, Parallel: ResidueStrandSenseValue<1>, First: ResidueStrandSenseValue<2>, Antiparallel: ResidueStrandSenseValue<-1>};
   Structure: {
     new(): Structure;
   };
@@ -228,30 +239,29 @@ interface EmbindModule {
   BondInfo: {
     new(): BondInfo;
   };
+  CrossSymBonds: {
+    new(): CrossSymBonds;
+  };
   SelectionResult: {
     new(): SelectionResult;
   };
   get_sym_image(_0: Structure, _1: NearestImage): Structure;
+  MapData: {};
   Ccp4Map: {
     new(_0: EmbindString): Ccp4Map;
   };
   Dsn6Map: {
     new(_0: EmbindString): Dsn6Map;
   };
+  MtzMap: {};
   Mtz: {
     new(_0: EmbindString): Mtz;
   };
-  MtzMap: {};
   get_nearby_sym_ops(_0: Structure, _1: Position, _2: number): NearestImageVector;
+  get_residue_names(_0: Structure): string;
   get_missing_monomer_names(_0: Structure): string;
   _read_structure(_0: EmbindString, _1: EmbindString, _2: EmbindString): Structure;
 }
 
 export type MainModule = WasmModule & typeof RuntimeExports & EmbindModule;
-export type GemmiModule = MainModule & {
-  read_structure(buf: string | ArrayBuffer, name: string, format?: string): Structure;
-  readCcp4Map(map_buf: string | ArrayBuffer, expand_symmetry?: boolean): Ccp4Map;
-  readDsn6Map(map_buf: string | ArrayBuffer): Dsn6Map;
-  readMtz(mtz_buf: string | ArrayBuffer): Mtz;
-};
-export default function MainModuleFactory (options?: unknown): Promise<GemmiModule>;
+export default function MainModuleFactory (options?: unknown): Promise<MainModule>;

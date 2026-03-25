@@ -680,6 +680,7 @@ export class Viewer {
   monomer_cif_cache: Record<string, Promise<string | null>>;
   last_bonding_info: GemmiBondingInfo | null;
   sym_model_bags: ModelBag[];
+  sym_bond_objects: object[];
 
   gemmi_factory: (() => Promise<GemmiModule>) | null;
   gemmi_module: GemmiModule | null;
@@ -731,6 +732,7 @@ export class Viewer {
     this.monomer_cif_cache = {};
     this.last_bonding_info = null;
     this.sym_model_bags = [];
+    this.sym_bond_objects = [];
     this.gemmi_factory = null;
     this.gemmi_module = null;
     this.gemmi_loading = null;
@@ -1391,7 +1393,11 @@ export class Viewer {
         const idx = this.model_bags.indexOf(bag);
         if (idx !== -1) this.model_bags.splice(idx, 1);
       }
+      for (const obj of this.sym_bond_objects) {
+        this.remove_and_dispose(obj);
+      }
       this.sym_model_bags = [];
+      this.sym_bond_objects = [];
       this.hud('symmetry mates hidden');
       this.request_render();
       return;
@@ -1429,6 +1435,45 @@ export class Viewer {
       this.set_model_objects(sym_bag);
       this.make_objects_translucent(sym_bag.objects);
       this.sym_model_bags.push(sym_bag);
+      // draw cross-symmetry bonds (e.g. metal coordination) from struct_conn
+      if (gemmi.CrossSymBonds) {
+        const csb = new gemmi.CrossSymBonds();
+        csb.find(structure, image);
+        const csb_len = csb.bond_data_size();
+        if (csb_len > 0) {
+          const csb_ptr = csb.bond_data_ptr();
+          const csb_data = new Int32Array(gemmi.HEAPU8.buffer, csb_ptr, csb_len).slice();
+          const vertex_arr: [number, number, number][] = [];
+          const color_arr: Color[] = [];
+          for (let j = 0; j < csb_data.length; j += 3) {
+            const a1 = bag.model.atoms[csb_data[j]];
+            const a2 = model.atoms[csb_data[j+1]];
+            if (!a1 || !a2) continue;
+            const c1 = color_by(bag.conf.color_prop, [a1], bag.conf.colors, bag.hue_shift);
+            const c2 = color_by(sym_bag.conf.color_prop, [a2], sym_bag.conf.colors, sym_bag.hue_shift);
+            const mid: [number, number, number] = [
+              (a1.xyz[0] + a2.xyz[0]) / 2,
+              (a1.xyz[1] + a2.xyz[1]) / 2,
+              (a1.xyz[2] + a2.xyz[2]) / 2,
+            ];
+            vertex_arr.push(a1.xyz, mid);
+            color_arr.push(c1[0], c1[0]);
+            vertex_arr.push(a2.xyz, mid);
+            color_arr.push(c2[0], c2[0]);
+          }
+          if (vertex_arr.length > 0) {
+            const linewidth = scale_by_height(this.config.bond_line, this.window_size) * 0.5;
+            const material = makeLineMaterial({
+              linewidth: linewidth,
+              win_size: this.window_size,
+            });
+            const obj = makeLineSegments(material, vertex_arr, color_arr);
+            this.scene.add(obj);
+            this.sym_bond_objects.push(obj);
+          }
+        }
+        csb.delete();
+      }
     }
     this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') + ' shown');
     images.delete();

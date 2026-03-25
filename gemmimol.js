@@ -54,7 +54,7 @@ function getGemmiBondData(gemmi, st,
     }
     bond_info.get_bond_lines(st);
     const len = bond_info.bond_data_size();
-    const source = (len !== 0 ? 'gemmi' : 'fallback');
+    const source = 'gemmi' ;
     const info = {
       source: source,
       monomers_requested: monomers_requested,
@@ -77,12 +77,6 @@ function modelsFromGemmi(gemmi, buffer, name,
     const bond_data = bond_result.bond_data;
     const cell = st.cell;  // TODO: check if a copy of cell is created here
     const models = [];
-    let max_bond_atom = -1;
-    if (bond_data != null) {
-      for (let i = 0; i < bond_data.length; i += 3) {
-        max_bond_atom = Math.max(max_bond_atom, bond_data[i], bond_data[i+1]);
-      }
-    }
     for (let i_model = 0; i_model < st.length; ++i_model) {
       const model = st.at(i_model);
       const m = new Model();
@@ -122,10 +116,11 @@ function modelsFromGemmi(gemmi, buffer, name,
         }
       }
       m.calculate_bounds();
-      if (i_model === 0 && bond_data != null && max_bond_atom < m.atoms.length) {
+      if (bond_data != null) {
         m.apply_bond_data(bond_data);
+        m.bond_data = bond_data;
       } else {
-        m.calculate_connectivity();
+        m.calculate_cubicles();
       }
       models.push(m);
     }
@@ -137,7 +132,56 @@ function modelsFromGemmi(gemmi, buffer, name,
   });
 }
 
+function modelFromGemmiStructure(gemmi, st,
+                                        bond_data) {
+  const cell = st.cell;
+  const gm = st.at(0);
+  const m = new Model();
+  m.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
+  let atom_i_seq = 0;
+  for (let i_chain = 0; i_chain < gm.length; ++i_chain) {
+    const chain = gm.at(i_chain);
+    const chain_name = chain.name;
+    for (let i_res = 0; i_res < chain.length; ++i_res) {
+      const res = chain.at(i_res);
+      const seqid = res.seqid_string;
+      const resname = res.name;
+      const ent_type = res.entity_type_string;
+      const ss = res.ss_from_file_string || 'Coil';
+      const strand_sense = res.strand_sense_from_file_string || 'NotStrand';
+      const is_ligand = (ent_type === 'non-polymer' || ent_type === 'branched');
+      for (let i_atom = 0; i_atom < res.length; ++i_atom) {
+        const atom = res.at(i_atom);
+        const new_atom = new Atom();
+        new_atom.i_seq = atom_i_seq++;
+        new_atom.chain = chain_name;
+        new_atom.chain_index = i_chain + 1;
+        new_atom.resname = resname;
+        new_atom.seqid = seqid;
+        new_atom.name = atom.name;
+        new_atom.altloc = atom.altloc === 0 ? '' : String.fromCharCode(atom.altloc);
+        new_atom.xyz = atom.pos;
+        new_atom.occ = atom.occ;
+        new_atom.b = atom.b_iso;
+        new_atom.element = atom.element_uname;
+        new_atom.is_ligand = is_ligand;
+        new_atom.ss = ss;
+        new_atom.strand_sense = strand_sense;
+        m.atoms.push(new_atom);
+      }
+    }
+  }
+  m.calculate_bounds();
+  if (bond_data != null) {
+    m.apply_bond_data(bond_data);
+  } else {
+    m.calculate_cubicles();
+  }
+  return m;
+}
+
 class Model {
+  
   
   
   
@@ -153,6 +197,7 @@ class Model {
     this.has_hydrogens = false;
     this.lower_bound = [0, 0, 0];
     this.upper_bound = [0, 0, 0];
+    this.bond_data = null;
     this.residue_map = null;
     this.cubes = null;
     this.source_model_index = null;
@@ -272,32 +317,6 @@ class Model {
       zsum += xyz[2];
     }
     return [xsum / n_atoms, ysum / n_atoms, zsum / n_atoms];
-  }
-
-  calculate_connectivity() {
-    const atoms = this.atoms;
-    const cubes = this.calculate_cubicles();
-    for (const atom of atoms) {
-      atom.bonds = [];
-      atom.bond_types = [];
-    }
-    //let cnt = 0;
-    for (let i = 0; i < cubes.boxes.length; i++) {
-      const box = cubes.boxes[i];
-      if (box.length === 0) continue;
-      const nearby_atoms = cubes.get_nearby_atoms(i);
-      for (let a = 0; a < box.length; a++) {
-        const atom_id = box[a];
-        for (let k = 0; k < nearby_atoms.length; k++) {
-          const j = nearby_atoms[k];
-          if (j > atom_id && atoms[atom_id].is_bonded_to(atoms[j])) {
-            this.add_bond(atom_id, j, BondType.Unspec);
-            //cnt++;
-          }
-        }
-      }
-    }
-    //console.log(atoms.length + ' atoms, ' + cnt + ' bonds.');
   }
 
   calculate_cubicles() {
@@ -441,27 +460,15 @@ class Atom {
     ].indexOf(this.name) !== -1;
   }
 
-  bond_radius() { // rather crude
-    if (this.element === 'H') return 1.3;
-    if (this.element === 'S' || this.element === 'P') return 2.43;
-    return 1.99;
-  }
-
-  is_bonded_to(other) {
-    const MAX_DIST = 2.2 * 2.2;
-    if (!this.is_same_conformer(other)) return false;
-    const dxyz2 = this.distance_sq(other);
-    if (dxyz2 > MAX_DIST) return false;
-    if (this.element === 'H' && other.element === 'H') return false;
-    return dxyz2 <= this.bond_radius() * other.bond_radius();
-  }
 
   resid() {
     return this.seqid + '/' + this.chain;
   }
 
-  long_label() {
+  long_label(symop) {
+    const symop_str = symop ? ' [' + symop + ']' : '';
     return this.name + ' /' + this.seqid + ' ' + this.resname + '/' + this.chain +
+           symop_str +
            ' - occ: ' + this.occ.toFixed(2) + ' bf: ' + this.b.toFixed(2) +
            ' ele: ' + this.element + ' pos: (' + this.xyz[0].toFixed(2) + ',' +
            this.xyz[1].toFixed(2) + ',' + this.xyz[2].toFixed(2) + ')';
@@ -5507,6 +5514,9 @@ ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
 uniform float radius;
+uniform float shineStrength;
+uniform float shinePower;
+uniform vec3 shineColor;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -5518,15 +5528,28 @@ void main() {
   vec4 projPos = projectionMatrix * pos;
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  float weight = length(cross(vaxis, lightDir)) * central * 0.8 + 0.2;
-  gl_FragColor = vec4(min(weight, 1.0) * vcolor, 1.0);
+  float diffuse = length(cross(vaxis, lightDir)) * central;
+  float weight = diffuse * 0.8 + 0.2;
+  float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
+  vec3 shaded = min(weight, 1.0) * vcolor;
+  gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
 ${fog_end_fragment}
 }`;
 
-function makeSticks(vertex_arr, color_arr, radius) {
+
+
+
+
+
+
+function makeSticks(vertex_arr, color_arr, radius,
+                    options = {}) {
   const uniforms = makeUniforms({
     radius: radius,
     lightDir: light_dir,
+    shineStrength: options.shineStrength || 0.0,
+    shinePower: options.shinePower || 8.0,
+    shineColor: options.shineColor || new Color(0xffffff),
   });
   const material = new ShaderMaterial({
     uniforms: uniforms,
@@ -6206,12 +6229,14 @@ class ModelBag {
   
   
   
+  
 
   constructor(model, config, win_size) {
     this.model = model;
     this.label = '(model #' + ++ModelBag.ctor_counter + ')';
     this.visible = true;
     this.hue_shift = 0;
+    this.symop = '';
     this.conf = config;
     this.win_size = win_size;
     this.objects = []; // list of three.js objects
@@ -6245,7 +6270,6 @@ class ModelBag {
     const metal_bond_type_arr = [];
     const sphere_arr = [];
     const sphere_color_arr = [];
-    const metal_color = this.conf.colors.center;
     const hydrogens = this.conf.hydrogens;
     for (let i = 0; i < visible_atoms.length; i++) {
       const atom = visible_atoms[i];
@@ -6271,7 +6295,7 @@ class ModelBag {
               atom.midpoint(other) :
               this.bond_half_end(atom, other, ball_size * 0.3);
             metal_vertex_arr.push(atom.xyz, mid);
-            metal_color_arr.push(metal_color, metal_color);
+            metal_color_arr.push(color, color);
             metal_bond_type_arr.push(bond_type, bond_type);
           } else {
             const mid = ball_size == null ?
@@ -6295,7 +6319,7 @@ class ModelBag {
       }
       if (metal_vertex_arr.length !== 0) {
         const metal_obj = makeSticks(metal_vertex_arr, metal_color_arr,
-                                     ball_size * 0.3);
+                                     ball_size * 0.25);
         metal_obj.userData.bond_types = metal_bond_type_arr;
         this.objects.push(metal_obj);
       }
@@ -6315,7 +6339,7 @@ class ModelBag {
       }
       if (metal_vertex_arr.length !== 0) {
         const metal_material = makeLineMaterial({
-          linewidth: linewidth * 0.6,
+          linewidth: linewidth * 0.5,
           win_size: this.win_size,
         });
         const metal_obj = makeLineSegments(metal_material, metal_vertex_arr,
@@ -6342,7 +6366,6 @@ class ModelBag {
     const metal_color_arr = [];
     const metal_bond_type_arr = [];
     const atom_arr = [];
-    const metal_color = this.conf.colors.center;
     const hydrogens = this.conf.hydrogens;
     for (let i = 0; i < visible_atoms.length; i++) {
       const atom = visible_atoms[i];
@@ -6357,9 +6380,9 @@ class ModelBag {
         if (!hydrogens && other.element === 'H') continue;
         const bond_type = atom.bond_types[j];
         if (bond_type === BondType.Metal) {
-          const mid = this.bond_half_end(atom, other, radius * 0.6);
+          const mid = this.bond_half_end(atom, other, radius * 0.5);
           metal_vertex_arr.push(atom.xyz, mid);
-          metal_color_arr.push(metal_color, metal_color);
+          metal_color_arr.push(color, color);
           metal_bond_type_arr.push(bond_type, bond_type);
         } else if (bond_type === BondType.Double) {
           this.add_offset_stick(vertex_arr, color_arr, bond_type_arr,
@@ -6394,7 +6417,7 @@ class ModelBag {
     }
     if (metal_vertex_arr.length !== 0) {
       const metal_obj = makeSticks(metal_vertex_arr, metal_color_arr,
-                                   radius * 0.6);
+                                   radius * 0.5);
       metal_obj.userData.bond_types = metal_bond_type_arr;
       this.objects.push(metal_obj);
     }
@@ -6614,6 +6637,9 @@ class Viewer {
   
   
   
+
+  
+  
   
   
   
@@ -6661,6 +6687,8 @@ class Viewer {
     this.xhr_headers = {};
     this.monomer_cif_cache = {};
     this.last_bonding_info = null;
+    this.sym_model_bags = [];
+    this.sym_bond_objects = [];
     this.gemmi_factory = null;
     this.gemmi_module = null;
     this.gemmi_loading = null;
@@ -6952,6 +6980,33 @@ class Viewer {
     return this.renderer && this.renderer.extensions.get('EXT_frag_depth');
   }
 
+  make_objects_translucent(objects) {
+    for (const obj of objects) {
+      const o = obj ;
+      if (o.material) {
+        this.set_material_opacity(o.material, 0.5);
+      }
+      if (o.children) {
+        for (const child of o.children) {
+          if (child.material) {
+            this.set_material_opacity(child.material, 0.5);
+          }
+        }
+      }
+    }
+  }
+
+  set_material_opacity(material, opacity) {
+    material.transparent = true;
+    if (material.fragmentShader) {
+      material.fragmentShader = material.fragmentShader.replace(
+        /gl_FragColor\s*=\s*vec4\(([^,]+),\s*1\.0\)/g,
+        'gl_FragColor = vec4($1, ' + opacity.toFixed(1) + ')'
+      );
+      material.needsUpdate = true;
+    }
+  }
+
   set_model_objects(model_bag) {
     model_bag.objects = [];
     model_bag.atom_array = [];
@@ -7037,7 +7092,8 @@ class Viewer {
   // Add/remove label if `show` is specified, toggle otherwise.
   toggle_label(pick, show) {
     if (pick.atom == null) return;
-    const text = pick.atom.short_label();
+    const symop = pick.bag && pick.bag.symop ? ' ' + pick.bag.symop : '';
+    const text = pick.atom.short_label() + symop;
     const uid = text; // we assume that the labels inside one model are unique
     const is_shown = (uid in this.labels);
     if (show === undefined) show = !is_shown;
@@ -7283,6 +7339,101 @@ class Viewer {
       this.toggle_model_visibility(model_bag, show);
     }
     this.hud(show_all ? 'All models visible' : 'Inactive models hidden');
+  }
+
+  toggle_symmetry() {
+    // If symmetry mates are already shown, remove them
+    if (this.sym_model_bags.length > 0) {
+      for (const bag of this.sym_model_bags) {
+        this.clear_model_objects(bag);
+        const idx = this.model_bags.indexOf(bag);
+        if (idx !== -1) this.model_bags.splice(idx, 1);
+      }
+      for (const obj of this.sym_bond_objects) {
+        this.remove_and_dispose(obj);
+      }
+      this.sym_model_bags = [];
+      this.sym_bond_objects = [];
+      this.hud('symmetry mates hidden');
+      this.request_render();
+      return;
+    }
+    const bag = this.selected.bag || this.model_bags[0];
+    if (bag == null || bag.gemmi_selection == null) {
+      this.hud('No model with gemmi data loaded.');
+      return;
+    }
+    const gemmi = bag.gemmi_selection.gemmi;
+    const structure = bag.gemmi_selection.structure;
+    if (!gemmi.get_nearby_sym_ops) {
+      this.hud('Symmetry functions not available in this gemmi build.');
+      return;
+    }
+    const pos = [this.target.x, this.target.y, this.target.z];
+    const radius = 10;
+    const images = gemmi.get_nearby_sym_ops(structure, pos, radius);
+    if (images.size() === 0) {
+      this.hud('No symmetry mates within ' + radius + '\u00C5');
+      images.delete();
+      return;
+    }
+    const n = images.size();
+    for (let i = 0; i < n; i++) {
+      const image = images.get(i);
+      const sym_st = gemmi.get_sym_image(structure, image);
+      const model = modelFromGemmiStructure(gemmi, sym_st, bag.model.bond_data);
+      sym_st.delete();
+      const sym_bag = new ModelBag(model, this.config, this.window_size);
+      sym_bag.hue_shift = 0;
+      sym_bag.symop = image.symmetry_code(true);
+      sym_bag.visible = true;
+      this.model_bags.push(sym_bag);
+      this.set_model_objects(sym_bag);
+      this.make_objects_translucent(sym_bag.objects);
+      this.sym_model_bags.push(sym_bag);
+      // draw cross-symmetry bonds (e.g. metal coordination) from struct_conn
+      if (gemmi.CrossSymBonds) {
+        const csb = new gemmi.CrossSymBonds();
+        csb.find(structure, image);
+        const csb_len = csb.bond_data_size();
+        if (csb_len > 0) {
+          const csb_ptr = csb.bond_data_ptr();
+          const csb_data = new Int32Array(gemmi.HEAPU8.buffer, csb_ptr, csb_len).slice();
+          const vertex_arr = [];
+          const color_arr = [];
+          for (let j = 0; j < csb_data.length; j += 3) {
+            const a1 = bag.model.atoms[csb_data[j]];
+            const a2 = model.atoms[csb_data[j+1]];
+            if (!a1 || !a2) continue;
+            const c1 = color_by(bag.conf.color_prop, [a1], bag.conf.colors, bag.hue_shift);
+            const c2 = color_by(sym_bag.conf.color_prop, [a2], sym_bag.conf.colors, sym_bag.hue_shift);
+            const mid = [
+              (a1.xyz[0] + a2.xyz[0]) / 2,
+              (a1.xyz[1] + a2.xyz[1]) / 2,
+              (a1.xyz[2] + a2.xyz[2]) / 2,
+            ];
+            vertex_arr.push(a1.xyz, mid);
+            color_arr.push(c1[0], c1[0]);
+            vertex_arr.push(a2.xyz, mid);
+            color_arr.push(c2[0], c2[0]);
+          }
+          if (vertex_arr.length > 0) {
+            const linewidth = scale_by_height(this.config.bond_line, this.window_size) * 0.5;
+            const material = makeLineMaterial({
+              linewidth: linewidth,
+              win_size: this.window_size,
+            });
+            const obj = makeLineSegments(material, vertex_arr, color_arr);
+            this.scene.add(obj);
+            this.sym_bond_objects.push(obj);
+          }
+        }
+        csb.delete();
+      }
+    }
+    this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') + ' shown');
+    images.delete();
+    this.request_render();
   }
 
   permalink() {
@@ -7614,6 +7765,10 @@ class Viewer {
                ' hydrogens (if any)');
       this.redraw_models();
     };
+    // backslash
+    kb[220] = function () {
+      this.toggle_symmetry();
+    };
     // comma
     kb[188] = function ( evt) {
       if (evt.shiftKey) this.shift_clip(1);
@@ -7660,7 +7815,7 @@ class Viewer {
     const pick = this.pick_atom(mouse, this.camera);
     if (pick) {
       const atom = pick.atom;
-      this.hud(pick.bag.label + ' ' + atom.long_label());
+      this.hud(pick.bag.label + ' ' + atom.long_label(pick.bag.symop));
       this.dbl_click_callback(pick);
       const color = this.config.colors[atom.element] || this.config.colors.def;
       const size = 2.5 * scale_by_height(this.config.bond_line,
@@ -7790,7 +7945,7 @@ class Viewer {
   }
 
   select_atom(pick, options={}) {
-    this.hud('-> ' + pick.bag.label + ' ' + pick.atom.long_label());
+    this.hud('-> ' + pick.bag.label + ' ' + pick.atom.long_label(pick.bag.symop));
     const xyz = pick.atom.xyz;
     this.controls.go_to(new Vector3(xyz[0], xyz[1], xyz[2]),
                         null, null, options.steps);
@@ -8312,6 +8467,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   '&lt;/> = move clip',
   'M/N = zoom',
   'U = unitcell box',
+  '\\ = toggle symmetry',
   'Y = hydrogens',
   'V = inactive models',
   'R = center view',
@@ -8999,6 +9155,7 @@ exports.makeRibbon = makeRibbon;
 exports.makeSticks = makeSticks;
 exports.makeUniforms = makeUniforms;
 exports.makeWheels = makeWheels;
+exports.modelFromGemmiStructure = modelFromGemmiStructure;
 exports.modelsFromGemmi = modelsFromGemmi;
 exports.set_pdb_and_mtz_dropzone = set_pdb_and_mtz_dropzone;
 
