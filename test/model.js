@@ -59,9 +59,9 @@ describe('Model', () => {
     }
   });
 
-  it('skips CCD fetches for embedded chem comps', () => {
-    var requested = null;
+  it('loads bonds from cif with monomer fetcher', () => {
     var cif_path = path.resolve(__dirname, '5i55.cif');
+    var requested = null;
     return util.load_gemmi().then(function (gemmi) {
       return GM.modelsFromGemmi(gemmi, util.open_as_array_buffer(cif_path), cif_path,
                                 function (resnames) {
@@ -69,8 +69,9 @@ describe('Model', () => {
                                   return Promise.resolve([]);
                                 });
     }).then(function (result) {
-      expect(result.bonding.monomers_requested).toEqual(0);
-      expect(requested).toEqual(null);
+      expect(result.bonding.source).toEqual('gemmi');
+      expect(result.bonding.monomers_requested).toBeGreaterThan(0);
+      expect(requested).not.toEqual(null);
       result.structure.delete();
     });
   });
