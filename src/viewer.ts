@@ -297,7 +297,7 @@ class ModelBag {
     //return atoms.filter(function(a) { return a.element !== 'H'; });
     const non_h = [];
     for (const atom of atoms) {
-      if (atom.element !== 'H') non_h.push(atom);
+      if (!atom.is_hydrogen()) non_h.push(atom);
     }
     return non_h;
   }
@@ -330,7 +330,7 @@ class ModelBag {
       } else { // bonded, draw lines
         for (let j = 0; j < atom.bonds.length; j++) {
           const other = this.model.atoms[atom.bonds[j]];
-          if (!hydrogens && other.element === 'H') continue;
+          if (!hydrogens && other.is_hydrogen()) continue;
           // Coot show X-H bonds as thinner lines in a single color.
           // Here we keep it simple and render such bonds like all others.
           const bond_type = atom.bond_types[j];
@@ -421,7 +421,7 @@ class ModelBag {
       if (atom.bonds.length === 0) continue;
       for (let j = 0; j < atom.bonds.length; j++) {
         const other = this.model.atoms[atom.bonds[j]];
-        if (!hydrogens && other.element === 'H') continue;
+        if (!hydrogens && other.is_hydrogen()) continue;
         const bond_type = atom.bond_types[j];
         if (bond_type === BondType.Metal) {
           const mid = this.bond_half_end(atom, other, radius * 0.5);

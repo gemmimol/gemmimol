@@ -112,6 +112,7 @@ function modelsFromGemmi(gemmi, buffer, name,
             new_atom.is_ligand = is_ligand;
             new_atom.ss = ss;
             new_atom.strand_sense = strand_sense;
+            if (new_atom.is_hydrogen()) m.has_hydrogens = true;
             m.atoms.push(new_atom);
           }
         }
@@ -169,6 +170,7 @@ function modelFromGemmiStructure(gemmi, st,
         new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
+        if (new_atom.is_hydrogen()) m.has_hydrogens = true;
         m.atoms.push(new_atom);
       }
     }
@@ -327,6 +329,30 @@ class Model {
     return cubes;
   }
 
+  add_missing_hydrogen_bonds() {
+    const max_d2 = 1.45 * 1.45;
+    const residues = this.get_residues();
+    for (const atom of this.atoms) {
+      if (!atom.is_hydrogen() || atom.bonds.length !== 0) continue;
+      const residue = residues[atom.resid()];
+      if (residue == null) continue;
+      let nearest = null;
+      let min_d2 = Infinity;
+      for (const other of residue) {
+        if (other === atom || other.is_hydrogen()) continue;
+        if (!atom.is_same_conformer(other)) continue;
+        const d2 = atom.distance_sq(other);
+        if (d2 < min_d2) {
+          min_d2 = d2;
+          nearest = other;
+        }
+      }
+      if (nearest != null && min_d2 <= max_d2) {
+        this.add_bond(atom.i_seq, nearest.i_seq, BondType.Single);
+      }
+    }
+  }
+
   apply_bond_data(bond_data) {
     for (const atom of this.atoms) {
       atom.bonds = [];
@@ -342,6 +368,7 @@ class Model {
       }
       this.add_bond(idx1, idx2, bond_type);
     }
+    this.add_missing_hydrogen_bonds();
     this.calculate_cubicles();
   }
 
@@ -6257,7 +6284,7 @@ class ModelBag {
     //return atoms.filter(function(a) { return a.element !== 'H'; });
     const non_h = [];
     for (const atom of atoms) {
-      if (atom.element !== 'H') non_h.push(atom);
+      if (!atom.is_hydrogen()) non_h.push(atom);
     }
     return non_h;
   }
@@ -6290,7 +6317,7 @@ class ModelBag {
       } else { // bonded, draw lines
         for (let j = 0; j < atom.bonds.length; j++) {
           const other = this.model.atoms[atom.bonds[j]];
-          if (!hydrogens && other.element === 'H') continue;
+          if (!hydrogens && other.is_hydrogen()) continue;
           // Coot show X-H bonds as thinner lines in a single color.
           // Here we keep it simple and render such bonds like all others.
           const bond_type = atom.bond_types[j];
@@ -6381,7 +6408,7 @@ class ModelBag {
       if (atom.bonds.length === 0) continue;
       for (let j = 0; j < atom.bonds.length; j++) {
         const other = this.model.atoms[atom.bonds[j]];
-        if (!hydrogens && other.element === 'H') continue;
+        if (!hydrogens && other.is_hydrogen()) continue;
         const bond_type = atom.bond_types[j];
         if (bond_type === BondType.Metal) {
           const mid = this.bond_half_end(atom, other, radius * 0.5);

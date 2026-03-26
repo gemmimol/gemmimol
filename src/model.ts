@@ -107,6 +107,7 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
             new_atom.is_ligand = is_ligand;
             new_atom.ss = ss;
             new_atom.strand_sense = strand_sense;
+            if (new_atom.is_hydrogen()) m.has_hydrogens = true;
             m.atoms.push(new_atom);
           }
         }
@@ -164,6 +165,7 @@ export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
         new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
+        if (new_atom.is_hydrogen()) m.has_hydrogens = true;
         m.atoms.push(new_atom);
       }
     }
@@ -322,6 +324,30 @@ export class Model {
     return cubes;
   }
 
+  add_missing_hydrogen_bonds() {
+    const max_d2 = 1.45 * 1.45;
+    const residues = this.get_residues();
+    for (const atom of this.atoms) {
+      if (!atom.is_hydrogen() || atom.bonds.length !== 0) continue;
+      const residue = residues[atom.resid()];
+      if (residue == null) continue;
+      let nearest = null;
+      let min_d2 = Infinity;
+      for (const other of residue) {
+        if (other === atom || other.is_hydrogen()) continue;
+        if (!atom.is_same_conformer(other)) continue;
+        const d2 = atom.distance_sq(other);
+        if (d2 < min_d2) {
+          min_d2 = d2;
+          nearest = other;
+        }
+      }
+      if (nearest != null && min_d2 <= max_d2) {
+        this.add_bond(atom.i_seq, nearest.i_seq, BondType.Single);
+      }
+    }
+  }
+
   apply_bond_data(bond_data: Int32Array) {
     for (const atom of this.atoms) {
       atom.bonds = [];
@@ -337,6 +363,7 @@ export class Model {
       }
       this.add_bond(idx1, idx2, bond_type);
     }
+    this.add_missing_hydrogen_bonds();
     this.calculate_cubicles();
   }
 
