@@ -1,6 +1,6 @@
 {
   "name": "gemmimol",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Gemmi-backed macromolecular viewer for crystallographers",
   "keywords": [
     "crystallography",
