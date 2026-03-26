@@ -1,4 +1,5 @@
-import type { GemmiModule, Structure, UnitCell } from './gemmi';
+import type { GemmiModule, Structure, UnitCell,
+              Model as GemmiModel } from './gemmi';
 
 type Num3 = [number, number, number];
 
@@ -65,76 +66,12 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
   }).finally(() => bond_info.delete());
 }
 
-export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: string,
-                                getMonomerCifs?: MonomerFetcher) {
-  const st = gemmi.read_structure(buffer, name);
-  return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
-    const bond_data = bond_result.bond_data;
-    const cell = st.cell;  // TODO: check if a copy of cell is created here
-    const models: Model[] = [];
-    for (let i_model = 0; i_model < st.length; ++i_model) {
-      const model = st.at(i_model);
-      const m = new Model();
-      m.source_model_index = i_model;
-      m.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
-      let atom_i_seq = 0;
-      for (let i_chain = 0; i_chain < model.length; ++i_chain) {
-        const chain = model.at(i_chain);
-        const chain_name = chain.name;
-        for (let i_res = 0; i_res < chain.length; ++i_res) {
-          const res = chain.at(i_res);
-          const seqid = res.seqid_string;
-          const resname = res.name;
-          const ent_type = res.entity_type_string;
-          const ss = res.ss_from_file_string || 'Coil';
-          const strand_sense = res.strand_sense_from_file_string || 'NotStrand';
-          const is_ligand = (ent_type === 'non-polymer' || ent_type === 'branched');
-          for (let i_atom = 0; i_atom < res.length; ++i_atom) {
-            const atom = res.at(i_atom);
-            const new_atom = new Atom();
-            new_atom.i_seq = atom_i_seq++;
-            new_atom.chain = chain_name;
-            new_atom.chain_index = i_chain + 1;
-            new_atom.resname = resname;
-            new_atom.seqid = seqid;
-            new_atom.name = atom.name;
-            new_atom.altloc = atom.altloc === 0 ? '' : String.fromCharCode(atom.altloc);
-            new_atom.xyz = atom.pos;
-            new_atom.occ = atom.occ;
-            new_atom.b = atom.b_iso;
-            new_atom.element = atom.element_uname;
-            new_atom.is_metal = atom.is_metal;
-            new_atom.is_ligand = is_ligand;
-            new_atom.ss = ss;
-            new_atom.strand_sense = strand_sense;
-            if (new_atom.is_hydrogen()) m.has_hydrogens = true;
-            m.atoms.push(new_atom);
-          }
-        }
-      }
-      m.calculate_bounds();
-      if (bond_data != null) {
-        m.apply_bond_data(bond_data);
-        m.bond_data = bond_data;
-      } else {
-        m.calculate_cubicles();
-      }
-      models.push(m);
-    }
-    //console.log("[after modelsFromGemmi] wasm mem:", gemmi.HEAPU8.length / 1024, "kb");
-    return { models: models, bonding: bond_result.info, structure: st };
-  }, function (err) {
-    st.delete();
-    throw err;
-  });
+function copy_unit_cell(gemmi: GemmiModule, cell: UnitCell) {
+  return new gemmi.UnitCell(cell.a, cell.b, cell.c,
+                            cell.alpha, cell.beta, cell.gamma);
 }
 
-export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
-                                        bond_data?: Int32Array | null): Model {
-  const cell = st.cell;
-  const gm = st.at(0);
-  const m = new Model();
-  m.unit_cell = new gemmi.UnitCell(cell.a, cell.b, cell.c, cell.alpha, cell.beta, cell.gamma);
+function fill_model_from_gemmi(gm: GemmiModel, model: Model) {
   let atom_i_seq = 0;
   for (let i_chain = 0; i_chain < gm.length; ++i_chain) {
     const chain = gm.at(i_chain);
@@ -165,17 +102,56 @@ export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
         new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
-        if (new_atom.is_hydrogen()) m.has_hydrogens = true;
-        m.atoms.push(new_atom);
+        if (new_atom.is_hydrogen()) model.has_hydrogens = true;
+        model.atoms.push(new_atom);
       }
     }
   }
-  m.calculate_bounds();
+}
+
+function finalize_model(model: Model, bond_data?: Int32Array | null,
+                        keep_bond_data?: boolean) {
+  model.calculate_bounds();
   if (bond_data != null) {
-    m.apply_bond_data(bond_data);
+    model.apply_bond_data(bond_data);
+    if (keep_bond_data) model.bond_data = bond_data;
   } else {
-    m.calculate_cubicles();
+    model.calculate_cubicles();
   }
+}
+
+export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: string,
+                                getMonomerCifs?: MonomerFetcher) {
+  const st = gemmi.read_structure(buffer, name);
+  return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
+    const bond_data = bond_result.bond_data;
+    const cell = st.cell;  // TODO: check if a copy of cell is created here
+    const models: Model[] = [];
+    for (let i_model = 0; i_model < st.length; ++i_model) {
+      const model = st.at(i_model);
+      const m = new Model();
+      m.source_model_index = i_model;
+      m.unit_cell = copy_unit_cell(gemmi, cell);
+      fill_model_from_gemmi(model, m);
+      finalize_model(m, bond_data, true);
+      models.push(m);
+    }
+    //console.log("[after modelsFromGemmi] wasm mem:", gemmi.HEAPU8.length / 1024, "kb");
+    return { models: models, bonding: bond_result.info, structure: st };
+  }, function (err) {
+    st.delete();
+    throw err;
+  });
+}
+
+export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
+                                        bond_data?: Int32Array | null): Model {
+  const cell = st.cell;
+  const gm = st.at(0);
+  const m = new Model();
+  m.unit_cell = copy_unit_cell(gemmi, cell);
+  fill_model_from_gemmi(gm, m);
+  finalize_model(m, bond_data);
   return m;
 }
 

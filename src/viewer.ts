@@ -839,7 +839,6 @@ export class Viewer {
     }
     this.create_cid_dialog();
     this.create_metals_menu();
-    this.create_ligands_menu();
     this.decor.zoom_grid.visible = false;
     this.scene.add(this.decor.zoom_grid);
 
@@ -1584,10 +1583,6 @@ export class Viewer {
     row.appendChild(this.ligands_select_el);
     wrapper.appendChild(row);
     this.container.appendChild(wrapper);
-  }
-
-  create_ligands_menu() {
-    // created together with metals menu
   }
 
   update_nav_menus() {
