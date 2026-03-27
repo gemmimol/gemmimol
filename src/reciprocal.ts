@@ -462,8 +462,10 @@ export class ReciprocalViewer extends Viewer {
 
   colorize_by_id(color_arr: Float32Array, group_id: number[]) {
     const palette = this.config.colors.lattices;
+    const palette_len = palette.length;
+    if (palette_len === 0) return;
     for (let i = 0; i < group_id.length; i++) {
-      const c = palette[(group_id[i] + 1) % 4];
+      const c = palette[(group_id[i] + 1) % palette_len];
       color_arr[3*i] = c.r;
       color_arr[3*i+1] = c.g;
       color_arr[3*i+2] = c.b;
