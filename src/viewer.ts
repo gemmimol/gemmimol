@@ -1382,9 +1382,10 @@ export class Viewer {
                '"V" is for working with multiple models.');
       return;
     }
+    const active_bag = this.active_model_bag();
     const show_all = !this.model_bags.every(function (m) { return m.visible; });
     for (const model_bag of this.model_bags) {
-      const show = show_all || model_bag === this.selected.bag;
+      const show = show_all || model_bag === active_bag;
       this.toggle_model_visibility(model_bag, show);
     }
     this.hud(show_all ? 'All models visible' : 'Inactive models hidden');
@@ -1393,6 +1394,18 @@ export class Viewer {
   toggle_symmetry() {
     // If symmetry mates are already shown, remove them
     if (this.sym_model_bags.length > 0) {
+      const sym_bags = this.sym_model_bags.slice();
+      const sym_bag_set = new Set(sym_bags);
+      if (this.selected.bag != null && sym_bag_set.has(this.selected.bag)) {
+        this.toggle_label(this.selected, false);
+        const fallback_bag = this.model_bags.find((bag) => !sym_bag_set.has(bag)) || null;
+        this.selected = {bag: fallback_bag, atom: null};
+      }
+      for (const uid in this.labels) {
+        if (!sym_bag_set.has(this.labels[uid].bag)) continue;
+        this.remove_and_dispose(this.labels[uid].o.mesh);
+        delete this.labels[uid];
+      }
       for (const bag of this.sym_model_bags) {
         this.clear_model_objects(bag);
         const idx = this.model_bags.indexOf(bag);
@@ -1403,11 +1416,12 @@ export class Viewer {
       }
       this.sym_model_bags = [];
       this.sym_bond_objects = [];
+      this.update_nav_menus();
       this.hud('symmetry mates hidden');
       this.request_render();
       return;
     }
-    const bag = this.selected.bag || this.model_bags[0];
+    const bag = this.active_model_bag();
     if (bag == null || bag.gemmi_selection == null) {
       this.hud('No model with gemmi data loaded.');
       return;
@@ -1552,7 +1566,7 @@ export class Viewer {
     select.style.display = 'none';
     select.addEventListener('change', () => {
       const idx = parseInt(select.value, 10);
-      const bag = this.selected.bag || this.model_bags[0];
+      const bag = this.active_model_bag();
       if (bag && idx >= 0 && idx < bag.model.atoms.length) {
         this.select_atom({bag, atom: bag.model.atoms[idx]}, {steps: 30});
       }
@@ -1562,6 +1576,14 @@ export class Viewer {
       evt.stopPropagation();
     });
     return select;
+  }
+
+  active_model_bag(preferred?: ModelBag | null) {
+    if (preferred != null) return preferred;
+    if (this.selected.bag != null && this.model_bags.indexOf(this.selected.bag) !== -1) {
+      return this.selected.bag;
+    }
+    return this.model_bags[0] || null;
   }
 
   create_metals_menu() {
@@ -1587,7 +1609,7 @@ export class Viewer {
   }
 
   update_nav_menus() {
-    const bag = this.model_bags[this.model_bags.length - 1];
+    const bag = this.active_model_bag();
     const metal_items = bag ? this.collect_nav_items(bag, (atom) => atom.is_metal) : [];
     const ligand_items = bag ? this.collect_nav_items(
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
@@ -1636,7 +1658,8 @@ export class Viewer {
 
   open_cid_dialog() {
     if (this.cid_dialog_el == null || this.cid_input_el == null) return;
-    if (this.selected.bag == null || this.selected.bag.gemmi_selection == null) {
+    const bag = this.active_model_bag();
+    if (bag == null || bag.gemmi_selection == null) {
       this.hud('Gemmi selection is unavailable for this model.', 'ERR');
       return;
     }
@@ -1987,7 +2010,7 @@ export class Viewer {
   }
 
   current_model_hydrogen_count() {
-    const bag = this.selected.bag || this.model_bags[0];
+    const bag = this.active_model_bag();
     return bag ? bag.model.hydrogen_count : 0;
   }
 
@@ -2101,12 +2124,13 @@ export class Viewer {
                         null, null, options.steps);
     this.toggle_label(this.selected, false);
     this.selected = pick;
+    this.update_nav_menus();
     this.toggle_label(this.selected, true);
     this.request_render();
   }
 
   selection_atom_indices(cid: string, model_bag?: ModelBag | null) {
-    const bag = model_bag || this.selected.bag || this.model_bags[0];
+    const bag = this.active_model_bag(model_bag);
     if (bag == null) throw Error('No model is loaded.');
     if (bag.gemmi_selection == null) {
       throw Error('Gemmi selection is unavailable for this model.');
@@ -2124,7 +2148,7 @@ export class Viewer {
   }
 
   selection_atoms(cid: string, model_bag?: ModelBag | null) {
-    const bag = model_bag || this.selected.bag || this.model_bags[0];
+    const bag = this.active_model_bag(model_bag);
     if (bag == null) throw Error('No model is loaded.');
     const indices = this.selection_atom_indices(cid, bag);
     const atoms = [];
@@ -2178,6 +2202,7 @@ export class Viewer {
     this.hud('selection ' + cid + ': ' + n + ' atoms');
     this.toggle_label(this.selected, false);
     this.selected = {bag: sel.bag, atom: this.selection_anchor(sel.bag, sel.atoms)};
+    this.update_nav_menus();
     this.controls.go_to(new Vector3(x / n, y / n, z / n),
                         null, null, options.steps);
     this.request_render();
@@ -2457,7 +2482,8 @@ export class Viewer {
           },
         });
       }
-      self.selected.bag = self.model_bags[len];
+      self.selected = {bag: self.model_bags[len] || null, atom: null};
+      self.update_nav_menus();
       self.last_bonding_info = result.bonding;
     });
   }
