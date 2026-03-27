@@ -106,7 +106,10 @@ function fill_model_from_gemmi(gm, model) {
         new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
-        if (new_atom.is_hydrogen()) model.has_hydrogens = true;
+        if (new_atom.is_hydrogen()) {
+          model.has_hydrogens = true;
+          model.hydrogen_count++;
+        }
         model.atoms.push(new_atom);
       }
     }
@@ -169,11 +172,13 @@ class Model {
   
   
   
+  
 
   constructor() {
     this.atoms = [];
     this.unit_cell = null;
     this.has_hydrogens = false;
+    this.hydrogen_count = 0;
     this.lower_bound = [0, 0, 0];
     this.upper_bound = [0, 0, 0];
     this.bond_data = null;
@@ -424,10 +429,6 @@ class Atom {
     return dx*dx + dy*dy + dz*dz;
   }
 
-  distance(other) {
-    return Math.sqrt(this.distance_sq(other));
-  }
-
   midpoint(other) {
     return [(this.xyz[0] + other.xyz[0]) / 2,
             (this.xyz[1] + other.xyz[1]) / 2,
@@ -436,10 +437,6 @@ class Atom {
 
   is_hydrogen() {
     return this.element === 'H' || this.element === 'D';
-  }
-
-  is_ion() {
-    return this.element === this.resname;
   }
 
   is_water() {
@@ -4801,8 +4798,8 @@ function makeCube(size, ctr, options) {
 }
 
 function makeMultiColorLines(pos,
-                                    colors,
-                                    linewidth) {
+                             colors,
+                             linewidth) {
   const material = new ShaderMaterial({
     uniforms: makeUniforms({}),
     vertexShader: varcolor_vert,
@@ -7384,7 +7381,8 @@ class Viewer {
     const radius = this.config.map_radius;
     const images = gemmi.get_nearby_sym_ops(structure, pos, radius);
     if (images.size() === 0) {
-      this.hud('No symmetry mates within ' + radius + '\u00C5');
+      this.hud('No symmetry mates within map radius ' + radius +
+               '\u00C5 (use [ and ] to change the map radius)');
       images.delete();
       return;
     }
@@ -7865,8 +7863,10 @@ class Viewer {
     // y
     kb[89] = function () {
       this.config.hydrogens = !this.config.hydrogens;
+      const n_h = this.current_model_hydrogen_count();
       this.hud((this.config.hydrogens ? 'show' : 'hide') +
-               ' hydrogens (if any)');
+               ' hydrogens (' + n_h + ' H/D atom' + (n_h === 1 ? '' : 's') +
+               ' in model)');
       this.redraw_models();
     };
     // backslash
@@ -7943,6 +7943,11 @@ class Viewer {
                           this.relX(info), this.relY(info), info.dist);
     }
     this.request_render();
+  }
+
+  current_model_hydrogen_count() {
+    const bag = this.selected.bag || this.model_bags[0];
+    return bag ? bag.model.hydrogen_count : 0;
   }
 
   touchmove(event) {
@@ -9283,8 +9288,6 @@ exports.makeCube = makeCube;
 exports.makeGrid = makeGrid;
 exports.makeLineMaterial = makeLineMaterial;
 exports.makeLineSegments = makeLineSegments;
-exports.makeLines = makeLines;
-exports.makeMultiColorLines = makeMultiColorLines;
 exports.makeRgbBox = makeRgbBox;
 exports.makeRibbon = makeRibbon;
 exports.makeSticks = makeSticks;

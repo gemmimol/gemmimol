@@ -1422,7 +1422,8 @@ export class Viewer {
     const radius = this.config.map_radius;
     const images = gemmi.get_nearby_sym_ops(structure, pos, radius);
     if (images.size() === 0) {
-      this.hud('No symmetry mates within ' + radius + '\u00C5');
+      this.hud('No symmetry mates within map radius ' + radius +
+               '\u00C5 (use [ and ] to change the map radius)');
       images.delete();
       return;
     }
@@ -1903,8 +1904,10 @@ export class Viewer {
     // y
     kb[89] = function (this: Viewer) {
       this.config.hydrogens = !this.config.hydrogens;
+      const n_h = this.current_model_hydrogen_count();
       this.hud((this.config.hydrogens ? 'show' : 'hide') +
-               ' hydrogens (if any)');
+               ' hydrogens (' + n_h + ' H/D atom' + (n_h === 1 ? '' : 's') +
+               ' in model)');
       this.redraw_models();
     };
     // backslash
@@ -1981,6 +1984,11 @@ export class Viewer {
                           this.relX(info), this.relY(info), info.dist);
     }
     this.request_render();
+  }
+
+  current_model_hydrogen_count() {
+    const bag = this.selected.bag || this.model_bags[0];
+    return bag ? bag.model.hydrogen_count : 0;
   }
 
   touchmove(event: TouchEvent) {

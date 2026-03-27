@@ -79,7 +79,7 @@ void main() {
 ${fog_end_fragment}
 }`;
 
-export function makeLines(pos: Float32Array, color: Color, linewidth: number) {
+function makeLines(pos: Float32Array, color: Color, linewidth: number) {
   const material = new ShaderMaterial({
     uniforms: makeUniforms({vcolor: color}),
     vertexShader: unicolor_vert,
@@ -109,9 +109,9 @@ export function makeCube(size: number, ctr: Vector3, options: CubeOptions) {
   return makeLines(pos, options.color, options.linewidth);
 }
 
-export function makeMultiColorLines(pos: Float32Array,
-                                    colors: Color[],
-                                    linewidth: number) {
+function makeMultiColorLines(pos: Float32Array,
+                             colors: Color[],
+                             linewidth: number) {
   const material = new ShaderMaterial({
     uniforms: makeUniforms({}),
     vertexShader: varcolor_vert,

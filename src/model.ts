@@ -102,7 +102,10 @@ function fill_model_from_gemmi(gm: GemmiModel, model: Model) {
         new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
-        if (new_atom.is_hydrogen()) model.has_hydrogens = true;
+        if (new_atom.is_hydrogen()) {
+          model.has_hydrogens = true;
+          model.hydrogen_count++;
+        }
         model.atoms.push(new_atom);
       }
     }
@@ -159,6 +162,7 @@ export class Model {
   atoms: Atom[];
   unit_cell: UnitCell | null;
   has_hydrogens: boolean;
+  hydrogen_count: number;
   lower_bound: Num3;
   upper_bound: Num3;
   residue_map: Record<string, Atom[]> | null;
@@ -170,6 +174,7 @@ export class Model {
     this.atoms = [];
     this.unit_cell = null;
     this.has_hydrogens = false;
+    this.hydrogen_count = 0;
     this.lower_bound = [0, 0, 0];
     this.upper_bound = [0, 0, 0];
     this.bond_data = null;
@@ -420,10 +425,6 @@ class Atom {
     return dx*dx + dy*dy + dz*dz;
   }
 
-  distance(other: Atom) {
-    return Math.sqrt(this.distance_sq(other));
-  }
-
   midpoint(other: Atom): Num3 {
     return [(this.xyz[0] + other.xyz[0]) / 2,
             (this.xyz[1] + other.xyz[1]) / 2,
@@ -432,10 +433,6 @@ class Atom {
 
   is_hydrogen() {
     return this.element === 'H' || this.element === 'D';
-  }
-
-  is_ion() {
-    return this.element === this.resname;
   }
 
   is_water() {
