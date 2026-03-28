@@ -15,7 +15,7 @@ const banner = `/*!
 
 const basePlugins = [
   sucrase({
-    include: ['**/src/*.ts'],
+    include: ['**/src/**/*.ts'],
     transforms: ['typescript'],
   }),
 ];

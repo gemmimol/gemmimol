@@ -807,6 +807,8 @@ class ElMap {
 
 ElMap.prototype.unit = 'e/\u212B\u00B3';
 
+/* eslint-disable */
+// @ts-nocheck
 // Copyright 2010-2023 Three.js Authors
 // SPDX-License-Identifier: MIT
 
@@ -862,7 +864,7 @@ function euclideanModulo(n, m) {
 }
 
 
-class Quaternion {
+let Quaternion$1 = class Quaternion {
   constructor(x = 0, y = 0, z = 0, w = 1) {
     this._x = x;
     this._y = y;
@@ -992,10 +994,10 @@ class Quaternion {
     }
     return this;
   }
-}
+};
 
 
-class Vector3 {
+let Vector3$1 = class Vector3 {
   constructor(x = 0, y = 0, z = 0) {
     this.x = x;
     this.y = y;
@@ -1193,9 +1195,9 @@ class Vector3 {
     this.z = array[offset + 2];
     return this;
   }
-}
-Vector3.prototype.isVector3 = true;
-const _vector = /*@__PURE__*/ new Vector3();
+};
+Vector3$1.prototype.isVector3 = true;
+const _vector = /*@__PURE__*/ new Vector3$1();
 
 
 class Vector4 {
@@ -1236,7 +1238,7 @@ class Vector4 {
 }
 
 
-class Matrix4 {
+let Matrix4$1 = class Matrix4 {
   constructor() {
     this.elements = [
       1, 0, 0, 0,
@@ -1495,13 +1497,13 @@ class Matrix4 {
 
     return this;
   }
-}
+};
 
-const _zero = /*@__PURE__*/ new Vector3(0, 0, 0);
-const _one = /*@__PURE__*/ new Vector3(1, 1, 1);
-const _x = /*@__PURE__*/ new Vector3();
-const _y = /*@__PURE__*/ new Vector3();
-const _z = /*@__PURE__*/ new Vector3();
+const _zero = /*@__PURE__*/ new Vector3$1(0, 0, 0);
+const _one = /*@__PURE__*/ new Vector3$1(1, 1, 1);
+const _x = /*@__PURE__*/ new Vector3$1();
+const _y = /*@__PURE__*/ new Vector3$1();
+const _z = /*@__PURE__*/ new Vector3$1();
 
 
 function hue2rgb(p, q, t) {
@@ -1513,7 +1515,7 @@ function hue2rgb(p, q, t) {
   return p;
 }
 
-class Color {
+let Color$1 = class Color {
   constructor(r, g, b) {
     this.isColor = true;
     this.r = 1;
@@ -1630,16 +1632,16 @@ class Color {
   getHexString() {
     return ('000000' + this.getHex().toString(16)).slice(-6);
   }
-}
+};
 
 
 //const _vector is already defined above
-const _segCenter = /*@__PURE__*/ new Vector3();
-const _segDir = /*@__PURE__*/ new Vector3();
-const _diff = /*@__PURE__*/ new Vector3();
+const _segCenter = /*@__PURE__*/ new Vector3$1();
+const _segDir = /*@__PURE__*/ new Vector3$1();
+const _diff = /*@__PURE__*/ new Vector3$1();
 
-class Ray {
-  constructor(origin = new Vector3(), direction = new Vector3(0, 0, -1)) {
+let Ray$1 = class Ray {
+  constructor(origin = new Vector3$1(), direction = new Vector3$1(0, 0, -1)) {
     this.origin = origin;
     this.direction = direction;
   }
@@ -1756,8 +1758,10 @@ class Ray {
     this.direction.transformDirection(matrix4);
     return this;
   }
-}
+};
 
+/* eslint-disable */
+// @ts-nocheck
 // Copyright 2010-2023 Three.js Authors
 // SPDX-License-Identifier: MIT
 
@@ -1835,7 +1839,7 @@ class Source {
 
 // textures/Texture.js
 let _textureId = 0;
-class Texture extends EventDispatcher {
+let Texture$1 = class Texture extends EventDispatcher {
   constructor(image) {
     super();
     Object.defineProperty(this, 'id', { value: _textureId++ });
@@ -1863,7 +1867,7 @@ class Texture extends EventDispatcher {
       this.source.needsUpdate = true;
     }
   }
-}
+};
 
 
 // renderers/webgl/WebGLUniforms.js
@@ -1909,7 +1913,7 @@ class Texture extends EventDispatcher {
  *              like .set for an optional property of the object
  *
  */
-const emptyTexture = /*@__PURE__*/ new Texture();
+const emptyTexture = /*@__PURE__*/ new Texture$1();
 
 // --- Utilities ---
 
@@ -2422,7 +2426,7 @@ class Material extends EventDispatcher {
 Material.prototype.isMaterial = true;
 
 // materials/ShaderMaterial.js
-class ShaderMaterial extends Material {
+let ShaderMaterial$1 = class ShaderMaterial extends Material {
   constructor(parameters) {
     super();
     this.type = 'ShaderMaterial';
@@ -2438,8 +2442,8 @@ class ShaderMaterial extends Material {
 
     this.setValues(parameters);
   }
-}
-ShaderMaterial.prototype.isShaderMaterial = true;
+};
+ShaderMaterial$1.prototype.isShaderMaterial = true;
 
 
 // core/Object3D.js
@@ -2448,7 +2452,7 @@ let _object3DId = 0;
 const _addedEvent = { type: 'added' };
 const _removedEvent = { type: 'removed' };
 
-class Object3D extends EventDispatcher {
+let Object3D$1 = class Object3D extends EventDispatcher {
   constructor() {
     super();
 
@@ -2464,10 +2468,10 @@ class Object3D extends EventDispatcher {
 
     this.up = Object3D.DEFAULT_UP.clone();
 
-    const position = new Vector3();
+    const position = new Vector3$1();
     //const rotation = new Euler();
-    const quaternion = new Quaternion();
-    const scale = new Vector3(1, 1, 1);
+    const quaternion = new Quaternion$1();
+    const scale = new Vector3$1(1, 1, 1);
 
     //function onRotationChange() {
     //  quaternion.setFromEuler(rotation, false);
@@ -2500,15 +2504,15 @@ class Object3D extends EventDispatcher {
         value: scale,
       },
       modelViewMatrix: {
-        value: new Matrix4(),
+        value: new Matrix4$1(),
       },
       //normalMatrix: {
       //  value: new Matrix3(),
       //},
     });
 
-    this.matrix = new Matrix4();
-    this.matrixWorld = new Matrix4();
+    this.matrix = new Matrix4$1();
+    this.matrixWorld = new Matrix4$1();
 
     this.matrixAutoUpdate = Object3D.DEFAULT_MATRIX_AUTO_UPDATE;
 
@@ -2591,17 +2595,17 @@ class Object3D extends EventDispatcher {
       //}
     }
   }
-}
+};
 
-Object3D.prototype.isObject3D = true;
-Object3D.DEFAULT_UP = /*@__PURE__*/ new Vector3(0, 1, 0);
-Object3D.DEFAULT_MATRIX_AUTO_UPDATE = true;
-Object3D.DEFAULT_MATRIX_WORLD_AUTO_UPDATE = true;
+Object3D$1.prototype.isObject3D = true;
+Object3D$1.DEFAULT_UP = /*@__PURE__*/ new Vector3$1(0, 1, 0);
+Object3D$1.DEFAULT_MATRIX_AUTO_UPDATE = true;
+Object3D$1.DEFAULT_MATRIX_WORLD_AUTO_UPDATE = true;
 
 
 
 // core/BufferAttribute.js
-class BufferAttribute {
+let BufferAttribute$1 = class BufferAttribute {
   constructor(array, itemSize, normalized = false) {
     if (Array.isArray(array)) {
       throw new TypeError('BufferAttribute: array should be a Typed Array.');
@@ -2626,14 +2630,14 @@ class BufferAttribute {
   }
 
   onUploadCallback() {}
-}
-BufferAttribute.prototype.isBufferAttribute = true;
+};
+BufferAttribute$1.prototype.isBufferAttribute = true;
 
 
 // core/BufferGeometry.js
 let _id = 0;
 
-class BufferGeometry extends EventDispatcher {
+let BufferGeometry$1 = class BufferGeometry extends EventDispatcher {
   constructor() {
     super();
     Object.defineProperty(this, 'id', { value: _id++ });
@@ -2664,12 +2668,12 @@ class BufferGeometry extends EventDispatcher {
   dispose() {
     this.dispatchEvent({ type: 'dispose' });
   }
-}
-BufferGeometry.prototype.isBufferGeometry = true;
+};
+BufferGeometry$1.prototype.isBufferGeometry = true;
 
 
 // objects/Mesh.js
-class Mesh extends Object3D {
+let Mesh$1 = class Mesh extends Object3D$1 {
   constructor(geometry, material) {
     super();
     this.type = 'Mesh';
@@ -2678,18 +2682,18 @@ class Mesh extends Object3D {
     this.geometry = geometry;
     this.material = material;
   }
-}
-Mesh.prototype.isMesh = true;
+};
+Mesh$1.prototype.isMesh = true;
 
 
 // cameras/Camera.js
-class Camera extends Object3D {
+class Camera extends Object3D$1 {
   constructor() {
     super();
     this.type = 'Camera';
-    this.matrixWorldInverse = new Matrix4();
-    this.projectionMatrix = new Matrix4();
-    this.projectionMatrixInverse = new Matrix4();
+    this.matrixWorldInverse = new Matrix4$1();
+    this.projectionMatrix = new Matrix4$1();
+    this.projectionMatrixInverse = new Matrix4$1();
     //this.coordinateSystem = WebGLCoordinateSystem;
   }
 
@@ -2707,7 +2711,7 @@ class Camera extends Object3D {
 Camera.prototype.isCamera = true;
 
 // cameras/OrthographicCamera.js
-class OrthographicCamera extends Camera {
+let OrthographicCamera$1 = class OrthographicCamera extends Camera {
   constructor(left = -1, right = 1, top = 1, bottom = -1, near = 0.1, far = 2000) {
     super();
     this.type = 'OrthographicCamera';
@@ -2736,7 +2740,7 @@ class OrthographicCamera extends Camera {
     this.projectionMatrix.makeOrthographic(left, right, top, bottom, this.near, this.far);
     this.projectionMatrixInverse.copy(this.projectionMatrix).invert();
   }
-}
+};
 
 
 // renderers/webgl/WebGLIndexedBufferRenderer.js (not updated)
@@ -3734,7 +3738,7 @@ function WebGLExtensions( gl ) {
 
 
 // renderers/WebGLRenderer.js (not updated)
-function WebGLRenderer( parameters ) {
+function WebGLRenderer$1( parameters ) {
   parameters = parameters || {};
 
   let _canvas = parameters.canvas !== undefined ? parameters.canvas : document.createElementNS( 'http://www.w3.org/1999/xhtml', 'canvas' ),
@@ -3778,7 +3782,7 @@ function WebGLRenderer( parameters ) {
 
     //
 
-    _clearColor = new Color( 0x000000 ),
+    _clearColor = new Color$1( 0x000000 ),
     _clearAlpha = 0,
 
     _width = _canvas.width,
@@ -3790,9 +3794,9 @@ function WebGLRenderer( parameters ) {
 
     // camera matrices cache
 
-    _projScreenMatrix = new Matrix4(),
+    _projScreenMatrix = new Matrix4$1(),
 
-    _vector3 = new Vector3(),
+    _vector3 = new Vector3$1(),
 
     // info
 
@@ -4471,60 +4475,124 @@ function WebGLRenderer( parameters ) {
 }
 
 // scenes/Fog.js
-class Fog {
+let Fog$1 = class Fog {
   constructor(color, near = 1, far = 1000) {
     this.isFog = true;
     this.name = '';
-    this.color = new Color(color);
+    this.color = new Color$1(color);
     this.near = near;
     this.far = far;
   }
-}
+};
 
 
 // scenes/Scene.js
-class Scene extends Object3D {
+let Scene$1 = class Scene extends Object3D$1 {
   constructor() {
     super();
     this.type = 'Scene';
     this.fog = null;
   }
-}
+};
 
 
 // objects/Line.js
-class Line extends Object3D {
+let Line$1 = class Line extends Object3D$1 {
   constructor(geometry, material) {
     super();
     this.type = 'Line';
     this.geometry = geometry;
     this.material = material;
   }
-}
-Line.prototype.isLine = true;
+};
+Line$1.prototype.isLine = true;
 
 
 // objects/LineSegments.js
-class LineSegments extends Line {
+let LineSegments$1 = class LineSegments extends Line$1 {
   constructor(geometry, material) {
     super(geometry, material);
     this.isLineSegments = true;
     this.type = 'LineSegments';
   }
-}
+};
 
 
 // objects/Points.js
-class Points extends Object3D {
+let Points$1 = class Points extends Object3D$1 {
   constructor(geometry, material) {
     super();
     this.type = 'Points';
     this.geometry = geometry;
     this.material = material;
   }
-}
-Points.prototype.isPoints = true;
+};
+Points$1.prototype.isPoints = true;
 
+var Impl = /*#__PURE__*/Object.freeze({
+__proto__: null,
+BufferAttribute: BufferAttribute$1,
+BufferGeometry: BufferGeometry$1,
+Color: Color$1,
+Fog: Fog$1,
+Line: Line$1,
+LineSegments: LineSegments$1,
+Matrix4: Matrix4$1,
+Mesh: Mesh$1,
+Object3D: Object3D$1,
+OrthographicCamera: OrthographicCamera$1,
+Points: Points$1,
+Quaternion: Quaternion$1,
+Ray: Ray$1,
+Scene: Scene$1,
+ShaderMaterial: ShaderMaterial$1,
+Texture: Texture$1,
+Vector3: Vector3$1,
+WebGLRenderer: WebGLRenderer$1
+});
+
+const impl = Impl ;
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const WebGLRenderer = impl.WebGLRenderer;
+const Fog = impl.Fog;
+const Scene = impl.Scene;
+const Mesh = impl.Mesh;
+const LineSegments = impl.LineSegments;
+const Line = impl.Line;
+const Points = impl.Points;
+const ShaderMaterial = impl.ShaderMaterial;
+const OrthographicCamera = impl.OrthographicCamera;
+const BufferGeometry = impl.BufferGeometry;
+const BufferAttribute = impl.BufferAttribute;
+const Object3D = impl.Object3D;
+const Ray = impl.Ray;
+const Matrix4 = impl.Matrix4;
+const Vector3 = impl.Vector3;
+const Quaternion = impl.Quaternion;
+const Color = impl.Color;
+const Texture = impl.Texture;
+
+/* eslint-disable */
+// @ts-nocheck
 // Copyright 2010-2023 Three.js Authors
 // SPDX-License-Identifier: MIT
 
@@ -4613,12 +4681,12 @@ function CubicPoly() {
 
 //
 
-const tmp = /*@__PURE__*/ new Vector3();
+const tmp = /*@__PURE__*/ new Vector3$1();
 const px = /*@__PURE__*/ new CubicPoly();
 const py = /*@__PURE__*/ new CubicPoly();
 const pz = /*@__PURE__*/ new CubicPoly();
 
-class CatmullRomCurve3 extends Curve {
+let CatmullRomCurve3$1 = class CatmullRomCurve3 extends Curve {
   constructor(points = [], closed = false, curveType = 'centripetal', tension = 0.5) {
     super();
     this.isCatmullRomCurve3 = true;
@@ -4630,7 +4698,7 @@ class CatmullRomCurve3 extends Curve {
     this.tension = tension;
   }
 
-  getPoint(t, optionalTarget = new Vector3()) {
+  getPoint(t, optionalTarget = new Vector3$1()) {
     const point = optionalTarget;
 
     const points = this.points;
@@ -4693,7 +4761,9 @@ class CatmullRomCurve3 extends Curve {
 
     return point;
   }
-}
+};
+
+const CatmullRomCurve3 = CatmullRomCurve3$1;
 
 const CUBE_EDGES =
   [[0, 0, 0], [1, 0, 0],

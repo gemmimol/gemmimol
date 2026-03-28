@@ -1,3 +1,5 @@
+/* eslint-disable */
+// @ts-nocheck
 // Copyright 2010-2023 Three.js Authors
 // SPDX-License-Identifier: MIT
 
@@ -5,7 +7,7 @@
 
 import {
   Quaternion, Vector3, Vector4, Matrix4, Color, Ray, generateUUID
-} from './math.js';
+} from './math';
 
 // constants.js
 let NoBlending = 0;

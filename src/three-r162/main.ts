@@ -1,0 +1,41 @@
+import * as Impl from './main-impl';
+
+const impl = Impl as any;
+
+export type WebGLRenderer = any;
+export type Fog = any;
+export type Scene = any;
+export type Mesh = any;
+export type LineSegments = any;
+export type Line = any;
+export type Points = any;
+export type ShaderMaterial = any;
+export type OrthographicCamera = any;
+export type BufferGeometry = any;
+export type BufferAttribute = any;
+export type Object3D = any;
+export type Ray = any;
+export type Matrix4 = any;
+export type Vector3 = any;
+export type Quaternion = any;
+export type Color = any;
+export type Texture = any;
+
+export const WebGLRenderer: any = impl.WebGLRenderer;
+export const Fog: any = impl.Fog;
+export const Scene: any = impl.Scene;
+export const Mesh: any = impl.Mesh;
+export const LineSegments: any = impl.LineSegments;
+export const Line: any = impl.Line;
+export const Points: any = impl.Points;
+export const ShaderMaterial: any = impl.ShaderMaterial;
+export const OrthographicCamera: any = impl.OrthographicCamera;
+export const BufferGeometry: any = impl.BufferGeometry;
+export const BufferAttribute: any = impl.BufferAttribute;
+export const Object3D: any = impl.Object3D;
+export const Ray: any = impl.Ray;
+export const Matrix4: any = impl.Matrix4;
+export const Vector3: any = impl.Vector3;
+export const Quaternion: any = impl.Quaternion;
+export const Color: any = impl.Color;
+export const Texture: any = impl.Texture;
