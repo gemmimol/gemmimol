@@ -14,7 +14,7 @@ const CLASS_GROUPS = [
     title: 'Exported classes',
     sections: [
       {
-        file: 'main.js',
+        file: 'main-impl.ts',
         classes: [
           'WebGLRenderer',
           'Fog',
@@ -32,7 +32,7 @@ const CLASS_GROUPS = [
         ],
       },
       {
-        file: 'math.js',
+        file: 'math.ts',
         classes: [
           'Quaternion',
           'Vector3',
@@ -43,7 +43,7 @@ const CLASS_GROUPS = [
         ],
       },
       {
-        file: 'extras.js',
+        file: 'extras-impl.ts',
         classes: ['CatmullRomCurve3'],
       },
     ],
@@ -53,7 +53,7 @@ const CLASS_GROUPS = [
     intro: 'These classes are defined in the bundled files but are not exported at the end of those modules.',
     sections: [
       {
-        file: 'main.js',
+        file: 'main-impl.ts',
         classes: [
           'EventDispatcher',
           'Source',
@@ -65,7 +65,7 @@ const CLASS_GROUPS = [
         ],
       },
       {
-        file: 'extras.js',
+        file: 'extras-impl.ts',
         classes: ['Curve'],
       },
     ],
@@ -75,6 +75,12 @@ const CLASS_GROUPS = [
 const CLASS_ORDER = CLASS_GROUPS
   .flatMap((group) => group.sections)
   .flatMap((section) => section.classes);
+
+const LOCAL_IMPL_FILES = new Set(
+  CLASS_GROUPS
+    .flatMap((group) => group.sections)
+    .map((section) => section.file)
+);
 
 function parseArgs(argv) {
   const options = {
@@ -187,7 +193,10 @@ function collectFiles(rootDir) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
-      } else if (entry.isFile() && fullPath.endsWith('.js')) {
+      } else if (
+        entry.isFile() &&
+        (fullPath.endsWith('.js') || LOCAL_IMPL_FILES.has(path.basename(fullPath)))
+      ) {
         files.push(fullPath);
       }
     }

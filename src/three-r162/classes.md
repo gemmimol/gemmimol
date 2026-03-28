@@ -2,29 +2,9 @@
 
 This directory contains three bundled source files with class definitions.
 
-## Regeneration
-
-Run the comparison from the repo root with:
-
-```bash
-npm run compare-three-r162
-```
-
-Show method-level diffs for one class with:
-
-```bash
-node tools/compare-three-r162.js --class Color --diffs
-```
-
-Regenerate this file with:
-
-```bash
-node tools/compare-three-r162.js --write-md
-```
-
 ## Exported classes
 
-### `main.js`
+### `main-impl.ts`
 
 - `WebGLRenderer` - differs in constructor, getContext, getPrecision, getPixelRatio, setPixelRatio, setSize, setViewport, getClearColor, setClearColor, clear, clearColor, clearDepth, dispose, renderBufferDirect, render, setRenderTarget
 - `Fog` - subset 1/3
@@ -40,7 +20,7 @@ node tools/compare-three-r162.js --write-md
 - `Object3D` - differs in constructor, add, remove, updateMatrix, updateMatrixWorld
 - `Texture` - differs in constructor
 
-### `math.js`
+### `math.ts`
 
 - `Quaternion` - differs in constructor, setFromAxisAngle, setFromRotationMatrix, normalize
 - `Vector3` - subset 31/75
@@ -49,7 +29,7 @@ node tools/compare-three-r162.js --write-md
 - `Color` - differs in set, setHex, setRGB, setHSL, getHSL, getHex, getHexString
 - `Ray` - subset 5/21
 
-### `extras.js`
+### `extras-impl.ts`
 
 - `CatmullRomCurve3` - subset 2/5
 
@@ -57,7 +37,7 @@ node tools/compare-three-r162.js --write-md
 
 These classes are defined in the bundled files but are not exported at the end of those modules.
 
-### `main.js`
+### `main-impl.ts`
 
 - `EventDispatcher` - differs in removeEventListener, dispatchEvent
 - `Source` - differs in constructor
@@ -67,6 +47,6 @@ These classes are defined in the bundled files but are not exported at the end o
 - `Material` - differs in constructor, setValues, get needsUpdate, set needsUpdate, update
 - `Camera` - differs in constructor
 
-### `extras.js`
+### `extras-impl.ts`
 
 - `Curve` - differs in constructor
