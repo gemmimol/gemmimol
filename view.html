@@ -78,19 +78,56 @@
   <script>
     V = new GM.Viewer({viewer: "viewer", hud: "hud", help: "help"});
     G = null;
+    function load_optional_mtz(url, callback) {
+      V.load_file(url, {binary: true, progress: true}, function (req) {
+        try {
+          var mtz = G.readMtz(req.response);
+          GM.load_maps_from_mtz_buffer(G, V, mtz);
+          if (callback) callback(true);
+        } catch (e) {
+          if (callback) callback(false);
+        }
+      }, function () {
+        if (callback) callback(false);
+      });
+    }
+    function load_optional_pdbe_mtz(id, callback) {
+      var pdbe_url = 'https://www.ebi.ac.uk/pdbe/coordinates/files/' +
+                     id + '_map.mtz';
+      var pdb_redo_url = 'https://pdb-redo.eu/db/' + id + '/' + id + '_final.mtz';
+      load_optional_mtz(pdbe_url, function (ok) {
+        if (ok) {
+          if (callback) callback('PDBe');
+          return;
+        }
+        load_optional_mtz(pdb_redo_url, function (redo_ok) {
+          if (callback) callback(redo_ok ? 'PDB-REDO' : null);
+        });
+      });
+    }
     function load_from_pdbe(id, callback) {
       V.load_pdb(
           'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif',
           {}, function () {
-          GM.load_maps_from_mtz(G, V,
-            'https://www.ebi.ac.uk/pdbe/coordinates/files/' + id + '_map.mtz',
-            null, callback);
+          load_optional_pdbe_mtz(id, callback);
       });
     }
     function load(use_pdbe) {
       var pdbid = document.getElementById('pdbid').value.toLowerCase();
-      var callback = function () {
-        V.hud('Model and maps for ' + pdbid + ' are loaded.<br/>' +
+      var callback = function (map_source) {
+        var status;
+        if (!use_pdbe) {
+          status = 'Model for ' + pdbid + ' is loaded.<br/>';
+        } else {
+          status = map_source === 'PDBe' ?
+              'Model and maps for ' + pdbid + ' are loaded.<br/>' :
+              map_source === 'PDB-REDO' ?
+              'Model for ' + pdbid + ' is loaded. PDBe MTZ is not available, ' +
+              'so maps were loaded from PDB-REDO.<br/>' :
+              'Model for ' + pdbid + ' is loaded. Neither PDBe nor PDB-REDO ' +
+              'MTZ map is available for this entry.<br/>';
+        }
+        V.hud(status +
               'You may also add <input type="submit" value="PDB-REDO model" ' +
               'onclick="return load_pdb_redo(\'' + pdbid + '\');"/><br/>' +
               'Reload the page to remove all the models and maps.<br/>' +
