@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "strict": false
+  },
+  "files": [
+    "src/all.ts",
+    "src/controls.ts",
+    "src/draw.ts",
+    "src/elmap.ts",
+    "src/gemmi.d.ts",
+    "src/model.ts",
+    "src/mtz.ts",
+    "src/reciprocal.ts",
+    "src/viewer.ts"
+  ]
+}

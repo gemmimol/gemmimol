@@ -6746,6 +6746,7 @@ class Viewer {
   
   
   
+  
 
   constructor(options) {
     // rendered objects
@@ -6835,6 +6836,7 @@ class Viewer {
     this.hud_el = get_elem('hud');
     this.container = get_elem('viewer');
     this.help_el = get_elem('help');
+    this.structure_name_el = null;
     this.cid_dialog_el = null;
     this.cid_input_el = null;
     this.metals_select_el = null;
@@ -6856,6 +6858,9 @@ class Viewer {
     }
 
     if (this.container == null) return; // can be null in headless tests
+    if (window.getComputedStyle(this.container).position === 'static') {
+      this.container.style.position = 'relative';
+    }
     this.renderer.setClearColor(this.config.colors.bg, 1);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.resize();
@@ -6863,6 +6868,7 @@ class Viewer {
     this.update_camera();
     const el = this.renderer.domElement;
     this.container.appendChild(el);
+    this.create_structure_name_badge();
     if (options.focusable) {
       el.tabIndex = 0;
     }
@@ -6910,6 +6916,39 @@ class Viewer {
 
     this.scheduled = false;
     this.request_render();
+  }
+
+  create_structure_name_badge() {
+    if (this.container == null || typeof document === 'undefined') return;
+    const el = document.createElement('div');
+    el.style.display = 'none';
+    el.style.fontSize = '18px';
+    el.style.color = '#ddd';
+    el.style.backgroundColor = 'rgba(0,0,0,0.6)';
+    el.style.position = 'absolute';
+    el.style.top = '10px';
+    el.style.right = '10px';
+    el.style.padding = '3px 10px';
+    el.style.borderRadius = '5px';
+    el.style.zIndex = '9';
+    el.style.letterSpacing = '0.08em';
+    el.style.fontWeight = 'bold';
+    el.style.pointerEvents = 'none';
+    this.container.appendChild(el);
+    this.structure_name_el = el;
+  }
+
+  set_structure_name(name) {
+    const el = this.structure_name_el;
+    if (!el) return;
+    const text = (name || '').trim();
+    if (text !== '') {
+      el.textContent = text.toUpperCase();
+      el.style.display = 'block';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
   }
 
   pick_atom(coords, camera) {
@@ -8512,6 +8551,7 @@ class Viewer {
         });
       }
       self.selected = {bag: self.model_bags[len] || null, atom: null};
+      self.set_structure_name(result.structure.name);
       self.update_nav_menus();
       self.last_bonding_info = result.bonding;
     });

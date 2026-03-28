@@ -51,7 +51,7 @@ const SPOT_SHAPES = ['wheel', 'square'];
 // shift it so the box is centered at 0,0,0,
 // and the translational symmetry doesn't apply.
 export class ReciprocalSpaceMap extends ElMap {
-  box_size: Num3;
+  declare box_size: Num3;
 
   constructor(buf: ArrayBuffer, gemmi: GemmiModule) {
     super();
@@ -215,8 +215,8 @@ export class ReciprocalViewer extends Viewer {
   d_max_inv: number;
   data?: DataType;
   point_material: ShaderMaterial;
-  config: ReciprocalViewerConfig;
-  ColorSchemes: typeof ColorSchemes;
+  declare config: ReciprocalViewerConfig;
+  declare ColorSchemes: typeof ColorSchemes;
 
   constructor(options: Record<string, any> = {}) {
     options.color_scheme = 'solarized dark';

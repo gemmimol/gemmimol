@@ -38,7 +38,8 @@
     "prepack": "npm run build",
     "serve": "serve -l 7890",
     "start": "npm run watch & npm run serve",
-    "test": "npm run lint && tsc --noEmit src/*.ts && rollup -c && npm run download-data && jest --testMatch='**/test/*.js'",
+    "test": "npm run lint && npm run typecheck && rollup -c && npm run download-data && jest --testMatch='**/test/*.js'",
+    "typecheck": "tsc -p .",
     "version": "npm run build && git add -A gemmimol.js gemmimol.min.js",
     "watch": "rollup -c --watch"
   },
