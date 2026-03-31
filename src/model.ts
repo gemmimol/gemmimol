@@ -488,6 +488,62 @@ export class Model {
     }
     return nearest;
   }
+
+  remove_atoms(indices: number[]) {
+    if (indices.length === 0) return 0;
+    const removed = new Uint8Array(this.atoms.length);
+    let removed_count = 0;
+    for (const idx of indices) {
+      if (idx < 0 || idx >= this.atoms.length || removed[idx] !== 0) continue;
+      removed[idx] = 1;
+      removed_count++;
+    }
+    if (removed_count === 0) return 0;
+
+    const old_to_new = new Int32Array(this.atoms.length);
+    old_to_new.fill(-1);
+    const remaining_atoms: Atom[] = [];
+    for (let i = 0; i < this.atoms.length; i++) {
+      if (removed[i] !== 0) continue;
+      const atom = this.atoms[i];
+      atom.i_seq = remaining_atoms.length;
+      old_to_new[i] = atom.i_seq;
+      remaining_atoms.push(atom);
+    }
+
+    for (const atom of remaining_atoms) {
+      const bonds = [];
+      const bond_types = [];
+      for (let i = 0; i < atom.bonds.length; i++) {
+        const other_idx = old_to_new[atom.bonds[i]];
+        if (other_idx < 0) continue;
+        bonds.push(other_idx);
+        bond_types.push(atom.bond_types[i]);
+      }
+      atom.bonds = bonds;
+      atom.bond_types = bond_types;
+    }
+
+    this.atoms = remaining_atoms;
+    this.bond_data = null;
+    this.residue_map = null;
+    this.cubes = null;
+    this.has_hydrogens = false;
+    this.hydrogen_count = 0;
+    for (const atom of this.atoms) {
+      if (!atom.is_hydrogen()) continue;
+      this.has_hydrogens = true;
+      this.hydrogen_count++;
+    }
+    if (this.atoms.length === 0) {
+      this.lower_bound = [0, 0, 0];
+      this.upper_bound = [0, 0, 0];
+    } else {
+      this.calculate_bounds();
+      this.calculate_cubicles();
+    }
+    return removed_count;
+  }
 }
 
 // Single atom and associated labels

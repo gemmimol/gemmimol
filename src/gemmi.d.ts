@@ -127,6 +127,8 @@ export interface Atom extends ClassHandle {
 }
 
 export interface Selection extends ClassHandle {
+  remove_selected(_0: Structure): void;
+  remove_not_selected(_0: Structure): void;
 }
 
 export interface BondInfo extends ClassHandle {
@@ -236,6 +238,7 @@ interface EmbindModule {
   };
   Selection: {
     new(): Selection;
+    new(_0: EmbindString): Selection;
   };
   BondInfo: {
     new(): BondInfo;

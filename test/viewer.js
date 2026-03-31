@@ -88,4 +88,108 @@ describe('Viewer', () => {
       undefined
     );
   });
+
+  function load_viewer_model(filename) {
+    var loaded_viewer = new GM.Viewer('viewer');
+    return loaded_viewer.load_coordinate_buffer(
+      util.open_as_array_buffer(filename), filename, gemmi
+    ).then(function () {
+      return loaded_viewer;
+    });
+  }
+
+  it('deletes selected atom from gemmi-backed model', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      var atom = bag.model.atoms[0];
+      var before = bag.model.atoms.length;
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.select_atom({bag: bag, atom: atom});
+      loaded_viewer.delete_selected('atom');
+      expect(bag.model.atoms.length).toEqual(before - 1);
+      expect(gemmi.make_pdb_string(structure).length).toBeGreaterThan(0);
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
+  it('deletes selected residue from gemmi-backed model', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      var atom = bag.model.atoms[0];
+      var residue_atoms = bag.model.get_residues()[atom.resid()];
+      var before = bag.model.atoms.length;
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.select_atom({bag: bag, atom: atom});
+      loaded_viewer.delete_selected('residue');
+      expect(bag.model.atoms.length).toEqual(before - residue_atoms.length);
+      expect(gemmi.make_mmcif_string(structure).indexOf('loop_')).toBeGreaterThan(-1);
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
+  it('deletes selected chain from gemmi-backed model', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      var atom = bag.model.atoms[0];
+      var chain_atoms = bag.model.atoms.filter(function (item) {
+        return item.chain_index === atom.chain_index;
+      }).length;
+      var before = bag.model.atoms.length;
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.select_atom({bag: bag, atom: atom});
+      loaded_viewer.delete_selected('chain');
+      if (chain_atoms === before) {
+        expect(loaded_viewer.model_bags.length).toEqual(0);
+      } else {
+        expect(loaded_viewer.model_bags[0].model.atoms.length).toEqual(before - chain_atoms);
+      }
+      expect(gemmi.make_pdb_string(structure).length).toBeGreaterThan(0);
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
+  it('trims selected residue to alanine', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      var residues = bag.model.get_residues();
+      var target_atom = null;
+      var target_residue = null;
+      var keep_names = {
+        N: true, CA: true, C: true, O: true, OXT: true, OT1: true, OT2: true, CB: true,
+        H: true, H1: true, H2: true, H3: true, HA: true, HA2: true, HA3: true,
+        HB: true, HB1: true, HB2: true, HB3: true, '1HB': true, '2HB': true, '3HB': true,
+        D: true, D1: true, D2: true, D3: true, DA: true, DA2: true, DA3: true,
+        DB: true, DB1: true, DB2: true, DB3: true, '1DB': true, '2DB': true, '3DB': true,
+      };
+      for (var resid in residues) {
+        var residue = residues[resid];
+        var has_cb = residue.some(function (atom) { return atom.name === 'CB'; });
+        var has_extra = residue.some(function (atom) { return !keep_names[atom.name]; });
+        if (has_cb && has_extra) {
+          target_atom = residue[0];
+          target_residue = residue;
+          break;
+        }
+      }
+      expect(target_atom).not.toBeNull();
+      expect(target_residue).not.toBeNull();
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.select_atom({bag: bag, atom: target_atom});
+      loaded_viewer.trim_selected_to_alanine();
+      var trimmed = bag.model.get_residues()[target_atom.resid()];
+      expect(trimmed.every(function (atom) { return keep_names[atom.name]; })).toBe(true);
+      expect(trimmed.every(function (atom) { return atom.resname === 'ALA'; })).toBe(true);
+      expect(trimmed.length).toBeLessThan(target_residue.length);
+      expect(gemmi.make_pdb_string(structure).indexOf('ALA')).toBeGreaterThan(-1);
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
 });

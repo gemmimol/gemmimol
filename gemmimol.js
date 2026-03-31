@@ -492,6 +492,62 @@ class Model {
     }
     return nearest;
   }
+
+  remove_atoms(indices) {
+    if (indices.length === 0) return 0;
+    const removed = new Uint8Array(this.atoms.length);
+    let removed_count = 0;
+    for (const idx of indices) {
+      if (idx < 0 || idx >= this.atoms.length || removed[idx] !== 0) continue;
+      removed[idx] = 1;
+      removed_count++;
+    }
+    if (removed_count === 0) return 0;
+
+    const old_to_new = new Int32Array(this.atoms.length);
+    old_to_new.fill(-1);
+    const remaining_atoms = [];
+    for (let i = 0; i < this.atoms.length; i++) {
+      if (removed[i] !== 0) continue;
+      const atom = this.atoms[i];
+      atom.i_seq = remaining_atoms.length;
+      old_to_new[i] = atom.i_seq;
+      remaining_atoms.push(atom);
+    }
+
+    for (const atom of remaining_atoms) {
+      const bonds = [];
+      const bond_types = [];
+      for (let i = 0; i < atom.bonds.length; i++) {
+        const other_idx = old_to_new[atom.bonds[i]];
+        if (other_idx < 0) continue;
+        bonds.push(other_idx);
+        bond_types.push(atom.bond_types[i]);
+      }
+      atom.bonds = bonds;
+      atom.bond_types = bond_types;
+    }
+
+    this.atoms = remaining_atoms;
+    this.bond_data = null;
+    this.residue_map = null;
+    this.cubes = null;
+    this.has_hydrogens = false;
+    this.hydrogen_count = 0;
+    for (const atom of this.atoms) {
+      if (!atom.is_hydrogen()) continue;
+      this.has_hydrogens = true;
+      this.hydrogen_count++;
+    }
+    if (this.atoms.length === 0) {
+      this.lower_bound = [0, 0, 0];
+      this.upper_bound = [0, 0, 0];
+    } else {
+      this.calculate_bounds();
+      this.calculate_cubicles();
+    }
+    return removed_count;
+  }
 }
 
 // Single atom and associated labels
@@ -6866,6 +6922,7 @@ class Viewer {
   
   
   
+  
 
   constructor(options) {
     // rendered objects
@@ -6961,6 +7018,7 @@ class Viewer {
     this.metals_select_el = null;
     this.ligands_select_el = null;
     this.download_select_el = null;
+    this.delete_select_el = null;
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
@@ -7801,6 +7859,47 @@ class Viewer {
     return select;
   }
 
+  create_delete_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(64, 0, 0, 0.9)';
+    select.style.color = '#f0d0d0';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    const header = document.createElement('option');
+    header.textContent = 'Delete';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    const options = [
+      {value: 'atom', label: 'atom'},
+      {value: 'residue', label: 'residue'},
+      {value: 'chain', label: 'chain'},
+      {value: 'trim_ala', label: 'trim to Ala'},
+    ];
+    for (const entry of options) {
+      const opt = document.createElement('option');
+      opt.textContent = entry.label;
+      opt.value = entry.value;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => {
+      const scope = select.value ;
+      if (scope === 'atom' || scope === 'residue' || scope === 'chain') {
+        this.delete_selected(scope);
+      } else if (scope === 'trim_ala') {
+        this.trim_selected_to_alanine();
+      }
+      select.value = '';
+    });
+    select.addEventListener('keydown', (evt) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
   active_model_bag(preferred) {
     if (preferred != null) return preferred;
     if (this.selected.bag != null && this.model_bags.indexOf(this.selected.bag) !== -1) {
@@ -7826,9 +7925,11 @@ class Viewer {
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
     this.download_select_el = this.create_download_select();
+    this.delete_select_el = this.create_delete_select();
     row.appendChild(this.metals_select_el);
     row.appendChild(this.ligands_select_el);
     row.appendChild(this.download_select_el);
+    row.appendChild(this.delete_select_el);
     wrapper.appendChild(row);
     this.container.appendChild(wrapper);
   }
@@ -7841,6 +7942,7 @@ class Viewer {
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
     this.update_download_select(this.download_select_el, bag);
+    this.update_delete_select(this.delete_select_el);
   }
 
   collect_nav_items(bag, filter) {
@@ -7891,6 +7993,15 @@ class Viewer {
     select.value = '';
   }
 
+  update_delete_select(select) {
+    if (select == null) return;
+    const editable_bag = this.editable_model_bag();
+    const edit = this.current_edit_target();
+    select.disabled = (edit == null);
+    select.style.display = (editable_bag == null) ? 'none' : '';
+    select.value = '';
+  }
+
   download_target_context(preferred_bag) {
     const bag = preferred_bag || this.active_model_bag();
     if (bag != null && bag.symop === '' && bag.gemmi_selection != null) {
@@ -7924,6 +8035,221 @@ class Viewer {
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(href), 1000);
     this.hud('Downloaded ' + filename + '.');
+  }
+
+  current_edit_target() {
+    const bag = this.selected.bag;
+    const atom = this.selected.atom;
+    if (bag == null || atom == null) return null;
+    if (bag.symop !== '' || bag.gemmi_selection == null) return null;
+    if (this.model_bags.indexOf(bag) === -1) return null;
+    return {bag, atom, ctx: bag.gemmi_selection};
+  }
+
+  editable_model_bag() {
+    const bag = this.active_model_bag();
+    if (bag != null && bag.symop === '' && bag.gemmi_selection != null) {
+      return bag;
+    }
+    const primary = this.model_bags.find((it) => it.symop === '' && it.gemmi_selection != null);
+    if (primary != null) return primary;
+    const any = this.model_bags.find((it) => it.gemmi_selection != null);
+    return any || null;
+  }
+
+  deletion_scope(scope,
+                 bag, atom) {
+    let atoms;
+    let label;
+    if (scope === 'atom') {
+      atoms = [atom];
+      label = atom.short_label();
+    } else if (scope === 'residue') {
+      atoms = bag.model.get_residues()[atom.resid()] || [atom];
+      label = '/' + atom.seqid + ' ' + atom.resname + '/' + atom.chain;
+    } else {
+      atoms = bag.model.atoms.filter((item) => item.chain_index === atom.chain_index);
+      label = atom.chain;
+    }
+    let x = 0, y = 0, z = 0;
+    for (const item of atoms) {
+      x += item.xyz[0];
+      y += item.xyz[1];
+      z += item.xyz[2];
+    }
+    return {
+      atoms: atoms,
+      indices: atoms.map((item) => item.i_seq),
+      label: label,
+      center: atoms.length === 0 ? atom.xyz : [x / atoms.length, y / atoms.length, z / atoms.length] ,
+    };
+  }
+
+  deletion_cid(scope,
+               ctx, atom) {
+    const gm = ctx.structure.at(ctx.model_index);
+    const model_num = gm ? gm.num : ctx.model_index + 1;
+    const chain_part = atom.chain;
+    const residue_part = atom.seqid;
+    if (scope === 'chain') {
+      return chain_part === '' ? '/' + model_num + '//' : '/' + model_num + '/' + chain_part;
+    }
+    if (scope === 'residue') {
+      return '/' + model_num + '/' + chain_part + '/' + residue_part;
+    }
+    const altloc_part = atom.altloc === '' ? ':' : ':' + atom.altloc;
+    return '/' + model_num + '/' + chain_part + '/' + residue_part + '/' + atom.name + altloc_part;
+  }
+
+  remove_from_structure_by_cid(ctx, cid) {
+    if (typeof ctx.gemmi.Selection !== 'function') {
+      throw Error('Deletion is unavailable in this Gemmi build.');
+    }
+    const sel = new ctx.gemmi.Selection(cid);
+    try {
+      sel.remove_selected(ctx.structure);
+    } finally {
+      sel.delete();
+    }
+  }
+
+  find_gemmi_residue(ctx, atom) {
+    const gm = ctx.structure.at(ctx.model_index);
+    if (gm == null) return null;
+    for (let i_chain = 0; i_chain < gm.length; i_chain++) {
+      const chain = gm.at(i_chain);
+      if (chain == null || chain.name !== atom.chain) continue;
+      for (let i_res = 0; i_res < chain.length; i_res++) {
+        const residue = chain.at(i_res);
+        if (residue != null && residue.seqid_string === atom.seqid) return residue;
+      }
+    }
+    return null;
+  }
+
+  should_keep_atom_for_alanine(atom) {
+    return [
+      'N', 'CA', 'C', 'O', 'OXT', 'OT1', 'OT2', 'CB',
+      'H', 'H1', 'H2', 'H3', 'HA', 'HA2', 'HA3',
+      'HB', 'HB1', 'HB2', 'HB3', '1HB', '2HB', '3HB',
+      'D', 'D1', 'D2', 'D3', 'DA', 'DA2', 'DA3',
+      'DB', 'DB1', 'DB2', 'DB3', '1DB', '2DB', '3DB',
+    ].indexOf(atom.name) !== -1;
+  }
+
+  trim_scope_to_alanine(bag, atom) {
+    const residue_atoms = bag.model.get_residues()[atom.resid()] || [atom];
+    const has_cb = residue_atoms.some((item) => item.name === 'CB');
+    const remove_atoms = residue_atoms.filter((item) => !this.should_keep_atom_for_alanine(item));
+    let x = 0, y = 0, z = 0;
+    for (const item of residue_atoms) {
+      x += item.xyz[0];
+      y += item.xyz[1];
+      z += item.xyz[2];
+    }
+    return {
+      atoms: residue_atoms,
+      remove_atoms: remove_atoms,
+      remove_indices: remove_atoms.map((item) => item.i_seq),
+      has_cb: has_cb,
+      label: '/' + atom.seqid + ' ' + atom.resname + '/' + atom.chain,
+      center: [x / residue_atoms.length, y / residue_atoms.length, z / residue_atoms.length] ,
+    };
+  }
+
+  clear_labels_for_bag(bag) {
+    for (const uid in this.labels) {
+      if (this.labels[uid].bag !== bag) continue;
+      this.remove_and_dispose(this.labels[uid].o.mesh);
+      delete this.labels[uid];
+    }
+  }
+
+  apply_deletion_result(bag, center) {
+    if (bag.model.atoms.length === 0) {
+      this.clear_model_objects(bag);
+      const idx = this.model_bags.indexOf(bag);
+      if (idx !== -1) this.model_bags.splice(idx, 1);
+      this.selected = {bag: this.model_bags[0] || null, atom: null};
+      this.update_nav_menus();
+      this.request_render();
+      return;
+    }
+    this.redraw_model(bag);
+    const next_atom = bag.model.get_nearest_atom(center[0], center[1], center[2]) ||
+                      bag.model.atoms[0];
+    this.selected = {bag, atom: next_atom};
+    this.update_nav_menus();
+    this.toggle_label(this.selected, true);
+    this.controls.go_to(new Vector3(next_atom.xyz[0], next_atom.xyz[1], next_atom.xyz[2]),
+                        null, null, 15);
+    this.request_render();
+  }
+
+  delete_selected(scope) {
+    const edit = this.current_edit_target();
+    if (edit == null) {
+      this.hud('Select an atom in a loaded model first.', 'ERR');
+      return;
+    }
+    if (this.sym_model_bags.length > 0) {
+      this.toggle_symmetry();
+    }
+    const target = this.deletion_scope(scope, edit.bag, edit.atom);
+    if (target.indices.length === 0) {
+      this.hud('Nothing selected for deletion.', 'ERR');
+      return;
+    }
+    try {
+      this.remove_from_structure_by_cid(edit.ctx, this.deletion_cid(scope, edit.ctx, edit.atom));
+    } catch (e) {
+      const msg = (e instanceof Error) ? e.message : 'Deletion failed.';
+      this.hud(msg, 'ERR');
+      return;
+    }
+    this.toggle_label(this.selected, false);
+    this.clear_labels_for_bag(edit.bag);
+    edit.bag.model.remove_atoms(target.indices);
+    this.apply_deletion_result(edit.bag, target.center);
+    this.hud('Deleted ' + scope + ' ' + target.label + '.');
+  }
+
+  trim_selected_to_alanine() {
+    const edit = this.current_edit_target();
+    if (edit == null) {
+      this.hud('Select an atom in a loaded model first.', 'ERR');
+      return;
+    }
+    if (this.sym_model_bags.length > 0) {
+      this.toggle_symmetry();
+    }
+    const target = this.trim_scope_to_alanine(edit.bag, edit.atom);
+    if (!target.has_cb) {
+      this.hud('Residue lacks CB and cannot be trimmed to ALA.', 'ERR');
+      return;
+    }
+    const gm_residue = this.find_gemmi_residue(edit.ctx, edit.atom);
+    if (gm_residue == null) {
+      this.hud('Residue is unavailable in the Gemmi structure.', 'ERR');
+      return;
+    }
+    try {
+      for (const atom of target.remove_atoms) {
+        this.remove_from_structure_by_cid(edit.ctx, this.deletion_cid('atom', edit.ctx, atom));
+      }
+      gm_residue.name = 'ALA';
+    } catch (e) {
+      const msg = (e instanceof Error) ? e.message : 'Trim to ALA failed.';
+      this.hud(msg, 'ERR');
+      return;
+    }
+    this.toggle_label(this.selected, false);
+    this.clear_labels_for_bag(edit.bag);
+    edit.bag.model.remove_atoms(target.remove_indices);
+    const residue_atoms = edit.bag.model.get_residues()[edit.atom.resid()] || [];
+    for (const atom of residue_atoms) atom.resname = 'ALA';
+    this.apply_deletion_result(edit.bag, target.center);
+    this.hud('Trimmed ' + target.label + ' to ALA.');
   }
 
   open_cid_dialog() {
@@ -8978,6 +9304,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   'Home/End = stick width',
   'P = nearest Cα',
   'Ctrl+G = go to CID',
+  'Delete menu = selected atom/residue/chain',
   'Shift+P = permalink',
   '(Shift+)space = next res.',
   'Shift+F = full screen',
