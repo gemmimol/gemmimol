@@ -25,8 +25,108 @@ const BondType = {
 } ;
  
 
+
+
+
+
+
+function tokenize_cif_row(line) {
+  const tokens = line.match(/'(?:[^']*)'|"(?:[^"]*)"|\S+/g);
+  if (tokens == null) return [];
+  return tokens.map((token) => {
+    if ((token.startsWith('\'') && token.endsWith('\'')) ||
+        (token.startsWith('"') && token.endsWith('"'))) {
+      return token.slice(1, -1);
+    }
+    return token;
+  });
+}
+
+function extract_cif_loop(text, first_tag) {
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== 'loop_') continue;
+    const tags = [];
+    let j = i + 1;
+    while (j < lines.length && lines[j].startsWith('_')) {
+      tags.push(lines[j].trim());
+      j++;
+    }
+    if (tags[0] !== first_tag) continue;
+    const values = [];
+    for (; j < lines.length; j++) {
+      const trimmed = lines[j].trim();
+      if (trimmed === '' || trimmed === '#') continue;
+      if (trimmed === 'loop_' || trimmed.startsWith('_')) break;
+      values.push(...tokenize_cif_row(lines[j]));
+    }
+    if (tags.length === 0 || values.length < tags.length) return null;
+    const rows = [];
+    for (let k = 0; k + tags.length <= values.length; k += tags.length) {
+      rows.push(values.slice(k, k + tags.length));
+    }
+    return {tags: tags, rows: rows};
+  }
+  return null;
+}
+
+function extract_embedded_monomer_cifs(text, missing_names) {
+  if (missing_names.length === 0) return [];
+  const atom_loop = extract_cif_loop(text, '_chem_comp_atom.comp_id');
+  if (atom_loop == null) return [];
+  const bond_loop = extract_cif_loop(text, '_chem_comp_bond.comp_id');
+  const wanted = new Set(missing_names.map((name) => name.toUpperCase()));
+  const atom_rows = new Map();
+  const bond_rows = new Map();
+
+  for (const row of atom_loop.rows) {
+    const comp_id = (row[0] || '').toUpperCase();
+    if (!wanted.has(comp_id)) continue;
+    const rows = atom_rows.get(comp_id);
+    if (rows) rows.push(row);
+    else atom_rows.set(comp_id, [row]);
+  }
+  if (bond_loop != null) {
+    for (const row of bond_loop.rows) {
+      const comp_id = (row[0] || '').toUpperCase();
+      if (!wanted.has(comp_id)) continue;
+      const rows = bond_rows.get(comp_id);
+      if (rows) rows.push(row);
+      else bond_rows.set(comp_id, [row]);
+    }
+  }
+
+  const monomers = [];
+  for (const comp_id of Array.from(wanted)) {
+    const comp_atom_rows = atom_rows.get(comp_id);
+    if (comp_atom_rows == null || comp_atom_rows.length === 0) continue;
+    const lines = [
+      'data_' + comp_id,
+      '#',
+      '_chem_comp.id ' + comp_id,
+      '#',
+      'loop_',
+      ...atom_loop.tags,
+      ...comp_atom_rows.map((row) => row.join(' ')),
+      '#',
+    ];
+    const comp_bond_rows = bond_rows.get(comp_id);
+    if (bond_loop != null && comp_bond_rows != null && comp_bond_rows.length !== 0) {
+      lines.push(
+        'loop_',
+        ...bond_loop.tags,
+        ...comp_bond_rows.map((row) => row.join(' ')),
+        '#'
+      );
+    }
+    monomers.push({name: comp_id, cif: lines.join('\n') + '\n'});
+  }
+  return monomers;
+}
+
 function getGemmiBondData(gemmi, st,
-                          getMonomerCifs) {
+                          getMonomerCifs,
+                          structure_text) {
   if (typeof gemmi.BondInfo !== 'function') {
     return Promise.resolve({
       bond_data: null,
@@ -39,15 +139,24 @@ function getGemmiBondData(gemmi, st,
     });
   }
   const bond_info = new gemmi.BondInfo();
-  const resnames = getMonomerCifs ?
-    gemmi.get_missing_monomer_names(st).split(',').filter(Boolean) :
-    [];
+  const resnames = gemmi.get_missing_monomer_names(st).split(',').filter(Boolean);
   const monomers_requested = Array.from(new Set(resnames)).length;
-  let loaded_monomers = 0;
-  const load_monomers = (resnames.length !== 0) ?
-    getMonomerCifs(resnames) :
+  const embedded_monomers = structure_text ?
+    extract_embedded_monomer_cifs(structure_text, resnames) :
+    [];
+  const embedded_names = new Set(embedded_monomers.map((entry) => entry.name));
+  const fetch_names = (getMonomerCifs && resnames.length !== 0) ?
+    resnames.filter((name) => !embedded_names.has(name.toUpperCase())) :
+    [];
+  const load_monomers = (getMonomerCifs && fetch_names.length !== 0) ?
+    getMonomerCifs(fetch_names) :
     Promise.resolve([]);
   return load_monomers.then(function (cif_texts) {
+    let loaded_monomers = 0;
+    for (const entry of embedded_monomers) {
+      bond_info.add_monomer_cif(entry.cif);
+      loaded_monomers++;
+    }
     for (const cif_text of cif_texts) {
       bond_info.add_monomer_cif(cif_text);
       loaded_monomers++;
@@ -130,7 +239,10 @@ function finalize_model(model, bond_data,
 function modelsFromGemmi(gemmi, buffer, name,
                                 getMonomerCifs) {
   const st = gemmi.read_structure(buffer, name);
-  return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
+  const structure_text = /\.(cif|mmcif|mcif)$/i.test(name) ?
+    new TextDecoder().decode(new Uint8Array(buffer)) :
+    undefined;
+  return getGemmiBondData(gemmi, st, getMonomerCifs, structure_text).then(function (bond_result) {
     const bond_data = bond_result.bond_data;
     const cell = st.cell;  // TODO: check if a copy of cell is created here
     const models = [];
@@ -6271,6 +6383,12 @@ function scale_by_height(value, size) { // for scaling bond_line
   return value * size[1] / 700;
 }
 
+function download_filename(name, format) {
+  const base = ((name || '').trim().replace(/[^A-Za-z0-9_.-]+/g, '_')
+    .replace(/^_+|_+$/g, '')) || 'model';
+  return base + (format === 'pdb' ? '.pdb' : '.cif');
+}
+
 class MapBag {
   
   
@@ -6747,6 +6865,7 @@ class Viewer {
   
   
   
+  
 
   constructor(options) {
     // rendered objects
@@ -6841,6 +6960,7 @@ class Viewer {
     this.cid_input_el = null;
     this.metals_select_el = null;
     this.ligands_select_el = null;
+    this.download_select_el = null;
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
@@ -7636,9 +7756,44 @@ class Viewer {
       const idx = parseInt(select.value, 10);
       const bag = this.active_model_bag();
       if (bag && idx >= 0 && idx < bag.model.atoms.length) {
-        this.select_atom({bag, atom: bag.model.atoms[idx]}, {steps: 30});
+        this.select_residue(bag, bag.model.atoms[idx], {steps: 30});
       }
       select.selectedIndex = 0;
+    });
+    select.addEventListener('keydown', (evt) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
+  create_download_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+    select.style.color = '#ddd';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    const header = document.createElement('option');
+    header.textContent = 'Download';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    const pdb = document.createElement('option');
+    pdb.textContent = 'pdb';
+    pdb.value = 'pdb';
+    select.appendChild(pdb);
+    const cif = document.createElement('option');
+    cif.textContent = 'mmcif';
+    cif.value = 'mmcif';
+    select.appendChild(cif);
+    select.addEventListener('change', () => {
+      const format = select.value;
+      if (format === 'pdb' || format === 'mmcif') {
+        this.download_model(format);
+      }
+      select.value = '';
     });
     select.addEventListener('keydown', (evt) => {
       evt.stopPropagation();
@@ -7670,8 +7825,10 @@ class Viewer {
     row.style.gap = '4px';
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
+    this.download_select_el = this.create_download_select();
     row.appendChild(this.metals_select_el);
     row.appendChild(this.ligands_select_el);
+    row.appendChild(this.download_select_el);
     wrapper.appendChild(row);
     this.container.appendChild(wrapper);
   }
@@ -7683,6 +7840,7 @@ class Viewer {
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
+    this.update_download_select(this.download_select_el, bag);
   }
 
   collect_nav_items(bag, filter) {
@@ -7694,7 +7852,7 @@ class Viewer {
       const resid = atom.resname + '/' + atom.seqid + '/' + atom.chain;
       if (seen.has(resid)) continue;
       seen.add(resid);
-      items.push({label: atom.short_label(), index: i});
+      items.push({label: atom.seqid + ' ' + atom.resname + '/' + atom.chain, index: i});
     }
     return items;
   }
@@ -7722,6 +7880,50 @@ class Viewer {
     }
     select.disabled = (items.length === 0);
     select.style.display = '';
+  }
+
+  update_download_select(select,
+                         bag) {
+    if (select == null) return;
+    const ctx = this.download_target_context(bag);
+    select.disabled = (ctx == null);
+    select.style.display = (ctx == null) ? 'none' : '';
+    select.value = '';
+  }
+
+  download_target_context(preferred_bag) {
+    const bag = preferred_bag || this.active_model_bag();
+    if (bag != null && bag.symop === '' && bag.gemmi_selection != null) {
+      return bag.gemmi_selection;
+    }
+    const primary = this.model_bags.find((it) => it.symop === '' && it.gemmi_selection != null);
+    if (primary != null) return primary.gemmi_selection;
+    const any = this.model_bags.find((it) => it.gemmi_selection != null);
+    return any ? any.gemmi_selection : null;
+  }
+
+  download_model(format) {
+    if (typeof document === 'undefined' || typeof URL === 'undefined') return;
+    const ctx = this.download_target_context();
+    if (ctx == null) {
+      this.hud('No Gemmi-backed structure loaded.');
+      return;
+    }
+    const structure_name = ctx.structure.name || null;
+    const text = format === 'pdb' ?
+      ctx.gemmi.make_pdb_string(ctx.structure) :
+      ctx.gemmi.make_mmcif_string(ctx.structure);
+    const filename = download_filename(structure_name, format);
+    const href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    this.hud('Downloaded ' + filename + '.');
   }
 
   open_cid_dialog() {
@@ -8194,6 +8396,29 @@ class Viewer {
     this.selected = pick;
     this.update_nav_menus();
     this.toggle_label(this.selected, true);
+    this.request_render();
+  }
+
+  select_residue(bag, atom, options={}) {
+    const residue = bag.model.get_residues()[atom.resid()];
+    if (residue == null || residue.length === 0) {
+      this.select_atom({bag, atom}, options);
+      return;
+    }
+    let x = 0, y = 0, z = 0;
+    for (const res_atom of residue) {
+      x += res_atom.xyz[0];
+      y += res_atom.xyz[1];
+      z += res_atom.xyz[2];
+    }
+    const anchor = residue.find((res_atom) => res_atom.is_main_conformer()) || residue[0];
+    this.hud('-> ' + bag.label + ' /' + atom.seqid + ' ' + atom.resname + '/' + atom.chain);
+    this.toggle_label(this.selected, false);
+    this.selected = {bag, atom: anchor};
+    this.update_nav_menus();
+    this.toggle_label(this.selected, true);
+    this.controls.go_to(new Vector3(x / residue.length, y / residue.length, z / residue.length),
+                        null, null, options.steps);
     this.request_render();
   }
 

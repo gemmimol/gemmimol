@@ -242,6 +242,12 @@ function scale_by_height(value: number, size: Num2) { // for scaling bond_line
   return value * size[1] / 700;
 }
 
+function download_filename(name: string | null | undefined, format: 'pdb' | 'mmcif') {
+  const base = ((name || '').trim().replace(/[^A-Za-z0-9_.-]+/g, '_')
+    .replace(/^_+|_+$/g, '')) || 'model';
+  return base + (format === 'pdb' ? '.pdb' : '.cif');
+}
+
 class MapBag {
   map: ElMap;
   name: string;
@@ -706,6 +712,7 @@ export class Viewer {
   cid_input_el: HTMLInputElement | null;
   metals_select_el: HTMLSelectElement | null;
   ligands_select_el: HTMLSelectElement | null;
+  download_select_el: HTMLSelectElement | null;
   initial_hud_html: string;
   fps_text: string;
   last_frame_time: number;
@@ -812,6 +819,7 @@ export class Viewer {
     this.cid_input_el = null;
     this.metals_select_el = null;
     this.ligands_select_el = null;
+    this.download_select_el = null;
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
@@ -1607,9 +1615,44 @@ export class Viewer {
       const idx = parseInt(select.value, 10);
       const bag = this.active_model_bag();
       if (bag && idx >= 0 && idx < bag.model.atoms.length) {
-        this.select_atom({bag, atom: bag.model.atoms[idx]}, {steps: 30});
+        this.select_residue(bag, bag.model.atoms[idx], {steps: 30});
       }
       select.selectedIndex = 0;
+    });
+    select.addEventListener('keydown', (evt: KeyboardEvent) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
+  create_download_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+    select.style.color = '#ddd';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    const header = document.createElement('option');
+    header.textContent = 'Download';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    const pdb = document.createElement('option');
+    pdb.textContent = 'pdb';
+    pdb.value = 'pdb';
+    select.appendChild(pdb);
+    const cif = document.createElement('option');
+    cif.textContent = 'mmcif';
+    cif.value = 'mmcif';
+    select.appendChild(cif);
+    select.addEventListener('change', () => {
+      const format = select.value;
+      if (format === 'pdb' || format === 'mmcif') {
+        this.download_model(format);
+      }
+      select.value = '';
     });
     select.addEventListener('keydown', (evt: KeyboardEvent) => {
       evt.stopPropagation();
@@ -1641,8 +1684,10 @@ export class Viewer {
     row.style.gap = '4px';
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
+    this.download_select_el = this.create_download_select();
     row.appendChild(this.metals_select_el);
     row.appendChild(this.ligands_select_el);
+    row.appendChild(this.download_select_el);
     wrapper.appendChild(row);
     this.container.appendChild(wrapper);
   }
@@ -1654,6 +1699,7 @@ export class Viewer {
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
+    this.update_download_select(this.download_select_el, bag);
   }
 
   collect_nav_items(bag: ModelBag, filter: (atom: Atom) => boolean) {
@@ -1665,7 +1711,7 @@ export class Viewer {
       const resid = atom.resname + '/' + atom.seqid + '/' + atom.chain;
       if (seen.has(resid)) continue;
       seen.add(resid);
-      items.push({label: atom.short_label(), index: i});
+      items.push({label: atom.seqid + ' ' + atom.resname + '/' + atom.chain, index: i});
     }
     return items;
   }
@@ -1693,6 +1739,50 @@ export class Viewer {
     }
     select.disabled = (items.length === 0);
     select.style.display = '';
+  }
+
+  update_download_select(select: HTMLSelectElement | null,
+                         bag: ModelBag | null | undefined) {
+    if (select == null) return;
+    const ctx = this.download_target_context(bag);
+    select.disabled = (ctx == null);
+    select.style.display = (ctx == null) ? 'none' : '';
+    select.value = '';
+  }
+
+  download_target_context(preferred_bag?: ModelBag | null) {
+    const bag = preferred_bag || this.active_model_bag();
+    if (bag != null && bag.symop === '' && bag.gemmi_selection != null) {
+      return bag.gemmi_selection;
+    }
+    const primary = this.model_bags.find((it) => it.symop === '' && it.gemmi_selection != null);
+    if (primary != null) return primary.gemmi_selection;
+    const any = this.model_bags.find((it) => it.gemmi_selection != null);
+    return any ? any.gemmi_selection : null;
+  }
+
+  download_model(format: 'pdb' | 'mmcif') {
+    if (typeof document === 'undefined' || typeof URL === 'undefined') return;
+    const ctx = this.download_target_context();
+    if (ctx == null) {
+      this.hud('No Gemmi-backed structure loaded.');
+      return;
+    }
+    const structure_name = ctx.structure.name || null;
+    const text = format === 'pdb' ?
+      ctx.gemmi.make_pdb_string(ctx.structure) :
+      ctx.gemmi.make_mmcif_string(ctx.structure);
+    const filename = download_filename(structure_name, format);
+    const href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+    this.hud('Downloaded ' + filename + '.');
   }
 
   open_cid_dialog() {
@@ -2165,6 +2255,29 @@ export class Viewer {
     this.selected = pick;
     this.update_nav_menus();
     this.toggle_label(this.selected, true);
+    this.request_render();
+  }
+
+  select_residue(bag: ModelBag, atom: Atom, options: {steps?: number}={}) {
+    const residue = bag.model.get_residues()[atom.resid()];
+    if (residue == null || residue.length === 0) {
+      this.select_atom({bag, atom}, options);
+      return;
+    }
+    let x = 0, y = 0, z = 0;
+    for (const res_atom of residue) {
+      x += res_atom.xyz[0];
+      y += res_atom.xyz[1];
+      z += res_atom.xyz[2];
+    }
+    const anchor = residue.find((res_atom) => res_atom.is_main_conformer()) || residue[0];
+    this.hud('-> ' + bag.label + ' /' + atom.seqid + ' ' + atom.resname + '/' + atom.chain);
+    this.toggle_label(this.selected, false);
+    this.selected = {bag, atom: anchor};
+    this.update_nav_menus();
+    this.toggle_label(this.selected, true);
+    this.controls.go_to(new Vector3(x / residue.length, y / residue.length, z / residue.length),
+                        null, null, options.steps);
     this.request_render();
   }
 
