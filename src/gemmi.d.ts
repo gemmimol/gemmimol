@@ -76,12 +76,14 @@ export interface Structure extends ClassHandle {
   readonly length: number;
   get name(): string;
   set name(value: EmbindString);
+  add_model(_0: Model): void;
   at(_0: number): Model | null;
 }
 
 export interface Model extends ClassHandle {
   num: number;
   readonly length: number;
+  add_chain(_0: Chain): void;
   at(_0: number): Chain | null;
   count_occupancies(_0: Selection | null): number;
 }
@@ -90,15 +92,19 @@ export interface Chain extends ClassHandle {
   readonly length: number;
   get name(): string;
   set name(value: EmbindString);
+  add_residue(_0: Residue): void;
   at(_0: number): Residue | null;
 }
 
 export interface ResidueId extends ClassHandle {
-  readonly seqid_string: string;
+  get seqid_string(): string;
+  set seqid_string(value: EmbindString);
   get segment(): string;
   set segment(value: EmbindString);
   get name(): string;
   set name(value: EmbindString);
+  set_seqid(_0: number, _1: EmbindString): void;
+  set_seqid_string(_0: EmbindString): void;
 }
 
 export interface Residue extends ResidueId {
@@ -110,6 +116,7 @@ export interface Residue extends ResidueId {
   readonly ss_from_file_string: string;
   readonly strand_sense_from_file_string: string;
   readonly entity_type_string: string;
+  add_atom(_0: Atom): void;
   at(_0: number): Atom | null;
 }
 
@@ -123,7 +130,9 @@ export interface Atom extends ClassHandle {
   pos: Position;
   get name(): string;
   set name(value: EmbindString);
-  readonly element_uname: string;
+  get element_uname(): string;
+  set element_uname(value: EmbindString);
+  set_element(_0: EmbindString): void;
 }
 
 export interface Selection extends ClassHandle {
@@ -150,6 +159,15 @@ export interface SelectionResult extends ClassHandle {
   set_atom_indices(_0: Structure, _1: EmbindString, _2: number): void;
 }
 
+export interface BlobSearchResult extends ClassHandle {
+  size(): number;
+  centroids(): any;
+  peak_positions(): any;
+  scores(): any;
+  volumes(): any;
+  peak_values(): any;
+}
+
 export interface MapData extends ClassHandle {
   readonly cell: UnitCell;
   readonly nx: number;
@@ -158,6 +176,7 @@ export interface MapData extends ClassHandle {
   readonly mean: number;
   readonly rms: number;
   readonly last_error: string;
+  find_blobs(_0: number, _1: number, _2: number, _3: number, _4: boolean, _5: Structure | null, _6: number, _7: number, _8: boolean): BlobSearchResult | null;
   extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
   data(): any;
   isosurface_vertices(): any;
@@ -180,6 +199,7 @@ export interface MtzMap extends ClassHandle {
   readonly mean: number;
   readonly rms: number;
   readonly last_error: string;
+  find_blobs(_0: number, _1: number, _2: number, _3: number, _4: boolean, _5: Structure | null, _6: number, _7: number, _8: boolean): BlobSearchResult | null;
   extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
   data(): any;
   isosurface_vertices(): any;
@@ -250,6 +270,9 @@ interface EmbindModule {
     new(): SelectionResult;
   };
   get_sym_image(_0: Structure, _1: NearestImage): Structure;
+  BlobSearchResult: {
+    new(): BlobSearchResult;
+  };
   MapData: {};
   Ccp4Map: {
     new(_0: EmbindString): Ccp4Map;
@@ -272,8 +295,8 @@ interface EmbindModule {
 export type MainModule = WasmModule & typeof RuntimeExports & EmbindModule;
 export type GemmiModule = MainModule & {
   read_structure(buf: string | ArrayBuffer, name: string, format?: string): Structure;
-  readCcp4Map(map_buf: string | ArrayBuffer, expand_symmetry?: boolean): Ccp4Map;
-  readDsn6Map(map_buf: string | ArrayBuffer): Dsn6Map;
-  readMtz(mtz_buf: string | ArrayBuffer): Mtz;
+  readCcp4Map(buffer: ArrayBuffer, expand_symmetry?: boolean): Ccp4Map;
+  readDsn6Map(buffer: ArrayBuffer): Dsn6Map;
+  readMtz(buffer: string | ArrayBuffer): Mtz;
 };
 export default function MainModuleFactory (options?: unknown): Promise<GemmiModule>;

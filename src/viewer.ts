@@ -5,6 +5,7 @@ import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
 import { ElMap } from './elmap';
+import type { BlobHit } from './elmap';
 import { BondType, modelsFromGemmi, modelFromGemmiStructure } from './model';
 
 import type { GemmiModule, Structure } from './gemmi';
@@ -253,6 +254,7 @@ class MapBag {
   name: string;
   isolevel: number;
   visible: boolean;
+  is_diff_map: boolean;
   types: string[];
   block_ctr: Vector3;
   el_objects: object[];
@@ -262,6 +264,7 @@ class MapBag {
     this.name = '';
     this.isolevel = is_diff_map ? 3.0 : config.default_isolevel;
     this.visible = true;
+    this.is_diff_map = is_diff_map;
     this.types = is_diff_map ? ['map_pos', 'map_neg'] : ['map_den'];
     this.block_ctr = new Vector3(Infinity, 0, 0);
     this.el_objects = []; // three.js objects
@@ -278,6 +281,7 @@ class ModelBag {
   objects: object[];
   atom_array: Atom[]
   gemmi_selection: GemmiSelectionContext | null;
+  build_chain_name: string | null;
   symop: string;
   static ctor_counter: number;
 
@@ -292,6 +296,7 @@ class ModelBag {
     this.objects = []; // list of three.js objects
     this.atom_array = [];
     this.gemmi_selection = null;
+    this.build_chain_name = null;
   }
 
   get_visible_atoms() {
@@ -415,6 +420,8 @@ class ModelBag {
     const metal_vertex_arr: Num3[] = [];
     const metal_color_arr = [];
     const metal_bond_type_arr = [];
+    const sphere_arr = [];
+    const sphere_color_arr = [];
     const atom_arr = [];
     const hydrogens = this.conf.hydrogens;
     for (let i = 0; i < visible_atoms.length; i++) {
@@ -424,6 +431,10 @@ class ModelBag {
       if (atom_filter && !atom_filter(atom)) continue;
       if (atom.is_water() && this.conf.water_style === 'invisible') continue;
       atom_arr.push(atom);
+      if (atom.is_water() || atom.is_metal) {
+        sphere_arr.push(atom);
+        sphere_color_arr.push(color);
+      }
       if (atom.bonds.length === 0) continue;
       for (let j = 0; j < atom.bonds.length; j++) {
         const other = this.model.atoms[atom.bonds[j]];
@@ -470,6 +481,9 @@ class ModelBag {
                                    radius * 0.5);
       metal_obj.userData.bond_types = metal_bond_type_arr;
       this.objects.push(metal_obj);
+    }
+    if (sphere_arr.length !== 0) {
+      this.objects.push(makeBalls(sphere_arr, sphere_color_arr, this.conf.ball_size));
     }
     this.atom_array = atom_arr;
   }
@@ -710,10 +724,20 @@ export class Viewer {
   structure_name_el: HTMLDivElement | null;
   cid_dialog_el: HTMLDivElement | null;
   cid_input_el: HTMLInputElement | null;
+  blob_select_el: HTMLSelectElement | null;
+  empty_blobs_select_el: HTMLSelectElement | null;
+  place_select_el: HTMLSelectElement | null;
   metals_select_el: HTMLSelectElement | null;
   ligands_select_el: HTMLSelectElement | null;
   download_select_el: HTMLSelectElement | null;
   delete_select_el: HTMLSelectElement | null;
+  blob_hits: BlobHit[];
+  blob_map_bag: MapBag | null;
+  blob_negate: boolean;
+  blob_search_sigma: number | null;
+  blob_mask_waters: boolean;
+  blob_focus_index: number;
+  blob_objects: object[];
   initial_hud_html: string;
   fps_text: string;
   last_frame_time: number;
@@ -818,10 +842,20 @@ export class Viewer {
     this.structure_name_el = null;
     this.cid_dialog_el = null;
     this.cid_input_el = null;
+    this.blob_select_el = null;
+    this.empty_blobs_select_el = null;
+    this.place_select_el = null;
     this.metals_select_el = null;
     this.ligands_select_el = null;
     this.download_select_el = null;
     this.delete_select_el = null;
+    this.blob_hits = [];
+    this.blob_map_bag = null;
+    this.blob_negate = false;
+    this.blob_search_sigma = null;
+    this.blob_mask_waters = false;
+    this.blob_focus_index = -1;
+    this.blob_objects = [];
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
@@ -1074,6 +1108,62 @@ export class Viewer {
     model_bag.objects = [];
   }
 
+  clear_blob_objects() {
+    for (const o of this.blob_objects) {
+      this.remove_and_dispose(o);
+    }
+    this.blob_objects = [];
+  }
+
+  blob_source_map_bag(negate: boolean, prefer_diff: boolean=false) {
+    const find_bag = (predicate: (map_bag: MapBag) => boolean) =>
+      this.map_bags.find((map_bag) => map_bag.visible && predicate(map_bag)) ||
+      this.map_bags.find(predicate) || null;
+    if (negate) {
+      return find_bag((map_bag) => map_bag.is_diff_map);
+    }
+    if (prefer_diff) {
+      return find_bag((map_bag) => map_bag.is_diff_map) ||
+             find_bag((map_bag) => !map_bag.is_diff_map);
+    }
+    return find_bag((map_bag) => !map_bag.is_diff_map) ||
+           find_bag((map_bag) => map_bag.is_diff_map);
+  }
+
+  redraw_blobs() {
+    this.clear_blob_objects();
+    if (this.blob_hits.length === 0 || this.blob_map_bag == null) return;
+    const marker_color = this.blob_negate ?
+      (this.config.colors.map_neg || this.config.colors.fg) :
+      (this.blob_map_bag.is_diff_map ?
+        (this.config.colors.map_pos || this.config.colors.fg) :
+        (this.config.colors.map_den || this.config.colors.fg));
+    const centers = this.blob_hits.map((hit) => ({xyz: this.blob_target_xyz(hit)} as Atom));
+    const colors = centers.map(() => marker_color);
+    const wheel_size = 3 * scale_by_height(this.config.bond_line, this.window_size);
+    const wheels = makeWheels(centers, colors, wheel_size);
+    this.blob_objects.push(wheels);
+    this.scene.add(wheels);
+
+    const vertex_arr: Num3[] = [];
+    const color_arr: Color[] = [];
+    for (const hit of this.blob_hits) {
+      addXyzCross(vertex_arr, hit.peak_pos, 0.45);
+      for (let i = 0; i < 6; i++) {
+        color_arr.push(marker_color);
+      }
+    }
+    if (vertex_arr.length !== 0) {
+      const material = makeLineMaterial({
+        linewidth: scale_by_height(Math.max(this.config.bond_line, 2), this.window_size),
+        win_size: this.window_size,
+      });
+      const peaks = makeLineSegments(material, vertex_arr, color_arr);
+      this.blob_objects.push(peaks);
+      this.scene.add(peaks);
+    }
+  }
+
   has_frag_depth() {
     return this.renderer && this.renderer.extensions.get('EXT_frag_depth');
   }
@@ -1231,7 +1321,11 @@ export class Viewer {
       map_bag = this.map_bags[map_bag];
     }
     map_bag.visible = !map_bag.visible;
+    if (!map_bag.visible && this.blob_map_bag === map_bag) {
+      this.hide_blobs(true);
+    }
     this.redraw_map(map_bag);
+    this.update_nav_menus();
     this.request_render();
   }
 
@@ -1662,6 +1756,80 @@ export class Viewer {
     return select;
   }
 
+  create_blob_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 36, 64, 0.9)';
+    select.style.color = '#d6f0ff';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    select.addEventListener('change', () => {
+      const value = select.value;
+      if (value === 'show_pos') {
+        this.show_blobs(false);
+      } else if (value === 'show_neg') {
+        this.show_blobs(true);
+      } else if (value === 'hide') {
+        this.hide_blobs();
+      } else if (value.startsWith('blob:')) {
+        this.focus_blob(parseInt(value.slice(5), 10));
+      }
+      select.value = '';
+    });
+    select.addEventListener('keydown', (evt: KeyboardEvent) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
+  create_place_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(18, 54, 18, 0.92)';
+    select.style.color = '#d8f1d8';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    select.addEventListener('change', () => {
+      const value = select.value;
+      if (value !== '') {
+        this.place_selected_blob(value);
+      }
+      select.value = '';
+    });
+    select.addEventListener('keydown', (evt: KeyboardEvent) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
+  create_empty_blobs_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+    select.style.color = '#ddd';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    select.addEventListener('change', () => {
+      const value = select.value;
+      if (value === 'search' || value === 'refind') {
+        this.show_empty_blobs();
+      } else if (value.startsWith('blob:')) {
+        this.focus_blob(parseInt(value.slice(5), 10));
+      }
+      select.value = '';
+    });
+    select.addEventListener('keydown', (evt: KeyboardEvent) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
   create_delete_select() {
     const select = document.createElement('select');
     select.style.padding = '3px 6px';
@@ -1725,12 +1893,18 @@ export class Viewer {
     const row = document.createElement('div');
     row.style.display = 'flex';
     row.style.gap = '4px';
+    this.blob_select_el = this.create_blob_select();
+    this.place_select_el = this.create_place_select();
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
+    this.empty_blobs_select_el = this.create_empty_blobs_select();
     this.download_select_el = this.create_download_select();
     this.delete_select_el = this.create_delete_select();
+    row.appendChild(this.blob_select_el);
+    row.appendChild(this.place_select_el);
     row.appendChild(this.metals_select_el);
     row.appendChild(this.ligands_select_el);
+    row.appendChild(this.empty_blobs_select_el);
     row.appendChild(this.download_select_el);
     row.appendChild(this.delete_select_el);
     wrapper.appendChild(row);
@@ -1742,10 +1916,135 @@ export class Viewer {
     const metal_items = bag ? this.collect_nav_items(bag, (atom) => atom.is_metal) : [];
     const ligand_items = bag ? this.collect_nav_items(
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
+    this.update_blob_select(this.blob_select_el);
+    this.update_place_select(this.place_select_el);
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
+    this.update_empty_blobs_select(this.empty_blobs_select_el);
     this.update_download_select(this.download_select_el, bag);
     this.update_delete_select(this.delete_select_el);
+  }
+
+  update_blob_select(select: HTMLSelectElement | null) {
+    if (select == null) return;
+    select.innerHTML = '';
+    const pos_map = this.blob_source_map_bag(false);
+    const neg_map = this.blob_source_map_bag(true);
+    if (pos_map == null && neg_map == null) {
+      select.style.display = 'none';
+      select.disabled = true;
+      return;
+    }
+    const header = document.createElement('option');
+    const total = this.blob_hits.length;
+    header.textContent = total === 0 ? 'Blobs' : 'Blobs (' + total + ')';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    if (pos_map != null) {
+      const opt = document.createElement('option');
+      opt.value = 'show_pos';
+      opt.textContent = 'show +';
+      select.appendChild(opt);
+    }
+    if (neg_map != null) {
+      const opt = document.createElement('option');
+      opt.value = 'show_neg';
+      opt.textContent = 'show -';
+      select.appendChild(opt);
+    }
+    if (this.blob_hits.length !== 0) {
+      const hide = document.createElement('option');
+      hide.value = 'hide';
+      hide.textContent = 'hide';
+      select.appendChild(hide);
+    }
+    select.disabled = false;
+    select.style.display = '';
+    select.value = '';
+  }
+
+  update_place_select(select: HTMLSelectElement | null) {
+    if (select == null) return;
+    const editable_bag = this.editable_model_bag();
+    select.innerHTML = '';
+    if (editable_bag == null) {
+      select.style.display = 'none';
+      select.disabled = true;
+      return;
+    }
+    const header = document.createElement('option');
+    const placeable = (this.blob_hits.length !== 0 && !this.blob_negate &&
+                       this.blob_map_bag != null && this.blob_map_bag.is_diff_map);
+    if (!placeable) {
+      header.textContent = 'Place (show empty blobs first)';
+    } else {
+      const idx = this.blob_focus_index >= 0 ? this.blob_focus_index + 1 : 1;
+      header.textContent = 'Place (#' + idx + ')';
+    }
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    const options = [
+      {value: 'water', label: 'water'},
+      {value: 'na', label: 'Na'},
+      {value: 'mg', label: 'Mg'},
+      {value: 'ca', label: 'Ca'},
+      {value: 'zn', label: 'Zn'},
+    ];
+    for (const entry of options) {
+      const opt = document.createElement('option');
+      opt.value = entry.value;
+      opt.textContent = entry.label;
+      select.appendChild(opt);
+    }
+    select.disabled = !placeable;
+    select.style.display = '';
+    select.value = '';
+  }
+
+  update_empty_blobs_select(select: HTMLSelectElement | null) {
+    if (select == null) return;
+    const pos_map = this.blob_source_map_bag(false, true);
+    select.innerHTML = '';
+    if (pos_map == null) {
+      select.style.display = 'none';
+      select.disabled = true;
+      return;
+    }
+    const header = document.createElement('option');
+    const has_positive_hits = (this.blob_hits.length !== 0 && !this.blob_negate &&
+                               this.blob_map_bag != null && this.blob_map_bag.is_diff_map);
+    if (!has_positive_hits) {
+      header.textContent = 'Empty Blobs';
+    } else {
+      header.textContent = 'Empty Blobs (' + this.blob_hits.length + ')';
+    }
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    if (!has_positive_hits) {
+      const opt = document.createElement('option');
+      opt.value = 'search';
+      opt.textContent = 'find';
+      select.appendChild(opt);
+    } else {
+      const refind = document.createElement('option');
+      refind.value = 'refind';
+      refind.textContent = 're-find';
+      select.appendChild(refind);
+      for (let i = 0; i < this.blob_hits.length; i++) {
+        const hit = this.blob_hits[i];
+        const opt = document.createElement('option');
+        opt.value = 'blob:' + i;
+        opt.textContent = '#' + (i + 1) + ' ' + hit.score.toFixed(1) +
+                          ' e ' + hit.volume.toFixed(1) + ' A^3';
+        select.appendChild(opt);
+      }
+    }
+    select.disabled = false;
+    select.style.display = '';
+    select.value = '';
   }
 
   collect_nav_items(bag: ModelBag, filter: (atom: Atom) => boolean) {
@@ -1774,7 +2073,7 @@ export class Viewer {
     }
     const header = document.createElement('option');
     header.textContent = label + ' (' + items.length + ')';
-    header.disabled = true;
+    header.value = '';
     header.selected = true;
     select.appendChild(header);
     for (const item of items) {
@@ -1803,6 +2102,220 @@ export class Viewer {
     select.disabled = (edit == null);
     select.style.display = (editable_bag == null) ? 'none' : '';
     select.value = '';
+  }
+
+  show_blobs(negate: boolean, prefer_diff: boolean=false,
+             search_sigma?: number, mask_waters: boolean=false) {
+    const map_bag = this.blob_source_map_bag(negate, prefer_diff);
+    if (map_bag == null) {
+      this.hud('No suitable map is loaded for blob search.', 'ERR');
+      return;
+    }
+    const ctx = this.download_target_context();
+    const sigma = search_sigma ?? map_bag.isolevel;
+    let hits = map_bag.map.find_blobs(map_bag.map.abs_level(sigma), {
+      negate: negate,
+      structure: ctx ? ctx.structure : null,
+      model_index: ctx ? ctx.model_index : 0,
+      mask_waters: mask_waters,
+    });
+    hits.sort((a, b) => b.score - a.score || b.peak_value - a.peak_value);
+    const total = hits.length;
+    const limit = 25;
+    if (hits.length > limit) hits = hits.slice(0, limit);
+    this.blob_hits = hits;
+    this.blob_map_bag = map_bag;
+    this.blob_negate = negate;
+    this.blob_search_sigma = sigma;
+    this.blob_mask_waters = mask_waters;
+    this.blob_focus_index = hits.length === 0 ? -1 : 0;
+    this.redraw_blobs();
+    this.update_nav_menus();
+    const kind = negate ? 'negative' :
+      (map_bag.is_diff_map ? 'positive diff' : 'positive');
+    if (hits.length === 0) {
+      this.hud('No ' + kind + ' blobs above ' +
+               sigma.toFixed(2) + ' rmsd.');
+    } else {
+      let msg = 'Showing ' + hits.length + ' ' + kind + ' blob';
+      if (hits.length !== 1) msg += 's';
+      msg += ' above ' + sigma.toFixed(2) + ' rmsd';
+      if (total > hits.length) msg += ' (top ' + hits.length + ' by score)';
+      this.hud(msg + '.');
+    }
+    this.request_render();
+  }
+
+  show_empty_blobs() {
+    this.show_blobs(false, true, 1.0, true);
+  }
+
+  hide_blobs(quiet: boolean=false) {
+    const had_blobs = this.blob_hits.length !== 0 || this.blob_objects.length !== 0;
+    this.blob_hits = [];
+    this.blob_map_bag = null;
+    this.blob_focus_index = -1;
+    this.blob_search_sigma = null;
+    this.blob_mask_waters = false;
+    this.clear_blob_objects();
+    this.update_nav_menus();
+    if (!quiet && had_blobs) this.hud('Blobs hidden.');
+    this.request_render();
+  }
+
+  focus_blob(index: number) {
+    if (index < 0 || index >= this.blob_hits.length) return;
+    this.blob_focus_index = index;
+    this.update_nav_menus();
+    const hit = this.blob_hits[index];
+    const xyz = this.blob_target_xyz(hit);
+    this.hud('Blob #' + (index + 1) +
+             ': score ' + hit.score.toFixed(1) +
+             ', peak ' + hit.peak_value.toFixed(2) +
+             ', volume ' + hit.volume.toFixed(1) + ' A^3');
+    this.controls.go_to(new Vector3(xyz[0], xyz[1], xyz[2]),
+                        null, null, 30);
+    this.request_render();
+  }
+
+  current_blob_hit() {
+    if (this.blob_hits.length === 0) return null;
+    let index = this.blob_focus_index;
+    if (index < 0 || index >= this.blob_hits.length) index = 0;
+    this.blob_focus_index = index;
+    return {index: index, hit: this.blob_hits[index]};
+  }
+
+  blob_target_xyz(hit: BlobHit) {
+    if (!this.blob_negate && this.blob_map_bag != null && this.blob_map_bag.is_diff_map) {
+      return hit.peak_pos;
+    }
+    return hit.centroid;
+  }
+
+  choose_build_chain_name(ctx: GemmiSelectionContext) {
+    const gm = ctx.structure.at(ctx.model_index);
+    const used = new Set<string>();
+    for (let i = 0; gm != null && i < gm.length; i++) {
+      const chain = gm.at(i);
+      if (chain != null) used.add(chain.name);
+    }
+    const preferred = ['', 'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P'];
+    for (const name of preferred) {
+      if (!used.has(name)) return name;
+    }
+    let n = 1;
+    while (used.has('G' + n)) n++;
+    return 'G' + n;
+  }
+
+  ensure_build_chain(bag: ModelBag, ctx: GemmiSelectionContext) {
+    const gm = ctx.structure.at(ctx.model_index);
+    if (gm == null) throw Error('Gemmi model is unavailable.');
+    const last_chain = gm.length === 0 ? null : gm.at(gm.length - 1);
+    if (bag.build_chain_name != null &&
+        last_chain != null && last_chain.name === bag.build_chain_name) {
+      return last_chain;
+    }
+    const chain = new ctx.gemmi.Chain();
+    try {
+      bag.build_chain_name = this.choose_build_chain_name(ctx);
+      chain.name = bag.build_chain_name;
+      gm.add_chain(chain);
+    } finally {
+      chain.delete();
+    }
+    return gm.at(gm.length - 1);
+  }
+
+  next_build_seqid(chain: any) {
+    let max_seqid = 0;
+    for (let i = 0; i < chain.length; i++) {
+      const residue = chain.at(i);
+      if (residue == null) continue;
+      const match = residue.seqid_string.match(/^-?\d+/);
+      if (match == null) continue;
+      const seqid = parseInt(match[0], 10);
+      if (!Number.isNaN(seqid) && seqid > max_seqid) max_seqid = seqid;
+    }
+    return max_seqid + 1;
+  }
+
+  refresh_model_from_structure(bag: ModelBag, center: Num3) {
+    const ctx = bag.gemmi_selection;
+    if (ctx == null) throw Error('Gemmi selection is unavailable for this model.');
+    const bond_data = bag.model.bond_data;
+    const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure, bond_data, ctx.model_index);
+    this.clear_labels_for_bag(bag);
+    bag.model = model;
+    this.redraw_model(bag);
+    const next_atom = bag.model.get_nearest_atom(center[0], center[1], center[2]) ||
+                      bag.model.atoms[bag.model.atoms.length - 1];
+    this.selected = {bag: bag, atom: next_atom};
+    this.update_nav_menus();
+    this.toggle_label(this.selected, true);
+    this.controls.go_to(new Vector3(center[0], center[1], center[2]), null, null, 15);
+    this.request_render();
+  }
+
+  place_selected_blob(kind: string) {
+    const blob = this.current_blob_hit();
+    if (blob == null) {
+      this.hud('Show blobs and pick one first.', 'ERR');
+      return;
+    }
+    const bag = this.editable_model_bag();
+    if (bag == null || bag.gemmi_selection == null) {
+      this.hud('Blob placement requires an editable Gemmi-backed model.', 'ERR');
+      return;
+    }
+    if (this.sym_model_bags.length > 0) {
+      this.toggle_symmetry();
+    }
+    const spec = {
+      water: {resname: 'HOH', atom_name: 'O', element: 'O', charge: 0, label: 'water'},
+      na: {resname: 'NA', atom_name: 'NA', element: 'NA', charge: 1, label: 'Na'},
+      mg: {resname: 'MG', atom_name: 'MG', element: 'MG', charge: 2, label: 'Mg'},
+      ca: {resname: 'CA', atom_name: 'CA', element: 'CA', charge: 2, label: 'Ca'},
+      zn: {resname: 'ZN', atom_name: 'ZN', element: 'ZN', charge: 2, label: 'Zn'},
+    }[kind];
+    if (spec == null) {
+      this.hud('Unknown blob placement type: ' + kind, 'ERR');
+      return;
+    }
+    const ctx = bag.gemmi_selection;
+    const chain = this.ensure_build_chain(bag, ctx);
+    const residue = new ctx.gemmi.Residue();
+    const atom = new ctx.gemmi.Atom();
+    const xyz = this.blob_target_xyz(blob.hit);
+    let placed_label: string;
+    try {
+      residue.name = spec.resname;
+      residue.set_seqid(this.next_build_seqid(chain), '');
+      atom.name = spec.atom_name;
+      atom.set_element(spec.element);
+      atom.pos = xyz;
+      atom.occ = 1.0;
+      atom.b_iso = 30.0;
+      atom.charge = spec.charge;
+      residue.add_atom(atom);
+      chain.add_residue(residue);
+      placed_label = atom.name + ' /' + residue.seqid_string + ' ' +
+                     residue.name + '/' + chain.name;
+    } finally {
+      atom.delete();
+      residue.delete();
+    }
+    this.toggle_label(this.selected, false);
+    this.refresh_model_from_structure(bag, xyz);
+    if (this.blob_map_bag != null) {
+      this.show_blobs(this.blob_negate,
+                      this.blob_map_bag.is_diff_map,
+                      this.blob_search_sigma == null ? undefined : this.blob_search_sigma,
+                      this.blob_mask_waters);
+    }
+    this.hud('Placed ' + spec.label + ' at blob #' + (blob.index + 1) +
+             ' as ' + placed_label + '.');
   }
 
   download_target_context(preferred_bag?: ModelBag | null) {
@@ -2107,6 +2620,7 @@ export class Viewer {
     if (this.renderer) this.renderer.setClearColor(this.config.colors.bg, 1);
     this.redraw_models();
     this.redraw_maps(true);
+    this.redraw_blobs();
     this.redraw_labels();
   }
 
@@ -2696,6 +3210,7 @@ export class Viewer {
     const map_bag = new MapBag(map, this.config, is_diff_map);
     this.map_bags.push(map_bag);
     this.add_el_objects(map_bag);
+    this.update_nav_menus();
     this.request_render();
   }
 

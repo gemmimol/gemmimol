@@ -1,4 +1,5 @@
-import type { GemmiModule, UnitCell, Ccp4Map as WasmCcp4Map,
+import type { GemmiModule, UnitCell, Structure,
+              Ccp4Map as WasmCcp4Map,
               Dsn6Map as WasmDsn6Map,
               MtzMap as WasmMtzMap,
               Isosurface as WasmIsosurface } from './gemmi';
@@ -8,6 +9,25 @@ type Num3 = [number, number, number];
 export interface IsosurfaceData {
   vertices: Float32Array;
   segments: Uint32Array;
+}
+
+export interface BlobHit {
+  centroid: Num3;
+  peak_pos: Num3;
+  score: number;
+  volume: number;
+  peak_value: number;
+}
+
+export interface BlobSearchOptions {
+  min_volume?: number;
+  min_score?: number;
+  min_peak?: number;
+  negate?: boolean;
+  structure?: Structure | null;
+  model_index?: number;
+  mask_radius?: number;
+  mask_waters?: boolean;
 }
 
 type WasmDensityMap = WasmCcp4Map | WasmDsn6Map | WasmMtzMap;
@@ -242,6 +262,44 @@ export class ElMap {
       } as IsosurfaceData;
     }
     return this.block.isosurface(this.gemmi_module, abs_level, method);
+  }
+
+  find_blobs(cutoff: number, options: BlobSearchOptions={}) {
+    if (this.wasm_map == null) {
+      throw Error('Blob search requires a Gemmi-backed map.');
+    }
+    const result = this.wasm_map.find_blobs(
+      cutoff,
+      options.min_volume ?? 10.0,
+      options.min_score ?? 15.0,
+      options.min_peak ?? 0.0,
+      options.negate ?? false,
+      options.structure ?? null,
+      options.model_index ?? 0,
+      options.mask_radius ?? 2.0,
+      options.mask_waters ?? false
+    );
+    if (result == null) return [];
+    try {
+      const centroids = result.centroids();
+      const peaks = result.peak_positions();
+      const scores = result.scores();
+      const volumes = result.volumes();
+      const peak_values = result.peak_values();
+      const blobs = [];
+      for (let i = 0; i < result.size(); i++) {
+        blobs.push({
+          centroid: [centroids[3*i], centroids[3*i+1], centroids[3*i+2]] as Num3,
+          peak_pos: [peaks[3*i], peaks[3*i+1], peaks[3*i+2]] as Num3,
+          score: scores[i],
+          volume: volumes[i],
+          peak_value: peak_values[i],
+        } as BlobHit);
+      }
+      return blobs;
+    } finally {
+      result.delete();
+    }
   }
 
   dispose() {

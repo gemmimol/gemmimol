@@ -1,6 +1,19 @@
 
 var GM = require('../gemmimol');
 var util = require('../perf/util');
+var fs = require('node:fs');
+
+function file_to_array_buffer(path) {
+  var buffer = fs.readFileSync(path);
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+}
+
+function sphere_atom_count(bag) {
+  return bag.objects.reduce(function (count, obj) {
+    if (!obj.material || obj.material.type !== 'um_sphere' || !obj.geometry) return count;
+    return count + obj.geometry.attributes.position.count / 4;
+  }, 0);
+}
 
 describe('Viewer', () => {
   'use strict';
@@ -48,6 +61,51 @@ describe('Viewer', () => {
     viewer.add_model(model2);
     viewer.config.hydrogens = true;
     viewer.recenter();
+  });
+
+  it('shows and hides blobs from a loaded map', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    viewer2.add_map(emap, false);
+    var seed = emap.find_blobs(emap.abs_level(viewer2.map_bags[0].isolevel))[0];
+    expect(seed).toBeDefined();
+    viewer2.target.set(seed.centroid[0] + 1000, seed.centroid[1] + 1000, seed.centroid[2] + 1000);
+    viewer2.show_blobs(false);
+    expect(viewer2.blob_hits.length).toBeGreaterThan(0);
+    expect(viewer2.blob_objects.length).toBeGreaterThan(0);
+    viewer2.focus_blob(0);
+    viewer2.hide_blobs(true);
+    expect(viewer2.blob_hits.length).toEqual(0);
+    expect(viewer2.blob_objects.length).toEqual(0);
+  });
+
+  it('prefers diff map for empty blobs', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    viewer2.add_map(emap, false);
+    viewer2.add_map(emap, true);
+    viewer2.show_empty_blobs();
+    expect(viewer2.blob_map_bag).not.toBeNull();
+    expect(viewer2.blob_map_bag.is_diff_map).toBe(true);
+    expect(viewer2.blob_negate).toBe(false);
+  });
+
+  it('finds multiple empty blobs in dimple_thaum diff map', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    return viewer2.load_coordinate_buffer(
+      file_to_array_buffer('../gemmimol.github.io/data/dimple_thaum.pdb'),
+      'dimple_thaum.pdb',
+      gemmi
+    ).then(function () {
+      var diffMap = new GM.ElMap();
+      var diffBuf = file_to_array_buffer('../gemmimol.github.io/data/dimple_thaum_diff.map');
+      diffMap.from_ccp4(diffBuf, true, gemmi);
+      viewer2.add_map(diffMap, true);
+      viewer2.show_empty_blobs();
+      expect(viewer2.blob_map_bag).not.toBeNull();
+      expect(viewer2.blob_map_bag.is_diff_map).toBe(true);
+      expect(viewer2.blob_hits.length).toBeGreaterThan(1);
+      expect(viewer2.blob_search_sigma).toEqual(1.0);
+      expect(viewer2.blob_mask_waters).toBe(true);
+    });
   });
 
   it('keydown', () => {
@@ -188,6 +246,76 @@ describe('Viewer', () => {
       expect(trimmed.every(function (atom) { return atom.resname === 'ALA'; })).toBe(true);
       expect(trimmed.length).toBeLessThan(target_residue.length);
       expect(gemmi.make_pdb_string(structure).indexOf('ALA')).toBeGreaterThan(-1);
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
+  it('places water and metal sites at blob positions', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      loaded_viewer.has_frag_depth = function () { return true; };
+      loaded_viewer.redraw_model(bag);
+      var before = bag.model.atoms.length;
+      var spheres_before = sphere_atom_count(bag);
+      structure = bag.gemmi_selection.structure;
+
+      loaded_viewer.blob_hits = [{
+        centroid: [11.1, 12.2, 13.3],
+        peak_pos: [11.1, 12.2, 13.3],
+        score: 20.0,
+        volume: 8.0,
+        peak_value: 3.0,
+      }];
+      loaded_viewer.blob_focus_index = 0;
+      loaded_viewer.place_selected_blob('water');
+      expect(loaded_viewer.selected.atom.resname).toEqual('HOH');
+      expect(loaded_viewer.selected.atom.name).toEqual('O');
+      expect(sphere_atom_count(loaded_viewer.model_bags[0])).toEqual(spheres_before + 1);
+
+      loaded_viewer.blob_hits = [{
+        centroid: [14.4, 15.5, 16.6],
+        peak_pos: [14.4, 15.5, 16.6],
+        score: 25.0,
+        volume: 10.0,
+        peak_value: 4.0,
+      }];
+      loaded_viewer.blob_focus_index = 0;
+      loaded_viewer.place_selected_blob('zn');
+      expect(loaded_viewer.selected.atom.resname).toEqual('ZN');
+      expect(loaded_viewer.selected.atom.element).toEqual('ZN');
+      expect(loaded_viewer.model_bags[0].model.atoms.length).toEqual(before + 2);
+      expect(sphere_atom_count(loaded_viewer.model_bags[0])).toEqual(spheres_before + 2);
+
+      var cif = gemmi.make_mmcif_string(structure);
+      expect(cif.indexOf('HOH')).toBeGreaterThan(-1);
+      expect(cif.indexOf(' ZN ')).toBeGreaterThan(-1);
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
+  it('places empty-blob atoms at peak position, not centroid', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.blob_hits = [{
+        centroid: [11.1, 12.2, 13.3],
+        peak_pos: [14.4, 15.5, 16.6],
+        score: 20.0,
+        volume: 8.0,
+        peak_value: 3.0,
+      }];
+      loaded_viewer.blob_focus_index = 0;
+      loaded_viewer.blob_negate = false;
+      loaded_viewer.blob_map_bag = {is_diff_map: true};
+      loaded_viewer.place_selected_blob('water');
+      expect(loaded_viewer.selected.atom.resname).toEqual('HOH');
+      expect(loaded_viewer.selected.atom.xyz[0]).toBeCloseTo(14.4, 4);
+      expect(loaded_viewer.selected.atom.xyz[1]).toBeCloseTo(15.5, 4);
+      expect(loaded_viewer.selected.atom.xyz[2]).toBeCloseTo(16.6, 4);
     }).finally(function () {
       if (structure) structure.delete();
     });

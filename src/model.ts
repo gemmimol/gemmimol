@@ -192,7 +192,8 @@ function fill_model_from_gemmi(gm: GemmiModel, model: Model) {
       const ent_type = res.entity_type_string;
       const ss = res.ss_from_file_string || 'Coil';
       const strand_sense = res.strand_sense_from_file_string || 'NotStrand';
-      const is_ligand = (ent_type === 'non-polymer' || ent_type === 'branched');
+      const residue_atoms = [];
+      let residue_has_metal = false;
       for (let i_atom = 0; i_atom < res.length; ++i_atom) {
         const atom = res.at(i_atom);
         const new_atom = new Atom();
@@ -208,13 +209,20 @@ function fill_model_from_gemmi(gm: GemmiModel, model: Model) {
         new_atom.b = atom.b_iso;
         new_atom.element = atom.element_uname;
         new_atom.is_metal = atom.is_metal;
-        new_atom.is_ligand = is_ligand;
         new_atom.ss = ss;
         new_atom.strand_sense = strand_sense;
+        residue_has_metal = residue_has_metal || atom.is_metal;
         if (new_atom.is_hydrogen()) {
           model.has_hydrogens = true;
           model.hydrogen_count++;
         }
+        residue_atoms.push(new_atom);
+      }
+      const inferred_ligand = (ent_type === 'non-polymer' || ent_type === 'branched' ||
+                               ((ent_type === '?' || ent_type === '') &&
+                                (resname === 'HOH' || residue_has_metal)));
+      for (const new_atom of residue_atoms) {
+        new_atom.is_ligand = inferred_ligand;
         model.atoms.push(new_atom);
       }
     }
@@ -260,10 +268,12 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
 }
 
 export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
-                                        bond_data?: Int32Array | null): Model {
+                                        bond_data?: Int32Array | null,
+                                        model_index: number=0): Model {
   const cell = st.cell;
-  const gm = st.at(0);
+  const gm = st.at(model_index);
   const m = new Model();
+  m.source_model_index = model_index;
   m.unit_cell = copy_unit_cell(gemmi, cell);
   fill_model_from_gemmi(gm, m);
   finalize_model(m, bond_data);
