@@ -81,25 +81,28 @@ function set_pdb_and_mtz_dropzone(gemmi: GemmiModule, viewer: Viewer,
   viewer.set_dropzone(zone, function (file) {
     if (/\.mtz$/.test(file.name)) {
       const reader = new FileReader();
-      reader.onloadend = function (evt) {
-        if (evt.target.readyState === 2) {
+      return new Promise<void>(function (resolve, reject) {
+        reader.onloadend = function (evt) {
+          if (evt.target == null || evt.target.readyState !== 2) return;
           const t0 = performance.now();
           try {
-            const mtz = gemmi.readMtz(evt.target.result);
+            const mtz = gemmi.readMtz(evt.target.result as ArrayBuffer);
             load_maps_from_mtz_buffer(gemmi, viewer, mtz);
           } catch (e) {
-            viewer.hud(e.message, 'ERR');
+            reject(e);
             return;
           }
           log_timing(t0, 'mtz -> maps');
           if (viewer.model_bags.length === 0 && viewer.map_bags.length <= 2) {
             viewer.recenter();
           }
-        }
-      };
-      reader.readAsArrayBuffer(file);
+          resolve();
+        };
+        reader.onerror = () => reject(reader.error || Error('Failed to read ' + file.name));
+        reader.readAsArrayBuffer(file);
+      });
     } else {
-      viewer.pick_pdb_and_map(file);
+      return viewer.pick_pdb_and_map(file);
     }
   });
 }

@@ -8,6 +8,7 @@ export type GemmiBondingInfo = {
   source: 'gemmi' | 'unavailable',
   monomers_requested: number,
   monomers_loaded: number,
+  unresolved_monomers: string[],
   bond_count: number,
 };
 export const BondType = {
@@ -38,8 +39,9 @@ function tokenize_cif_row(line: string) {
   });
 }
 
-function extract_cif_loop(text: string, first_tag: string): CifLoop | null {
+function extract_cif_loops(text: string, first_tag: string): CifLoop[] {
   const lines = text.split(/\r?\n/);
+  const loops = [];
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() !== 'loop_') continue;
     const tags = [];
@@ -56,36 +58,42 @@ function extract_cif_loop(text: string, first_tag: string): CifLoop | null {
       if (trimmed === 'loop_' || trimmed.startsWith('_')) break;
       values.push(...tokenize_cif_row(lines[j]));
     }
-    if (tags.length === 0 || values.length < tags.length) return null;
+    if (tags.length === 0 || values.length < tags.length) continue;
     const rows = [];
     for (let k = 0; k + tags.length <= values.length; k += tags.length) {
       rows.push(values.slice(k, k + tags.length));
     }
-    return {tags: tags, rows: rows};
+    loops.push({tags: tags, rows: rows});
   }
-  return null;
+  return loops;
 }
 
 function extract_embedded_monomer_cifs(text: string, missing_names: string[]) {
   if (missing_names.length === 0) return [];
-  const atom_loop = extract_cif_loop(text, '_chem_comp_atom.comp_id');
-  if (atom_loop == null) return [];
-  const bond_loop = extract_cif_loop(text, '_chem_comp_bond.comp_id');
+  const atom_loops = extract_cif_loops(text, '_chem_comp_atom.comp_id');
+  if (atom_loops.length === 0) return [];
+  const bond_loops = extract_cif_loops(text, '_chem_comp_bond.comp_id');
   const wanted = new Set(missing_names.map((name) => name.toUpperCase()));
   const atom_rows = new Map<string, string[][]>();
+  const atom_tags = new Map<string, string[]>();
   const bond_rows = new Map<string, string[][]>();
+  const bond_tags = new Map<string, string[]>();
 
-  for (const row of atom_loop.rows) {
-    const comp_id = (row[0] || '').toUpperCase();
-    if (!wanted.has(comp_id)) continue;
-    const rows = atom_rows.get(comp_id);
-    if (rows) rows.push(row);
-    else atom_rows.set(comp_id, [row]);
+  for (const atom_loop of atom_loops) {
+    for (const row of atom_loop.rows) {
+      const comp_id = (row[0] || '').toUpperCase();
+      if (!wanted.has(comp_id)) continue;
+      if (!atom_tags.has(comp_id)) atom_tags.set(comp_id, atom_loop.tags);
+      const rows = atom_rows.get(comp_id);
+      if (rows) rows.push(row);
+      else atom_rows.set(comp_id, [row]);
+    }
   }
-  if (bond_loop != null) {
+  for (const bond_loop of bond_loops) {
     for (const row of bond_loop.rows) {
       const comp_id = (row[0] || '').toUpperCase();
       if (!wanted.has(comp_id)) continue;
+      if (!bond_tags.has(comp_id)) bond_tags.set(comp_id, bond_loop.tags);
       const rows = bond_rows.get(comp_id);
       if (rows) rows.push(row);
       else bond_rows.set(comp_id, [row]);
@@ -96,21 +104,24 @@ function extract_embedded_monomer_cifs(text: string, missing_names: string[]) {
   for (const comp_id of Array.from(wanted)) {
     const comp_atom_rows = atom_rows.get(comp_id);
     if (comp_atom_rows == null || comp_atom_rows.length === 0) continue;
+    const comp_atom_tags = atom_tags.get(comp_id);
+    if (comp_atom_tags == null) continue;
     const lines = [
       'data_' + comp_id,
       '#',
       '_chem_comp.id ' + comp_id,
       '#',
       'loop_',
-      ...atom_loop.tags,
+      ...comp_atom_tags,
       ...comp_atom_rows.map((row) => row.join(' ')),
       '#',
     ];
     const comp_bond_rows = bond_rows.get(comp_id);
-    if (bond_loop != null && comp_bond_rows != null && comp_bond_rows.length !== 0) {
+    const comp_bond_tags = bond_tags.get(comp_id);
+    if (comp_bond_tags != null && comp_bond_rows != null && comp_bond_rows.length !== 0) {
       lines.push(
         'loop_',
-        ...bond_loop.tags,
+        ...comp_bond_tags,
         ...comp_bond_rows.map((row) => row.join(' ')),
         '#'
       );
@@ -118,6 +129,19 @@ function extract_embedded_monomer_cifs(text: string, missing_names: string[]) {
     monomers.push({name: comp_id, cif: lines.join('\n') + '\n'});
   }
   return monomers;
+}
+
+function monomer_names_in_cif(text: string) {
+  const names = new Set<string>();
+  for (const loop of extract_cif_loops(text, '_chem_comp_atom.comp_id')) {
+    for (const row of loop.rows) {
+      const comp_id = (row[0] || '').toUpperCase();
+      if (comp_id !== '' && comp_id !== '.' && comp_id !== '?') {
+        names.add(comp_id);
+      }
+    }
+  }
+  return names;
 }
 
 function getGemmiBondData(gemmi: GemmiModule, st: Structure,
@@ -130,6 +154,7 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
         source: 'unavailable',
         monomers_requested: 0,
         monomers_loaded: 0,
+        unresolved_monomers: [],
         bond_count: 0,
       } as GemmiBondingInfo,
     });
@@ -148,6 +173,7 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
     getMonomerCifs(fetch_names) :
     Promise.resolve([]);
   return load_monomers.then(function (cif_texts) {
+    const loaded_names = new Set<string>(embedded_names);
     let loaded_monomers = 0;
     for (const entry of embedded_monomers) {
       bond_info.add_monomer_cif(entry.cif);
@@ -155,15 +181,22 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
     }
     for (const cif_text of cif_texts) {
       bond_info.add_monomer_cif(cif_text);
+      for (const name of monomer_names_in_cif(cif_text)) {
+        loaded_names.add(name);
+      }
       loaded_monomers++;
     }
     bond_info.get_bond_lines(st);
     const len = bond_info.bond_data_size();
+    const unresolved_monomers = Array.from(new Set(resnames
+      .map((name) => name.toUpperCase())
+      .filter((name) => !loaded_names.has(name)))).sort();
     const source = 'gemmi' as const;
     const info: GemmiBondingInfo = {
       source: source,
       monomers_requested: monomers_requested,
       monomers_loaded: loaded_monomers,
+      unresolved_monomers: unresolved_monomers,
       bond_count: len / 3,
     };
     if (loaded_monomers === 0 && len === 0) return { bond_data: null, info: info };
@@ -264,6 +297,16 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
   }, function (err) {
     st.delete();
     throw err;
+  });
+}
+
+export function bondDataFromGemmiStructure(gemmi: GemmiModule, st: Structure,
+                                           getMonomerCifs?: MonomerFetcher) {
+  return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
+    return {
+      bond_data: bond_result.bond_data,
+      bonding: bond_result.info,
+    };
   });
 }
 

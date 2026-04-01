@@ -1,12 +1,17 @@
 
 var GM = require('../gemmimol');
 var util = require('../perf/util');
+var TextEncoder = require('node:util').TextEncoder;
 
 function sphere_atom_count(bag) {
   return bag.objects.reduce(function (count, obj) {
     if (!obj.material || obj.material.type !== 'um_sphere' || !obj.geometry) return count;
     return count + obj.geometry.attributes.position.count / 4;
   }, 0);
+}
+
+function text_to_array_buffer(text) {
+  return new TextEncoder().encode(text).buffer;
 }
 
 describe('Viewer', () => {
@@ -55,6 +60,24 @@ describe('Viewer', () => {
     viewer.add_model(model2);
     viewer.config.hydrogens = true;
     viewer.recenter();
+  });
+
+  it('uses sphere as the default water style', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    expect(viewer2.config.water_style).toEqual('sphere');
+  });
+
+  it('includes unresolved monomer dictionaries in drop summary', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    viewer2.last_bonding_info = {
+      source: 'gemmi',
+      monomers_requested: 1,
+      monomers_loaded: 0,
+      unresolved_monomers: ['Z1234'],
+      bond_count: 0,
+    };
+    expect(viewer2.drop_complete_message(['0185-01_refmacat.mmcif']))
+      .toContain('Missing monomer dictionary: Z1234.');
   });
 
   it('shows and hides blobs from a loaded map', () => {
@@ -290,6 +313,31 @@ describe('Viewer', () => {
     });
   });
 
+  it('shows placed waters as spheres in line mode by default', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      bag.conf.render_style = 'lines';
+      loaded_viewer.redraw_model(bag);
+      var spheres_before = sphere_atom_count(bag);
+      structure = bag.gemmi_selection.structure;
+
+      loaded_viewer.blob_hits = [{
+        centroid: [11.1, 12.2, 13.3],
+        peak_pos: [11.1, 12.2, 13.3],
+        score: 20.0,
+        volume: 8.0,
+        peak_value: 3.0,
+      }];
+      loaded_viewer.blob_focus_index = 0;
+      loaded_viewer.place_selected_blob('water');
+      expect(loaded_viewer.selected.atom.resname).toEqual('HOH');
+      expect(sphere_atom_count(loaded_viewer.model_bags[0])).toEqual(spheres_before + 1);
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
   it('places empty-blob atoms at peak position, not centroid', () => {
     var structure;
     return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
@@ -312,6 +360,54 @@ describe('Viewer', () => {
       expect(loaded_viewer.selected.atom.xyz[2]).toBeCloseTo(16.6, 4);
     }).finally(function () {
       if (structure) structure.delete();
+    });
+  });
+
+  it('refreshes loaded ligand bonds after adding a monomer cif', () => {
+    var pdb_text = [
+      'HETATM    1  C1  ZZZ A   1       0.000   0.000   0.000  1.00 10.00           C',
+      'HETATM    2  C2  ZZZ A   1       1.500   0.000   0.000  1.00 10.00           C',
+      'HETATM    3  O1  ZZZ A   1       2.700   0.000   0.000  1.00 10.00           O',
+      'END',
+      '',
+    ].join('\n');
+    var monomer_cif = [
+      'data_ZZZ',
+      '_chem_comp.id ZZZ',
+      '_chem_comp.group non-polymer',
+      'loop_',
+      '_chem_comp_atom.comp_id',
+      '_chem_comp_atom.atom_id',
+      '_chem_comp_atom.type_symbol',
+      '_chem_comp_atom.type_energy',
+      '_chem_comp_atom.charge',
+      'ZZZ C1 C CH3 0',
+      'ZZZ C2 C CH2 0',
+      'ZZZ O1 O O 0',
+      'loop_',
+      '_chem_comp_bond.comp_id',
+      '_chem_comp_bond.atom_id_1',
+      '_chem_comp_bond.atom_id_2',
+      '_chem_comp_bond.type',
+      '_chem_comp_bond.aromatic',
+      'ZZZ C1 C2 single n',
+      'ZZZ C2 O1 single n',
+      '#',
+      '',
+    ].join('\n');
+    var viewer2 = new GM.Viewer('viewer');
+    return util.load_gemmi().then(function (gemmi) {
+      return viewer2.load_coordinate_buffer(text_to_array_buffer(pdb_text), 'test.pdb', gemmi);
+    }).then(function () {
+      var bag = viewer2.model_bags[0];
+      expect(bag.model.atoms.map(function (atom) { return atom.bonds.length; }))
+        .toEqual([0, 0, 0]);
+      var names = viewer2.cache_monomer_cif_text(monomer_cif);
+      return viewer2.refresh_bonding_for_cached_monomers(names).then(function (refreshed) {
+        expect(refreshed).toEqual(1);
+        expect(viewer2.model_bags[0].model.atoms.map(function (atom) { return atom.bonds.length; }))
+          .toEqual([1, 2, 1]);
+      });
     });
   });
 });

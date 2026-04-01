@@ -30,7 +30,7 @@ const BondType = {
 
 
 
-function tokenize_cif_row(line) {
+function tokenize_cif_row$1(line) {
   const tokens = line.match(/'(?:[^']*)'|"(?:[^"]*)"|\S+/g);
   if (tokens == null) return [];
   return tokens.map((token) => {
@@ -42,8 +42,9 @@ function tokenize_cif_row(line) {
   });
 }
 
-function extract_cif_loop(text, first_tag) {
+function extract_cif_loops(text, first_tag) {
   const lines = text.split(/\r?\n/);
+  const loops = [];
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() !== 'loop_') continue;
     const tags = [];
@@ -58,38 +59,44 @@ function extract_cif_loop(text, first_tag) {
       const trimmed = lines[j].trim();
       if (trimmed === '' || trimmed === '#') continue;
       if (trimmed === 'loop_' || trimmed.startsWith('_')) break;
-      values.push(...tokenize_cif_row(lines[j]));
+      values.push(...tokenize_cif_row$1(lines[j]));
     }
-    if (tags.length === 0 || values.length < tags.length) return null;
+    if (tags.length === 0 || values.length < tags.length) continue;
     const rows = [];
     for (let k = 0; k + tags.length <= values.length; k += tags.length) {
       rows.push(values.slice(k, k + tags.length));
     }
-    return {tags: tags, rows: rows};
+    loops.push({tags: tags, rows: rows});
   }
-  return null;
+  return loops;
 }
 
 function extract_embedded_monomer_cifs(text, missing_names) {
   if (missing_names.length === 0) return [];
-  const atom_loop = extract_cif_loop(text, '_chem_comp_atom.comp_id');
-  if (atom_loop == null) return [];
-  const bond_loop = extract_cif_loop(text, '_chem_comp_bond.comp_id');
+  const atom_loops = extract_cif_loops(text, '_chem_comp_atom.comp_id');
+  if (atom_loops.length === 0) return [];
+  const bond_loops = extract_cif_loops(text, '_chem_comp_bond.comp_id');
   const wanted = new Set(missing_names.map((name) => name.toUpperCase()));
   const atom_rows = new Map();
+  const atom_tags = new Map();
   const bond_rows = new Map();
+  const bond_tags = new Map();
 
-  for (const row of atom_loop.rows) {
-    const comp_id = (row[0] || '').toUpperCase();
-    if (!wanted.has(comp_id)) continue;
-    const rows = atom_rows.get(comp_id);
-    if (rows) rows.push(row);
-    else atom_rows.set(comp_id, [row]);
+  for (const atom_loop of atom_loops) {
+    for (const row of atom_loop.rows) {
+      const comp_id = (row[0] || '').toUpperCase();
+      if (!wanted.has(comp_id)) continue;
+      if (!atom_tags.has(comp_id)) atom_tags.set(comp_id, atom_loop.tags);
+      const rows = atom_rows.get(comp_id);
+      if (rows) rows.push(row);
+      else atom_rows.set(comp_id, [row]);
+    }
   }
-  if (bond_loop != null) {
+  for (const bond_loop of bond_loops) {
     for (const row of bond_loop.rows) {
       const comp_id = (row[0] || '').toUpperCase();
       if (!wanted.has(comp_id)) continue;
+      if (!bond_tags.has(comp_id)) bond_tags.set(comp_id, bond_loop.tags);
       const rows = bond_rows.get(comp_id);
       if (rows) rows.push(row);
       else bond_rows.set(comp_id, [row]);
@@ -100,21 +107,24 @@ function extract_embedded_monomer_cifs(text, missing_names) {
   for (const comp_id of Array.from(wanted)) {
     const comp_atom_rows = atom_rows.get(comp_id);
     if (comp_atom_rows == null || comp_atom_rows.length === 0) continue;
+    const comp_atom_tags = atom_tags.get(comp_id);
+    if (comp_atom_tags == null) continue;
     const lines = [
       'data_' + comp_id,
       '#',
       '_chem_comp.id ' + comp_id,
       '#',
       'loop_',
-      ...atom_loop.tags,
+      ...comp_atom_tags,
       ...comp_atom_rows.map((row) => row.join(' ')),
       '#',
     ];
     const comp_bond_rows = bond_rows.get(comp_id);
-    if (bond_loop != null && comp_bond_rows != null && comp_bond_rows.length !== 0) {
+    const comp_bond_tags = bond_tags.get(comp_id);
+    if (comp_bond_tags != null && comp_bond_rows != null && comp_bond_rows.length !== 0) {
       lines.push(
         'loop_',
-        ...bond_loop.tags,
+        ...comp_bond_tags,
         ...comp_bond_rows.map((row) => row.join(' ')),
         '#'
       );
@@ -122,6 +132,19 @@ function extract_embedded_monomer_cifs(text, missing_names) {
     monomers.push({name: comp_id, cif: lines.join('\n') + '\n'});
   }
   return monomers;
+}
+
+function monomer_names_in_cif(text) {
+  const names = new Set();
+  for (const loop of extract_cif_loops(text, '_chem_comp_atom.comp_id')) {
+    for (const row of loop.rows) {
+      const comp_id = (row[0] || '').toUpperCase();
+      if (comp_id !== '' && comp_id !== '.' && comp_id !== '?') {
+        names.add(comp_id);
+      }
+    }
+  }
+  return names;
 }
 
 function getGemmiBondData(gemmi, st,
@@ -134,6 +157,7 @@ function getGemmiBondData(gemmi, st,
         source: 'unavailable',
         monomers_requested: 0,
         monomers_loaded: 0,
+        unresolved_monomers: [],
         bond_count: 0,
       } ,
     });
@@ -152,6 +176,7 @@ function getGemmiBondData(gemmi, st,
     getMonomerCifs(fetch_names) :
     Promise.resolve([]);
   return load_monomers.then(function (cif_texts) {
+    const loaded_names = new Set(embedded_names);
     let loaded_monomers = 0;
     for (const entry of embedded_monomers) {
       bond_info.add_monomer_cif(entry.cif);
@@ -159,15 +184,22 @@ function getGemmiBondData(gemmi, st,
     }
     for (const cif_text of cif_texts) {
       bond_info.add_monomer_cif(cif_text);
+      for (const name of monomer_names_in_cif(cif_text)) {
+        loaded_names.add(name);
+      }
       loaded_monomers++;
     }
     bond_info.get_bond_lines(st);
     const len = bond_info.bond_data_size();
+    const unresolved_monomers = Array.from(new Set(resnames
+      .map((name) => name.toUpperCase())
+      .filter((name) => !loaded_names.has(name)))).sort();
     const source = 'gemmi' ;
     const info = {
       source: source,
       monomers_requested: monomers_requested,
       monomers_loaded: loaded_monomers,
+      unresolved_monomers: unresolved_monomers,
       bond_count: len / 3,
     };
     if (loaded_monomers === 0 && len === 0) return { bond_data: null, info: info };
@@ -268,6 +300,16 @@ function modelsFromGemmi(gemmi, buffer, name,
   }, function (err) {
     st.delete();
     throw err;
+  });
+}
+
+function bondDataFromGemmiStructure(gemmi, st,
+                                           getMonomerCifs) {
+  return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
+    return {
+      bond_data: bond_result.bond_data,
+      bonding: bond_result.info,
+    };
   });
 }
 
@@ -6491,7 +6533,7 @@ const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
 const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks',
                        'ribbon', 'ball&stick'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
-const WATER_STYLES = ['cross', 'dot', 'invisible'];
+const WATER_STYLES = ['sphere', 'cross', 'invisible'];
 const MAP_STYLES = ['marching cubes', 'squarish'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 function rainbow_value(v, vmin, vmax) {
@@ -6579,6 +6621,47 @@ function scale_by_height(value, size) { // for scaling bond_line
   return value * size[1] / 700;
 }
 
+function tokenize_cif_row(line) {
+  const tokens = line.match(/'(?:[^']*)'|"(?:[^"]*)"|\S+/g);
+  if (tokens == null) return [];
+  return tokens.map((token) => {
+    if ((token.startsWith('\'') && token.endsWith('\'')) ||
+        (token.startsWith('"') && token.endsWith('"'))) {
+      return token.slice(1, -1);
+    }
+    return token;
+  });
+}
+
+function monomer_cif_names(text) {
+  const names = new Set();
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== 'loop_') continue;
+    const tags = [];
+    let j = i + 1;
+    while (j < lines.length && lines[j].startsWith('_')) {
+      tags.push(lines[j].trim());
+      j++;
+    }
+    if (tags[0] !== '_chem_comp_atom.comp_id') continue;
+    for (; j < lines.length; j++) {
+      const trimmed = lines[j].trim();
+      if (trimmed === '' || trimmed === '#') continue;
+      if (trimmed === 'loop_' || trimmed.startsWith('_') || trimmed.startsWith('data_')) break;
+      const row = tokenize_cif_row(lines[j]);
+      if (row.length !== 0 && row[0] !== '.' && row[0] !== '?') {
+        names.add(row[0].toUpperCase());
+      }
+    }
+  }
+  return Array.from(names).sort();
+}
+
+function is_standalone_monomer_cif(text) {
+  return text.indexOf('_atom_site.') === -1 && monomer_cif_names(text).length !== 0;
+}
+
 function download_filename(name, format) {
   const base = ((name || '').trim().replace(/[^A-Za-z0-9_.-]+/g, '_')
     .replace(/^_+|_+$/g, '')) || 'model';
@@ -6661,6 +6744,8 @@ class ModelBag {
     const metal_bond_type_arr = [];
     const sphere_arr = [];
     const sphere_color_arr = [];
+    const water_sphere_arr = [];
+    const water_sphere_color_arr = [];
     const hydrogens = this.conf.hydrogens;
     for (let i = 0; i < visible_atoms.length; i++) {
       const atom = visible_atoms[i];
@@ -6698,8 +6783,13 @@ class ModelBag {
           }
         }
       }
-      sphere_arr.push(atom);
-      sphere_color_arr.push(color);
+      if (ball_size == null && atom.is_water() && this.conf.water_style === 'sphere') {
+        water_sphere_arr.push(atom);
+        water_sphere_color_arr.push(color);
+      } else {
+        sphere_arr.push(atom);
+        sphere_color_arr.push(color);
+      }
     }
 
     if (ball_size != null) {
@@ -6741,8 +6831,13 @@ class ModelBag {
       // wheels (discs) as round caps
       this.objects.push(makeWheels(sphere_arr, sphere_color_arr, linewidth));
     }
+    if (water_sphere_arr.length !== 0) {
+      this.objects.push(makeBalls(water_sphere_arr, water_sphere_color_arr,
+                                  this.conf.ball_size));
+    }
 
     sphere_arr.forEach(function (v) { this.atom_array.push(v); }, this);
+    water_sphere_arr.forEach(function (v) { this.atom_array.push(v); }, this);
   }
 
   add_sticks(polymers, ligands, radius,
@@ -8313,7 +8408,7 @@ class Viewer {
     const placeable = (this.blob_hits.length !== 0 && !this.blob_negate &&
                        this.blob_map_bag != null && this.blob_map_bag.is_diff_map);
     if (!placeable) {
-      header.textContent = 'Place (show empty blobs first)';
+      header.textContent = 'Place (show unmodelled blobs first)';
     } else {
       const idx = this.blob_focus_index >= 0 ? this.blob_focus_index + 1 : 1;
       header.textContent = 'Place (#' + idx + ')';
@@ -8342,19 +8437,31 @@ class Viewer {
   update_empty_blobs_select(select) {
     if (select == null) return;
     const pos_map = this.blob_source_map_bag(false, true);
+    const editable_bag = this.editable_model_bag();
     select.innerHTML = '';
     if (pos_map == null) {
-      select.style.display = 'none';
+      if (editable_bag == null) {
+        select.style.display = 'none';
+        select.disabled = true;
+        return;
+      }
+      const header = document.createElement('option');
+      header.textContent = 'Unmodelled Blobs (load map first)';
+      header.value = '';
+      header.selected = true;
+      select.appendChild(header);
       select.disabled = true;
+      select.style.display = '';
+      select.value = '';
       return;
     }
     const header = document.createElement('option');
     const has_positive_hits = (this.blob_hits.length !== 0 && !this.blob_negate &&
                                this.blob_map_bag != null && this.blob_map_bag.is_diff_map);
     if (!has_positive_hits) {
-      header.textContent = 'Empty Blobs';
+      header.textContent = 'Unmodelled Blobs';
     } else {
-      header.textContent = 'Empty Blobs (' + this.blob_hits.length + ')';
+      header.textContent = 'Unmodelled Blobs (' + this.blob_hits.length + ')';
     }
     header.value = '';
     header.selected = true;
@@ -8440,6 +8547,22 @@ class Viewer {
     select.value = '';
   }
 
+  unresolved_monomer_message() {
+    const unresolved = this.last_bonding_info ? this.last_bonding_info.unresolved_monomers : [];
+    if (unresolved == null || unresolved.length === 0) return null;
+    let msg = 'Missing monomer dictionar' + (unresolved.length === 1 ? 'y' : 'ies') +
+      ': ' + unresolved.join(', ') + '.';
+    msg += ' Drop companion CIF to show ligand bonds.';
+    return msg;
+  }
+
+  drop_complete_message(names) {
+    let msg = 'loaded ' + names.join(', ');
+    const warning = this.unresolved_monomer_message();
+    if (warning != null) msg += '. ' + warning;
+    return msg;
+  }
+
   show_blobs(negate, prefer_diff=false,
              search_sigma, mask_waters=false) {
     const map_bag = this.blob_source_map_bag(negate, prefer_diff);
@@ -8449,12 +8572,20 @@ class Viewer {
     }
     const ctx = this.download_target_context();
     const sigma = _nullishCoalesce(search_sigma, () => ( map_bag.isolevel));
-    let hits = map_bag.map.find_blobs(map_bag.map.abs_level(sigma), {
-      negate: negate,
-      structure: ctx ? ctx.structure : null,
-      model_index: ctx ? ctx.model_index : 0,
-      mask_waters: mask_waters,
-    });
+    let hits;
+    try {
+      hits = map_bag.map.find_blobs(map_bag.map.abs_level(sigma), {
+        negate: negate,
+        structure: ctx ? ctx.structure : null,
+        model_index: ctx ? ctx.model_index : 0,
+        mask_waters: mask_waters,
+      });
+    } catch (err) {
+      const msg = (err instanceof Error && err.message) ?
+        err.message : 'Blob search failed for this map.';
+      this.hud(msg, 'ERR');
+      return;
+    }
     hits.sort((a, b) => b.score - a.score || b.peak_value - a.peak_value);
     const total = hits.length;
     const limit = 25;
@@ -8473,7 +8604,7 @@ class Viewer {
       this.hud('No ' + kind + ' blobs above ' +
                sigma.toFixed(2) + ' rmsd.');
     } else {
-      let msg = 'Showing ' + hits.length + ' ' + kind + ' blob';
+      let msg = 'Found ' + hits.length + ' ' + kind + ' blob';
       if (hits.length !== 1) msg += 's';
       msg += ' above ' + sigma.toFixed(2) + ' rmsd';
       if (total > hits.length) msg += ' (top ' + hits.length + ' by score)';
@@ -9616,19 +9747,25 @@ class Viewer {
       e.stopPropagation();
       e.preventDefault();
       if (e.dataTransfer == null) return;
-      const names = [];
+      const files = [];
       for (let i = 0; i < e.dataTransfer.files.length; i++) {
         const file = e.dataTransfer.files.item(i);
-        try {
-          self.hud('Loading ' + file.name);
-          callback(file);
-        } catch (e) {
-          self.hud('Loading ' + file.name + ' failed.\n' + e.message, 'ERR');
-          return;
-        }
-        names.push(file.name);
+        if (file != null) files.push(file);
       }
-      self.hud('loaded ' + names.join(', '));
+      files.sort((a, b) => a.name.localeCompare(b.name, undefined,
+                                                {numeric: true, sensitivity: 'base'}));
+      const names = [];
+      Promise.resolve().then(async function () {
+        for (const file of files) {
+          self.hud('Loading ' + file.name);
+          await callback(file);
+          names.push(file.name);
+        }
+        self.hud(self.drop_complete_message(names));
+      }).catch(function (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        self.hud('Loading failed.\n' + msg, 'ERR');
+      });
     });
   }
 
@@ -9637,38 +9774,57 @@ class Viewer {
     const self = this;
     const reader = new FileReader();
     if (/\.(pdb|ent|cif|mmcif|mcif|mmjson)$/i.test(file.name)) {
-      reader.onloadend = function (evt) {
-        if (evt.target == null || evt.target.readyState != 2) return;
-        self.load_coordinate_buffer(evt.target.result , file.name).then(function () {
-          self.recenter();
-        }, function (e) {
-          self.hud('Loading ' + file.name + ' failed.\n' + e.message, 'ERR');
-        });
-      };
-      reader.readAsArrayBuffer(file);
+      return new Promise(function (resolve, reject) {
+        reader.onloadend = function (evt) {
+          if (evt.target == null || evt.target.readyState != 2) return;
+          const buffer = evt.target.result ;
+          if (/\.(cif|mmcif|mcif)$/i.test(file.name)) {
+            const text = new TextDecoder().decode(new Uint8Array(buffer));
+            if (is_standalone_monomer_cif(text)) {
+              const names = self.cache_monomer_cif_text(text);
+              self.refresh_bonding_for_cached_monomers(names).then(function (refreshed) {
+                let msg = 'Loaded monomer dictionary ' + names.join(', ') + '.';
+                if (refreshed !== 0) msg += ' Updated bonding in ' + refreshed + ' loaded structure';
+                if (refreshed > 1) msg += 's';
+                self.hud(msg);
+                resolve();
+              }, reject);
+              return;
+            }
+          }
+          self.load_coordinate_buffer(buffer, file.name).then(function () {
+            self.recenter();
+            resolve();
+          }, reject);
+        };
+        reader.onerror = () => reject(reader.error || Error('Failed to read ' + file.name));
+        reader.readAsArrayBuffer(file);
+      });
     } else if (/\.(map|ccp4|mrc|dsn6|omap)$/.test(file.name)) {
       const map_format = /\.(dsn6|omap)$/.test(file.name) ? 'dsn6' : 'ccp4';
-      reader.onloadend = function (evt) {
-        if (evt.target == null || evt.target.readyState != 2) return;
-        const after_load = (map_format === 'ccp4') ?
-          self.resolve_gemmi().then(function (gemmi) {
-            if (gemmi == null) throw Error('Gemmi is required for CCP4 map loading.');
-            self.load_map_from_buffer(evt.target.result ,
-                                      {format: map_format}, gemmi);
-          }) :
-          Promise.resolve().then(function () {
-            self.load_map_from_buffer(evt.target.result ,
-                                      {format: map_format});
-          });
-        after_load.then(function () {
-          if (self.model_bags.length === 0 && self.map_bags.length === 1) {
-            self.recenter();
-          }
-        }, function (e) {
-          self.hud('Loading ' + file.name + ' failed.\n' + e.message, 'ERR');
-        });
-      };
-      reader.readAsArrayBuffer(file);
+      return new Promise(function (resolve, reject) {
+        reader.onloadend = function (evt) {
+          if (evt.target == null || evt.target.readyState != 2) return;
+          const after_load = (map_format === 'ccp4') ?
+            self.resolve_gemmi().then(function (gemmi) {
+              if (gemmi == null) throw Error('Gemmi is required for CCP4 map loading.');
+              self.load_map_from_buffer(evt.target.result ,
+                                        {format: map_format}, gemmi);
+            }) :
+            Promise.resolve().then(function () {
+              self.load_map_from_buffer(evt.target.result ,
+                                        {format: map_format});
+            });
+          after_load.then(function () {
+            if (self.model_bags.length === 0 && self.map_bags.length === 1) {
+              self.recenter();
+            }
+            resolve();
+          }, reject);
+        };
+        reader.onerror = () => reject(reader.error || Error('Failed to read ' + file.name));
+        reader.readAsArrayBuffer(file);
+      });
     } else {
       throw Error('Unknown file extension. ' +
                   'Use: pdb, ent, cif, mmcif, mcif, mmjson, ccp4, mrc, map, dsn6 or omap.');
@@ -9679,6 +9835,69 @@ class Viewer {
     const frag = parse_url_fragment();
     if (frag.zoom) this.camera.zoom = frag.zoom;
     this.recenter(frag.xyz || (options && options.center), frag.eye, 1);
+  }
+
+  cache_monomer_cif_text(text) {
+    const names = monomer_cif_names(text);
+    for (const name of names) {
+      this.monomer_cif_cache[name] = Promise.resolve(text);
+    }
+    return names;
+  }
+
+  refresh_bonding_for_cached_monomers(names) {
+    if (names.length === 0) return Promise.resolve(0);
+    const wanted = new Set(names.map((name) => name.toUpperCase()));
+    const groups = new Map();
+    for (const bag of this.model_bags) {
+      const ctx = bag.gemmi_selection;
+      if (bag.symop !== '' || ctx == null) continue;
+      const group = groups.get(ctx.structure);
+      if (group) group.bags.push(bag);
+      else groups.set(ctx.structure, {gemmi: ctx.gemmi, bags: [bag]});
+    }
+    const refresh_groups = Array.from(groups.values()).filter((group) => {
+      const missing = group.gemmi.get_missing_monomer_names(group.bags[0].gemmi_selection.structure)
+        .split(',').filter(Boolean);
+      return missing.some((name) => wanted.has(name.toUpperCase()));
+    });
+    if (refresh_groups.length === 0) return Promise.resolve(0);
+
+    const selected = this.selected.atom ? {
+      bag: this.selected.bag,
+      i_seq: this.selected.atom.i_seq,
+    } : null;
+    this.toggle_label(this.selected, false);
+
+    const self = this;
+    return Promise.all(refresh_groups.map(function (group) {
+      const ctx = group.bags[0].gemmi_selection;
+      return bondDataFromGemmiStructure(group.gemmi, ctx.structure,
+                                        self.fetch_monomer_cifs.bind(self))
+        .then(function (result) {
+          for (const bag of group.bags) {
+            self.clear_labels_for_bag(bag);
+            const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure,
+                                                  result.bond_data, ctx.model_index);
+            if (result.bond_data != null) model.bond_data = result.bond_data;
+            bag.model = model;
+            self.redraw_model(bag);
+            if (selected != null && selected.bag === bag) {
+              const selected_atom = bag.model.atoms[selected.i_seq] || null;
+              self.selected = {bag: bag, atom: selected_atom};
+            }
+          }
+          return result;
+        });
+    })).then(function (results) {
+      if (results.length !== 0) {
+        self.last_bonding_info = results[results.length - 1].bonding;
+      }
+      self.update_nav_menus();
+      self.toggle_label(self.selected, true);
+      self.request_render();
+      return results.length;
+    });
   }
 
   fetch_monomer_cif(resname) {
@@ -10569,25 +10788,28 @@ function set_pdb_and_mtz_dropzone(gemmi, viewer,
   viewer.set_dropzone(zone, function (file) {
     if (/\.mtz$/.test(file.name)) {
       const reader = new FileReader();
-      reader.onloadend = function (evt) {
-        if (evt.target.readyState === 2) {
+      return new Promise(function (resolve, reject) {
+        reader.onloadend = function (evt) {
+          if (evt.target == null || evt.target.readyState !== 2) return;
           const t0 = performance.now();
           try {
-            const mtz = gemmi.readMtz(evt.target.result);
+            const mtz = gemmi.readMtz(evt.target.result );
             load_maps_from_mtz_buffer(gemmi, viewer, mtz);
           } catch (e) {
-            viewer.hud(e.message, 'ERR');
+            reject(e);
             return;
           }
           log_timing(t0, 'mtz -> maps');
           if (viewer.model_bags.length === 0 && viewer.map_bags.length <= 2) {
             viewer.recenter();
           }
-        }
-      };
-      reader.readAsArrayBuffer(file);
+          resolve();
+        };
+        reader.onerror = () => reject(reader.error || Error('Failed to read ' + file.name));
+        reader.readAsArrayBuffer(file);
+      });
     } else {
-      viewer.pick_pdb_and_map(file);
+      return viewer.pick_pdb_and_map(file);
     }
   });
 }
@@ -10621,6 +10843,7 @@ exports.Vector3 = Vector3;
 exports.Viewer = Viewer;
 exports.WebGLRenderer = WebGLRenderer;
 exports.addXyzCross = addXyzCross;
+exports.bondDataFromGemmiStructure = bondDataFromGemmiStructure;
 exports.fog_end_fragment = fog_end_fragment;
 exports.fog_pars_fragment = fog_pars_fragment;
 exports.load_maps_from_mtz = load_maps_from_mtz;
