@@ -1,12 +1,6 @@
 
 var GM = require('../gemmimol');
 var util = require('../perf/util');
-var fs = require('node:fs');
-
-function file_to_array_buffer(path) {
-  var buffer = fs.readFileSync(path);
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-}
 
 function sphere_atom_count(bag) {
   return bag.objects.reduce(function (count, obj) {
@@ -91,12 +85,12 @@ describe('Viewer', () => {
   it('finds multiple empty blobs in dimple_thaum diff map', () => {
     var viewer2 = new GM.Viewer('viewer');
     return viewer2.load_coordinate_buffer(
-      file_to_array_buffer('../gemmimol.github.io/data/dimple_thaum.pdb'),
-      'dimple_thaum.pdb',
+      util.open_as_array_buffer('1mru.pdb'),
+      '1mru.pdb',
       gemmi
     ).then(function () {
       var diffMap = new GM.ElMap();
-      var diffBuf = file_to_array_buffer('../gemmimol.github.io/data/dimple_thaum_diff.map');
+      var diffBuf = util.open_as_array_buffer('1mru_diff.map');
       diffMap.from_ccp4(diffBuf, true, gemmi);
       viewer2.add_map(diffMap, true);
       viewer2.show_empty_blobs();

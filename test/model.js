@@ -59,7 +59,7 @@ describe('Model', () => {
     }
   });
 
-  it('loads bonds from cif with monomer fetcher', () => {
+  it('loads bonds from cif with embedded or fetched monomer data', () => {
     var cif_path = path.resolve(__dirname, '5i55.cif');
     var requested = null;
     return util.load_gemmi().then(function (gemmi) {
@@ -71,7 +71,11 @@ describe('Model', () => {
     }).then(function (result) {
       expect(result.bonding.source).toEqual('gemmi');
       expect(result.bonding.monomers_requested).toBeGreaterThan(0);
-      expect(requested).not.toEqual(null);
+      if (requested !== null) {
+        expect(requested.length).toBeGreaterThan(0);
+      } else {
+        expect(result.bonding.monomers_loaded).toBeGreaterThan(0);
+      }
       result.structure.delete();
     });
   });

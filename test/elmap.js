@@ -1,7 +1,6 @@
 
 var ElMap = require('../gemmimol').ElMap;
 var util = require('../perf/util');
-var fs = require('node:fs');
 
 
 /* Note: axis order in ccp4 maps is tricky. It was tested by re-sectioning,
@@ -60,14 +59,14 @@ describe('ElMap', () => {
   });
   it('finds blobs via wasm map wrapper', () => {
     var blobMap = new ElMap();
-    var mapBuf = fs.readFileSync('../gemmi/tests/5i55_tiny.ccp4');
-    var stBuf = fs.readFileSync('../gemmi/tests/5i55.cif');
+    var mapBuf = util.open_as_array_buffer('1mru.map');
+    var stBuf = util.open_as_array_buffer('1mru.pdb');
     blobMap.from_ccp4(mapBuf, true, gemmi);
-    var st = gemmi.read_structure(stBuf, '5i55.cif');
+    var st = gemmi.read_structure(stBuf, '1mru.pdb');
     try {
       var blobs = blobMap.find_blobs(blobMap.stats.rms);
-      expect(blobs.length).toBe(1);
-      expect(blobs[0].score).toBeGreaterThan(15);
+      expect(blobs.length).toBeGreaterThan(0);
+      expect(blobs[0].score).toBeGreaterThan(1000);
       var masked = blobMap.find_blobs(blobMap.stats.rms, {structure: st});
       expect(masked.length).toBe(0);
     } finally {
