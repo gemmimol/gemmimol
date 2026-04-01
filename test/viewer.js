@@ -347,6 +347,78 @@ describe('Viewer', () => {
     });
   });
 
+  it('mutates a selected residue to tryptophan', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      var residues = bag.model.get_residues();
+      var target_atom = null;
+      for (var resid in residues) {
+        var residue = residues[resid];
+        var names = residue.map(function (atom) { return atom.name; });
+        if (residue[0].resname === 'TRP') continue;
+        if (names.indexOf('N') === -1 || names.indexOf('CA') === -1 ||
+            names.indexOf('C') === -1 || names.indexOf('CB') === -1) {
+          continue;
+        }
+        target_atom = residue[0];
+        break;
+      }
+      expect(target_atom).not.toBeNull();
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.select_atom({bag: bag, atom: target_atom});
+      return loaded_viewer.mutate_selected_residue('TRP').then(function () {
+        var mutated = bag.model.get_residues()[target_atom.resid()];
+        var atom_names = mutated.map(function (atom) { return atom.name; });
+        expect(mutated.every(function (atom) { return atom.resname === 'TRP'; })).toBe(true);
+        expect(atom_names).toContain('CG');
+        expect(atom_names).toContain('NE1');
+        expect(atom_names).toContain('CH2');
+        var cb = mutated.find(function (atom) { return atom.name === 'CB'; });
+        var cg = mutated.find(function (atom) { return atom.name === 'CG'; });
+        expect(cb).toBeDefined();
+        expect(cg).toBeDefined();
+        expect(cb.bonds.length).toBeGreaterThan(1);
+        expect(cg.bonds.length).toBeGreaterThan(1);
+        expect(gemmi.make_pdb_string(structure).indexOf('TRP')).toBeGreaterThan(-1);
+      });
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
+  it('mutates glycine using a pseudo-CB frame', () => {
+    var structure;
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      var residues = bag.model.get_residues();
+      var target_atom = null;
+      for (var resid in residues) {
+        var residue = residues[resid];
+        if (residue[0].resname !== 'GLY') continue;
+        var names = residue.map(function (atom) { return atom.name; });
+        if (names.indexOf('N') === -1 || names.indexOf('CA') === -1 || names.indexOf('C') === -1) {
+          continue;
+        }
+        target_atom = residue[0];
+        break;
+      }
+      expect(target_atom).not.toBeNull();
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.select_atom({bag: bag, atom: target_atom});
+      return loaded_viewer.mutate_selected_residue('SER').then(function () {
+        var mutated = bag.model.get_residues()[target_atom.resid()];
+        var atom_names = mutated.map(function (atom) { return atom.name; });
+        expect(mutated.every(function (atom) { return atom.resname === 'SER'; })).toBe(true);
+        expect(atom_names).toContain('CB');
+        expect(atom_names).toContain('OG');
+        expect(gemmi.make_mmcif_string(structure).indexOf('SER')).toBeGreaterThan(-1);
+      });
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
   it('places water and metal sites at blob positions', () => {
     var structure;
     return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {

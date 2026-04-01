@@ -8,6 +8,8 @@ import { ElMap } from './elmap';
 import type { BlobHit } from './elmap';
 import { BondType, modelsFromGemmi, modelFromGemmiStructure,
          bondDataFromGemmiStructure } from './model';
+import { plan_residue_mutation, STANDARD_MUTATION_TARGETS } from './mutate';
+import { aminoAcidTemplate } from './residue-templates';
 
 import type { GemmiModule, Structure } from './gemmi';
 import type { Atom, Model } from './model';
@@ -785,6 +787,7 @@ export class Viewer {
   ligands_select_el: HTMLSelectElement | null;
   download_select_el: HTMLSelectElement | null;
   delete_select_el: HTMLSelectElement | null;
+  mutate_select_el: HTMLSelectElement | null;
   blob_hits: BlobHit[];
   blob_map_bag: MapBag | null;
   blob_negate: boolean;
@@ -903,6 +906,7 @@ export class Viewer {
     this.ligands_select_el = null;
     this.download_select_el = null;
     this.delete_select_el = null;
+    this.mutate_select_el = null;
     this.blob_hits = [];
     this.blob_map_bag = null;
     this.blob_negate = false;
@@ -1925,6 +1929,36 @@ export class Viewer {
     return select;
   }
 
+  create_mutate_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 28, 56, 0.9)';
+    select.style.color = '#d6e8ff';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    const header = document.createElement('option');
+    header.textContent = 'Mutate';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    for (const resname of STANDARD_MUTATION_TARGETS) {
+      const opt = document.createElement('option');
+      opt.textContent = resname;
+      opt.value = resname;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => {
+      if (select.value !== '') this.mutate_selected_residue(select.value);
+      select.value = '';
+    });
+    select.addEventListener('keydown', (evt: KeyboardEvent) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
   active_model_bag(preferred?: ModelBag | null) {
     if (preferred != null) return preferred;
     if (this.selected.bag != null && this.model_bags.indexOf(this.selected.bag) !== -1) {
@@ -1939,14 +1973,24 @@ export class Viewer {
     wrapper.style.position = 'absolute';
     wrapper.style.left = '5px';
     wrapper.style.top = '5px';
+    wrapper.style.right = '5px';
     wrapper.style.zIndex = '20';
     wrapper.style.display = 'flex';
     wrapper.style.flexDirection = 'column';
     wrapper.style.alignItems = 'flex-start';
     wrapper.style.gap = '4px';
-    const row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.gap = '4px';
+    const row1 = document.createElement('div');
+    row1.style.display = 'flex';
+    row1.style.flexWrap = 'wrap';
+    row1.style.maxWidth = '100%';
+    row1.style.alignItems = 'flex-start';
+    row1.style.gap = '4px';
+    const row2 = document.createElement('div');
+    row2.style.display = 'flex';
+    row2.style.flexWrap = 'wrap';
+    row2.style.maxWidth = '100%';
+    row2.style.alignItems = 'flex-start';
+    row2.style.gap = '4px';
     this.blob_select_el = this.create_blob_select();
     this.place_select_el = this.create_place_select();
     this.metals_select_el = this.create_nav_select();
@@ -1954,14 +1998,17 @@ export class Viewer {
     this.empty_blobs_select_el = this.create_empty_blobs_select();
     this.download_select_el = this.create_download_select();
     this.delete_select_el = this.create_delete_select();
-    row.appendChild(this.blob_select_el);
-    row.appendChild(this.place_select_el);
-    row.appendChild(this.metals_select_el);
-    row.appendChild(this.ligands_select_el);
-    row.appendChild(this.empty_blobs_select_el);
-    row.appendChild(this.download_select_el);
-    row.appendChild(this.delete_select_el);
-    wrapper.appendChild(row);
+    this.mutate_select_el = this.create_mutate_select();
+    row1.appendChild(this.blob_select_el);
+    row1.appendChild(this.place_select_el);
+    row1.appendChild(this.metals_select_el);
+    row1.appendChild(this.ligands_select_el);
+    row1.appendChild(this.empty_blobs_select_el);
+    row2.appendChild(this.delete_select_el);
+    row2.appendChild(this.mutate_select_el);
+    row2.appendChild(this.download_select_el);
+    wrapper.appendChild(row1);
+    wrapper.appendChild(row2);
     this.container.appendChild(wrapper);
   }
 
@@ -1977,6 +2024,7 @@ export class Viewer {
     this.update_empty_blobs_select(this.empty_blobs_select_el);
     this.update_download_select(this.download_select_el, bag);
     this.update_delete_select(this.delete_select_el);
+    this.update_mutate_select(this.mutate_select_el);
   }
 
   update_blob_select(select: HTMLSelectElement | null) {
@@ -2170,6 +2218,15 @@ export class Viewer {
     select.value = '';
   }
 
+  update_mutate_select(select: HTMLSelectElement | null) {
+    if (select == null) return;
+    const editable_bag = this.editable_model_bag();
+    const edit = this.current_edit_target();
+    select.disabled = (edit == null);
+    select.style.display = (editable_bag == null) ? 'none' : '';
+    select.value = '';
+  }
+
   unresolved_monomer_message() {
     const unresolved = this.last_bonding_info ? this.last_bonding_info.unresolved_monomers : [];
     if (unresolved == null || unresolved.length === 0) return null;
@@ -2336,6 +2393,7 @@ export class Viewer {
     if (ctx == null) throw Error('Gemmi selection is unavailable for this model.');
     const bond_data = bag.model.bond_data;
     const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure, bond_data, ctx.model_index);
+    if (bond_data != null) model.bond_data = bond_data;
     this.clear_labels_for_bag(bag);
     bag.model = model;
     this.redraw_model(bag);
@@ -2346,6 +2404,29 @@ export class Viewer {
     this.toggle_label(this.selected, true);
     this.controls.go_to(new Vector3(center[0], center[1], center[2]), null, null, 15);
     this.request_render();
+  }
+
+  refresh_model_from_structure_with_bonds(bag: ModelBag, center: Num3) {
+    const ctx = bag.gemmi_selection;
+    if (ctx == null) return Promise.reject(Error('Gemmi selection is unavailable for this model.'));
+    const self = this;
+    return bondDataFromGemmiStructure(ctx.gemmi, ctx.structure,
+                                      this.fetch_monomer_cifs.bind(this)).then(function (result) {
+      const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure,
+                                            result.bond_data, ctx.model_index);
+      if (result.bond_data != null) model.bond_data = result.bond_data;
+      self.last_bonding_info = result.bonding;
+      self.clear_labels_for_bag(bag);
+      bag.model = model;
+      self.redraw_model(bag);
+      const next_atom = bag.model.get_nearest_atom(center[0], center[1], center[2]) ||
+                        bag.model.atoms[bag.model.atoms.length - 1];
+      self.selected = {bag: bag, atom: next_atom};
+      self.update_nav_menus();
+      self.toggle_label(self.selected, true);
+      self.controls.go_to(new Vector3(center[0], center[1], center[2]), null, null, 15);
+      self.request_render();
+    });
   }
 
   place_selected_blob(kind: string) {
@@ -2656,6 +2737,63 @@ export class Viewer {
     for (const atom of residue_atoms) atom.resname = 'ALA';
     this.apply_deletion_result(edit.bag, target.center);
     this.hud('Trimmed ' + target.label + ' to ALA.');
+  }
+
+  mutate_selected_residue(target_resname: string) {
+    const edit = this.current_edit_target();
+    if (edit == null) {
+      this.hud('Select an atom in a loaded model first.', 'ERR');
+      return Promise.resolve();
+    }
+    if (this.sym_model_bags.length > 0) {
+      this.toggle_symmetry();
+    }
+    const residue_atoms = edit.bag.model.get_residues()[edit.atom.resid()] || [edit.atom];
+    let plan;
+    try {
+      plan = plan_residue_mutation(residue_atoms, target_resname);
+    } catch (e) {
+      const msg = (e instanceof Error) ? e.message : 'Mutation failed.';
+      this.hud(msg, 'ERR');
+      return Promise.resolve();
+    }
+    const gm_residue = this.find_gemmi_residue(edit.ctx, edit.atom);
+    if (gm_residue == null) {
+      this.hud('Residue is unavailable in the Gemmi structure.', 'ERR');
+      return Promise.resolve();
+    }
+    try {
+      for (const atom of plan.remove_atoms) {
+        this.remove_from_structure_by_cid(edit.ctx, this.deletion_cid('atom', edit.ctx, atom));
+      }
+      gm_residue.name = plan.target_resname;
+      for (const atom_data of plan.add_atoms) {
+        const atom = new edit.ctx.gemmi.Atom();
+        try {
+          atom.name = atom_data.name;
+          atom.set_element(atom_data.element);
+          atom.pos = atom_data.xyz;
+          atom.occ = plan.occupancy;
+          atom.b_iso = plan.b_iso;
+          atom.charge = 0;
+          gm_residue.add_atom(atom);
+        } finally {
+          atom.delete();
+        }
+      }
+    } catch (e) {
+      const msg = (e instanceof Error) ? e.message : 'Mutation failed.';
+      this.hud(msg, 'ERR');
+      return Promise.resolve();
+    }
+    this.toggle_label(this.selected, false);
+    const self = this;
+    return this.refresh_model_from_structure_with_bonds(edit.bag, plan.focus).then(function () {
+      self.hud('Mutated ' + plan.label + ' to ' + plan.target_resname + '.');
+    }, function (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      self.hud(msg || 'Mutation failed.', 'ERR');
+    });
   }
 
   open_cid_dialog() {
@@ -3526,13 +3664,18 @@ export class Viewer {
   fetch_monomer_cif(resname: string) {
     const name = resname.toUpperCase();
     if (!(name in this.monomer_cif_cache)) {
-      this.monomer_cif_cache[name] = fetch(
-        'https://files.rcsb.org/ligands/view/' + encodeURIComponent(name) + '.cif'
-      ).then(function (resp) {
-        return resp.ok ? resp.text() : null;
-      }).catch(function () {
-        return null;
-      });
+      const template = aminoAcidTemplate(name);
+      if (template != null) {
+        this.monomer_cif_cache[name] = Promise.resolve(template.cif);
+      } else {
+        this.monomer_cif_cache[name] = fetch(
+          'https://files.rcsb.org/ligands/view/' + encodeURIComponent(name) + '.cif'
+        ).then(function (resp) {
+          return resp.ok ? resp.text() : null;
+        }).catch(function () {
+          return null;
+        });
+      }
     }
     return this.monomer_cif_cache[name];
   }
