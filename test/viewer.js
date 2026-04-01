@@ -14,6 +14,27 @@ function text_to_array_buffer(text) {
   return new TextEncoder().encode(text).buffer;
 }
 
+class MockFileReader {
+  constructor() {
+    this.result = null;
+    this.error = null;
+    this.readyState = 0;
+    this.onloadend = null;
+    this.onerror = null;
+  }
+
+  readAsArrayBuffer(file) {
+    Promise.resolve(file.arrayBuffer()).then((ab) => {
+      this.result = ab;
+      this.readyState = 2;
+      if (this.onloadend) this.onloadend({target: this});
+    }, (err) => {
+      this.error = err;
+      if (this.onerror) this.onerror();
+    });
+  }
+}
+
 describe('Viewer', () => {
   'use strict';
   var viewer = new GM.Viewer('viewer');
@@ -65,6 +86,62 @@ describe('Viewer', () => {
   it('uses sphere as the default water style', () => {
     var viewer2 = new GM.Viewer('viewer');
     expect(viewer2.config.water_style).toEqual('sphere');
+  });
+
+  it('refreshes ligand bonding when a monomer cif is dropped later', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    var savedFileReader = global.FileReader;
+    var pdbText = [
+      'HETATM    1  C1  ZZZ A   1       0.000   0.000   0.000  1.00 10.00           C',
+      'HETATM    2  C2  ZZZ A   1       1.500   0.000   0.000  1.00 10.00           C',
+      'HETATM    3  O1  ZZZ A   1       2.700   0.000   0.000  1.00 10.00           O',
+      'END',
+      '',
+    ].join('\n');
+    var monomerCif = [
+      'data_ZZZ',
+      '_chem_comp.id ZZZ',
+      '_chem_comp.group non-polymer',
+      'loop_',
+      '_chem_comp_atom.comp_id',
+      '_chem_comp_atom.atom_id',
+      '_chem_comp_atom.type_symbol',
+      '_chem_comp_atom.type_energy',
+      '_chem_comp_atom.charge',
+      'ZZZ C1 C CH3 0',
+      'ZZZ C2 C CH2 0',
+      'ZZZ O1 O O 0',
+      'loop_',
+      '_chem_comp_bond.comp_id',
+      '_chem_comp_bond.atom_id_1',
+      '_chem_comp_bond.atom_id_2',
+      '_chem_comp_bond.type',
+      '_chem_comp_bond.aromatic',
+      'ZZZ C1 C2 single n',
+      'ZZZ C2 O1 single n',
+      '#',
+      '',
+    ].join('\n');
+    global.FileReader = MockFileReader;
+    viewer2.gemmi_module = gemmi;
+    return viewer2.pick_pdb_and_map(
+      new File([new Uint8Array(text_to_array_buffer(pdbText))], 'test.pdb')
+    ).then(function () {
+      expect(viewer2.model_bags.length).toEqual(1);
+      expect(viewer2.model_bags[0].model.atoms.map(function (atom) { return atom.bonds.length; }))
+        .toEqual([0, 0, 0]);
+      return viewer2.pick_pdb_and_map(
+        new File([new Uint8Array(text_to_array_buffer(monomerCif))], 'ZZZ.cif')
+      );
+    }).then(function () {
+      expect(viewer2.model_bags.length).toEqual(1);
+      expect(viewer2.model_bags[0].model.atoms.map(function (atom) { return atom.bonds.length; }))
+        .toEqual([1, 2, 1]);
+    }).finally(function () {
+      global.FileReader = savedFileReader;
+      var ctx = viewer2.model_bags[0] && viewer2.model_bags[0].gemmi_selection;
+      if (ctx) ctx.structure.delete();
+    });
   });
 
   it('includes unresolved monomer dictionaries in drop summary', () => {
