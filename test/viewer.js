@@ -91,6 +91,7 @@ describe('Viewer', () => {
   it('refreshes ligand bonding when a monomer cif is dropped later', () => {
     var viewer2 = new GM.Viewer('viewer');
     var savedFileReader = global.FileReader;
+    var FileCtor = globalThis.File;
     var pdbText = [
       'HETATM    1  C1  ZZZ A   1       0.000   0.000   0.000  1.00 10.00           C',
       'HETATM    2  C2  ZZZ A   1       1.500   0.000   0.000  1.00 10.00           C',
@@ -122,16 +123,17 @@ describe('Viewer', () => {
       '#',
       '',
     ].join('\n');
+    expect(FileCtor).toBeDefined();
     global.FileReader = MockFileReader;
     viewer2.gemmi_module = gemmi;
     return viewer2.pick_pdb_and_map(
-      new File([new Uint8Array(text_to_array_buffer(pdbText))], 'test.pdb')
+      new FileCtor([new Uint8Array(text_to_array_buffer(pdbText))], 'test.pdb')
     ).then(function () {
       expect(viewer2.model_bags.length).toEqual(1);
       expect(viewer2.model_bags[0].model.atoms.map(function (atom) { return atom.bonds.length; }))
         .toEqual([0, 0, 0]);
       return viewer2.pick_pdb_and_map(
-        new File([new Uint8Array(text_to_array_buffer(monomerCif))], 'ZZZ.cif')
+        new FileCtor([new Uint8Array(text_to_array_buffer(monomerCif))], 'ZZZ.cif')
       );
     }).then(function () {
       expect(viewer2.model_bags.length).toEqual(1);
