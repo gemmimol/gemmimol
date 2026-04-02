@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-16-g944353a-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-17-ge38ba55-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -7743,6 +7743,19 @@ const ColorSchemes$1 = {
   },
 };
 
+const SYMMETRY_MATE_COLORS = {
+  C: new Color(0x1933CC),
+  O: new Color(0x5D1F5D),
+  S: new Color(0x626E62),
+};
+
+function symmetry_mate_color(atom, elem_colors) {
+  return SYMMETRY_MATE_COLORS[atom.element] ||
+         elem_colors[atom.element] ||
+         elem_colors.def ||
+         SYMMETRY_MATE_COLORS.C;
+}
+
 
 const INIT_HUD_TEXT = 'This is GemmiMol not Coot. ' +
   '<a href="#" onclick="V.toggle_help(); return false;">H shows help.</a>';
@@ -7924,12 +7937,14 @@ class ModelBag {
   
   
   
+  
 
   constructor(model, config, win_size) {
     this.model = model;
     this.label = '(model #' + ++ModelBag.ctor_counter + ')';
     this.visible = true;
     this.hue_shift = 0;
+    this.color_override = null;
     this.symop = '';
     this.conf = config;
     this.win_size = win_size;
@@ -7953,10 +7968,16 @@ class ModelBag {
     return non_h;
   }
 
+  atom_colors(atoms) {
+    if (this.color_override != null) {
+      return atoms.map((atom) => this.color_override(atom));
+    }
+    return color_by(this.conf.color_prop, atoms, this.conf.colors, this.hue_shift);
+  }
+
   add_bonds(polymers, ligands, ball_size) {
     const visible_atoms = this.get_visible_atoms();
-    const colors = color_by(this.conf.color_prop, visible_atoms,
-                            this.conf.colors, this.hue_shift);
+    const colors = this.atom_colors(visible_atoms);
     const vertex_arr = [];
     const color_arr = [];
     const bond_type_arr = [];
@@ -8064,8 +8085,7 @@ class ModelBag {
   add_sticks(polymers, ligands, radius,
              atom_filter) {
     const visible_atoms = this.get_visible_atoms();
-    const colors = color_by(this.conf.color_prop, visible_atoms,
-                            this.conf.colors, this.hue_shift);
+    const colors = this.atom_colors(visible_atoms);
     const vertex_arr = [];
     const color_arr = [];
     const bond_type_arr = [];
@@ -8220,8 +8240,7 @@ class ModelBag {
   add_trace() {
     const segments = this.model.extract_trace();
     const visible_atoms = [].concat.apply([], segments);
-    const colors = color_by(this.conf.color_prop, visible_atoms,
-                            this.conf.colors, this.hue_shift);
+    const colors = this.atom_colors(visible_atoms);
     const vertex_arr = [];
     const color_arr = [];
     let k = 0;
@@ -8244,8 +8263,7 @@ class ModelBag {
     const segments = this.model.extract_trace();
     const res_map = this.model.get_residues();
     const visible_atoms = [].concat.apply([], segments);
-    const colors = color_by(this.conf.color_prop, visible_atoms,
-                            this.conf.colors, this.hue_shift);
+    const colors = this.atom_colors(visible_atoms);
     let k = 0;
     for (const seg of segments) {
       const tangents = [];
@@ -8274,8 +8292,7 @@ class ModelBag {
     const segments = this.model.extract_trace();
     const res_map = this.model.get_residues();
     const visible_atoms = [].concat.apply([], segments);
-    const colors = color_by(this.conf.color_prop, visible_atoms,
-                            this.conf.colors, this.hue_shift);
+    const colors = this.atom_colors(visible_atoms);
     let k = 0;
     for (const seg of segments) {
       const tangents = [];
@@ -9250,12 +9267,12 @@ class Viewer {
       sym_st.delete();
       const sym_bag = new ModelBag(model, this.config, this.window_size);
       sym_bag.hue_shift = 0;
+      sym_bag.color_override = (atom) => symmetry_mate_color(atom, sym_bag.conf.colors);
       sym_bag.symop = image.symmetry_code(true);
       shown_symops.push(sym_bag.symop);
       sym_bag.visible = true;
       this.model_bags.push(sym_bag);
       this.set_model_objects(sym_bag);
-      this.make_objects_translucent(sym_bag.objects);
       this.sym_model_bags.push(sym_bag);
       // draw cross-symmetry bonds (e.g. metal coordination) from struct_conn
       if (gemmi.CrossSymBonds) {
@@ -9274,7 +9291,7 @@ class Viewer {
             const a2 = model.atoms[csb_data[j+1]];
             if (!a1 || !a2) continue;
             const c1 = color_by(bag.conf.color_prop, [a1], bag.conf.colors, bag.hue_shift);
-            const c2 = color_by(sym_bag.conf.color_prop, [a2], sym_bag.conf.colors, sym_bag.hue_shift);
+            const c2 = sym_bag.atom_colors([a2]);
             const mid = [
               (a1.xyz[0] + a2.xyz[0]) / 2,
               (a1.xyz[1] + a2.xyz[1]) / 2,
