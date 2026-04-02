@@ -8,8 +8,9 @@ import { ElMap } from './elmap';
 import type { BlobHit } from './elmap';
 import { BondType, modelsFromGemmi, modelFromGemmiStructure,
          bondDataFromGemmiStructure } from './model';
-import { plan_residue_mutation, STANDARD_MUTATION_TARGETS } from './mutate';
+import { mutation_targets_for_residue, plan_residue_mutation } from './mutate';
 import { aminoAcidTemplate } from './residue-templates';
+import { nucleotideTemplate } from './nucleotide-templates';
 
 import type { GemmiModule, Structure } from './gemmi';
 import type { Atom, Model } from './model';
@@ -1943,12 +1944,6 @@ export class Viewer {
     header.value = '';
     header.selected = true;
     select.appendChild(header);
-    for (const resname of STANDARD_MUTATION_TARGETS) {
-      const opt = document.createElement('option');
-      opt.textContent = resname;
-      opt.value = resname;
-      select.appendChild(opt);
-    }
     select.addEventListener('change', () => {
       if (select.value !== '') this.mutate_selected_residue(select.value);
       select.value = '';
@@ -2222,7 +2217,24 @@ export class Viewer {
     if (select == null) return;
     const editable_bag = this.editable_model_bag();
     const edit = this.current_edit_target();
-    select.disabled = (edit == null);
+    select.innerHTML = '';
+    const header = document.createElement('option');
+    let targets: string[] = [];
+    if (edit != null) {
+      const residue_atoms = edit.bag.model.get_residues()[edit.atom.resid()] || [edit.atom];
+      targets = mutation_targets_for_residue(residue_atoms);
+    }
+    header.textContent = targets.length === 0 ? 'Mutate' : 'Mutate';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    for (const target of targets) {
+      const opt = document.createElement('option');
+      opt.textContent = target;
+      opt.value = target;
+      select.appendChild(opt);
+    }
+    select.disabled = (edit == null || targets.length === 0);
     select.style.display = (editable_bag == null) ? 'none' : '';
     select.value = '';
   }
@@ -3664,7 +3676,7 @@ export class Viewer {
   fetch_monomer_cif(resname: string) {
     const name = resname.toUpperCase();
     if (!(name in this.monomer_cif_cache)) {
-      const template = aminoAcidTemplate(name);
+      const template = aminoAcidTemplate(name) || nucleotideTemplate(name);
       if (template != null) {
         this.monomer_cif_cache[name] = Promise.resolve(template.cif);
       } else {

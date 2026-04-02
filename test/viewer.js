@@ -419,6 +419,43 @@ describe('Viewer', () => {
     });
   });
 
+  it('mutates a DNA residue by replacing only the base', () => {
+    var structure;
+    return load_viewer_model('pdb2mru.ent').then(function (loaded_viewer) {
+      var bag = loaded_viewer.model_bags[0];
+      var residues = bag.model.get_residues();
+      var target_atom = null;
+      for (var resid in residues) {
+        var residue = residues[resid];
+        if (residue[0].resname !== 'DC') continue;
+        var names = residue.map(function (atom) { return atom.name.replace(/\*/g, '\''); });
+        if (names.indexOf('O4\'') === -1 || names.indexOf('C1\'') === -1 ||
+            names.indexOf('C2\'') === -1 || names.indexOf('N1') === -1) {
+          continue;
+        }
+        target_atom = residue[0];
+        break;
+      }
+      expect(target_atom).not.toBeNull();
+      structure = bag.gemmi_selection.structure;
+      loaded_viewer.select_atom({bag: bag, atom: target_atom});
+      return loaded_viewer.mutate_selected_residue('G').then(function () {
+        var mutated = bag.model.get_residues()[target_atom.resid()];
+        var atom_names = mutated.map(function (atom) { return atom.name.replace(/\*/g, '\''); });
+        expect(mutated.every(function (atom) { return atom.resname === 'DG'; })).toBe(true);
+        expect(atom_names).toContain('C1\'');
+        expect(atom_names).toContain('O4\'');
+        expect(atom_names).toContain('N9');
+        expect(atom_names).toContain('O6');
+        expect(atom_names).toContain('N2');
+        expect(atom_names).not.toContain('N4');
+        expect(gemmi.make_mmcif_string(structure).indexOf('DG')).toBeGreaterThan(-1);
+      });
+    }).finally(function () {
+      if (structure) structure.delete();
+    });
+  });
+
   it('places water and metal sites at blob positions', () => {
     var structure;
     return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
