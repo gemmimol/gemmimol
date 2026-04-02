@@ -4,6 +4,10 @@ outdir="$1"
 
 [ -e src/elmap.ts ] || { echo "Run me from top-level gemmimol dir"; exit 1; }
 
+gemmimol_version=$(node -p "require('./package.json').version")
+gemmimol_git_describe=$(git describe --always --tags 2>/dev/null || echo "$gemmimol_version")
+gemmi_git_describe=$(git -C ../gemmi describe --always --tags 2>/dev/null || echo unknown)
+
 strip_dev() {
     grep -v -- -DEV- "$1" > "$2"
 }
@@ -18,6 +22,8 @@ layout: default
 ---
 
 $(sed '/^\[!\[/d; s,https://gemmimol.github.io/,,' README.md)
+
+current version:<br>GemmiMol ${gemmimol_version} (${gemmimol_git_describe})<br>Gemmi ${gemmi_git_describe}
 EOF
 
 cp src/*.ts "$outdir/src/"
