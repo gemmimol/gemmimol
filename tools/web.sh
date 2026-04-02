@@ -8,7 +8,7 @@ strip_dev() {
     grep -v -- -DEV- "$1" > "$2"
 }
 
-mkdir -p "$outdir/src" "$outdir/vendor/wasm" "$outdir/perf" \
+mkdir -p "$outdir/src" "$outdir/vendor/wasm" "$outdir/perf" "$outdir/data" \
     "$outdir/test" "$outdir/view"
 
 # use README.md without badges
@@ -30,6 +30,7 @@ cp gemmimol.js LICENSE perf.html 3kw8.htm 3kw8_mc_restraints.mmcif "$outdir/"
 cp "$outdir/3kw8.htm" "$outdir/3kw8.html"
 #cp gemmimol.js.map gemmimol.min.js $outdir/
 cp vendor/wasm/gemmi.wasm vendor/wasm/gemmi.js "$outdir/vendor/wasm/"
+cp data/* "$outdir/data/"
 cp perf/* "$outdir/perf/"
 cp test/*.html "$outdir/test/"
 
