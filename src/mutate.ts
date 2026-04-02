@@ -46,6 +46,8 @@ const DNA_BASE_TARGETS = ['A', 'C', 'G', 'T'];
 const RNA_RESNAMES = new Set(RNA_BASE_TARGETS);
 const DNA_RESNAMES = new Set(['DA', 'DC', 'DG', 'DT']);
 const PHOSPHATE_ATOMS = new Set(['P', 'OP1', 'OP2', 'OP3', 'O1P', 'O2P', 'O3P']);
+const SUGAR_TO_DNA = '\u2192 DNA';
+const SUGAR_TO_RNA = '\u2192 RNA';
 
 function normalize_atom_name(name: string): string {
   return name.toUpperCase().replace(/\*/g, '\'');
@@ -304,12 +306,80 @@ function plan_nucleotide_mutation(residue_atoms: Atom[], source_kind: 'rna' | 'd
   };
 }
 
+function sugar_switch_resname(source: string): string {
+  const upper = source.toUpperCase();
+  if (upper === 'A') return 'DA';
+  if (upper === 'C') return 'DC';
+  if (upper === 'G') return 'DG';
+  if (upper === 'U') return 'DT';
+  if (upper === 'DA') return 'A';
+  if (upper === 'DC') return 'C';
+  if (upper === 'DG') return 'G';
+  if (upper === 'DT') return 'U';
+  throw Error('No sugar switch mapping for ' + source + '.');
+}
+
+function plan_sugar_switch(residue_atoms: Atom[], source_kind: 'rna' | 'dna'): MutationPlan {
+  const source_resname = residue_atoms[0].resname;
+  const target_resname = sugar_switch_resname(source_resname);
+
+  const remove_atoms: Atom[] = [];
+  const add_atoms: MutationAtom[] = [];
+
+  const source_c2 = atom_by_name(residue_atoms, "C2'");
+  if (!source_c2) throw Error('Sugar switch requires C2\' atom.');
+  let focus = source_c2.xyz;
+
+  if (source_kind === 'rna') {
+    // RNA → DNA: remove O2'
+    const o2_atom = atom_by_name(residue_atoms, "O2'");
+    if (o2_atom) remove_atoms.push(o2_atom);
+  } else {
+    // DNA → RNA: add O2' from RNA template
+    const template_atoms = heavy_nucleotide_template_atoms(target_resname);
+    const template_o2 = atom_by_name(template_atoms, "O2'");
+    if (!template_o2) throw Error('RNA template for ' + target_resname + ' lacks O2\'.');
+
+    const source_o4 = atom_by_name(residue_atoms, "O4'");
+    const source_c1 = atom_by_name(residue_atoms, "C1'");
+    const template_o4 = atom_by_name(template_atoms, "O4'");
+    const template_c1 = atom_by_name(template_atoms, "C1'");
+    const template_c2 = atom_by_name(template_atoms, "C2'");
+    if (!source_o4 || !source_c1) {
+      throw Error('Sugar switch requires O4\', C1\' and C2\' atoms.');
+    }
+    if (!template_o4 || !template_c1 || !template_c2) {
+      throw Error('Template for ' + target_resname + ' is incomplete.');
+    }
+
+    const from = build_anchor_frame(template_o4.xyz, template_c1.xyz, template_c2.xyz,
+                                    'nucleotide sugar frame');
+    const to = build_anchor_frame(source_o4.xyz, source_c1.xyz, source_c2.xyz,
+                                  'nucleotide sugar frame');
+    const xyz = transform_point(template_o2.xyz, from, to);
+    add_atoms.push({name: "O2'", element: 'O', xyz: xyz});
+    focus = xyz;
+  }
+
+  const ref_atom = representative_atom(residue_atoms);
+  return {
+    source_resname: source_resname,
+    target_resname: target_resname,
+    label: mutation_label(residue_atoms),
+    remove_atoms: remove_atoms,
+    add_atoms: add_atoms,
+    focus: focus,
+    occupancy: ref_atom.occ,
+    b_iso: ref_atom.b,
+  };
+}
+
 export function mutation_targets_for_residue(residue_atoms: Atom[]): string[] {
   if (residue_atoms.length === 0) return [];
   const kind = residue_kind(residue_atoms[0].resname);
   if (kind === 'protein') return AMINO_ACID_MUTATION_TARGETS.slice();
-  if (kind === 'rna') return RNA_BASE_TARGETS.slice();
-  if (kind === 'dna') return DNA_BASE_TARGETS.slice();
+  if (kind === 'rna') return [...RNA_BASE_TARGETS, SUGAR_TO_DNA];
+  if (kind === 'dna') return [...DNA_BASE_TARGETS, SUGAR_TO_RNA];
   return [];
 }
 
@@ -323,6 +393,9 @@ export function plan_residue_mutation(residue_atoms: Atom[], target_resname: str
     return plan_protein_mutation(residue_atoms, target_resname.toUpperCase());
   }
   if (kind === 'rna' || kind === 'dna') {
+    if (target_resname === SUGAR_TO_DNA || target_resname === SUGAR_TO_RNA) {
+      return plan_sugar_switch(residue_atoms, kind);
+    }
     return plan_nucleotide_mutation(residue_atoms, kind, target_resname);
   }
   throw Error('Mutation is supported only for standard amino-acid and nucleic-acid residues.');
