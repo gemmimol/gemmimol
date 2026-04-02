@@ -14,6 +14,17 @@ function text_to_array_buffer(text) {
   return new TextEncoder().encode(text).buffer;
 }
 
+const SITE_PDB = [
+  'HEADER    TEST',
+  'SITE     1 AC1  2 HIS A  94  HIS A  96',
+  'ATOM      1  N   HIS A  94       0.000   0.000   0.000  1.00 20.00           N',
+  'ATOM      2  CA  HIS A  94       1.000   0.000   0.000  1.00 20.00           C',
+  'ATOM      3  N   HIS A  96       5.000   0.000   0.000  1.00 20.00           N',
+  'ATOM      4  CA  HIS A  96       6.000   0.000   0.000  1.00 20.00           C',
+  'END',
+  '',
+].join('\n');
+
 class MockFileReader {
   constructor() {
     this.result = null;
@@ -201,6 +212,21 @@ describe('Viewer', () => {
       expect(viewer2.blob_hits.length).toBeGreaterThan(1);
       expect(viewer2.blob_search_sigma).toEqual(1.0);
       expect(viewer2.blob_mask_waters).toBe(true);
+    });
+  });
+
+  it('collects deposited SITE annotations for navigation', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    return viewer2.load_pdb_from_text(SITE_PDB, 'site.pdb', gemmi).then(function () {
+      var bag = viewer2.model_bags[0];
+      var items = viewer2.collect_site_nav_items(bag);
+      expect(items.length).toBe(1);
+      expect(items[0].label).toBe('AC1');
+      expect(items[0].atom_indices.length).toBe(4);
+      viewer2.focus_site_item(bag, items[0]);
+      expect(viewer2.selected.bag).toBe(bag);
+      expect(['94', '96']).toContain(viewer2.selected.atom.seqid);
+      bag.gemmi_selection.structure.delete();
     });
   });
 

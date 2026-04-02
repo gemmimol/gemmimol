@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-3-g4c49a8c-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-7-gd589e54-dirty";
 
 
 const BondType = {
@@ -7240,6 +7240,8 @@ const DNA_BASE_TARGETS = ['A', 'C', 'G', 'T'];
 const RNA_RESNAMES = new Set(RNA_BASE_TARGETS);
 const DNA_RESNAMES = new Set(['DA', 'DC', 'DG', 'DT']);
 const PHOSPHATE_ATOMS = new Set(['P', 'OP1', 'OP2', 'OP3', 'O1P', 'O2P', 'O3P']);
+const SUGAR_TO_DNA = '\u2192 DNA';
+const SUGAR_TO_RNA = '\u2192 RNA';
 
 function normalize_atom_name(name) {
   return name.toUpperCase().replace(/\*/g, '\'');
@@ -7498,12 +7500,80 @@ function plan_nucleotide_mutation(residue_atoms, source_kind,
   };
 }
 
+function sugar_switch_resname(source) {
+  const upper = source.toUpperCase();
+  if (upper === 'A') return 'DA';
+  if (upper === 'C') return 'DC';
+  if (upper === 'G') return 'DG';
+  if (upper === 'U') return 'DT';
+  if (upper === 'DA') return 'A';
+  if (upper === 'DC') return 'C';
+  if (upper === 'DG') return 'G';
+  if (upper === 'DT') return 'U';
+  throw Error('No sugar switch mapping for ' + source + '.');
+}
+
+function plan_sugar_switch(residue_atoms, source_kind) {
+  const source_resname = residue_atoms[0].resname;
+  const target_resname = sugar_switch_resname(source_resname);
+
+  const remove_atoms = [];
+  const add_atoms = [];
+
+  const source_c2 = atom_by_name(residue_atoms, "C2'");
+  if (!source_c2) throw Error('Sugar switch requires C2\' atom.');
+  let focus = source_c2.xyz;
+
+  if (source_kind === 'rna') {
+    // RNA → DNA: remove O2'
+    const o2_atom = atom_by_name(residue_atoms, "O2'");
+    if (o2_atom) remove_atoms.push(o2_atom);
+  } else {
+    // DNA → RNA: add O2' from RNA template
+    const template_atoms = heavy_nucleotide_template_atoms(target_resname);
+    const template_o2 = atom_by_name(template_atoms, "O2'");
+    if (!template_o2) throw Error('RNA template for ' + target_resname + ' lacks O2\'.');
+
+    const source_o4 = atom_by_name(residue_atoms, "O4'");
+    const source_c1 = atom_by_name(residue_atoms, "C1'");
+    const template_o4 = atom_by_name(template_atoms, "O4'");
+    const template_c1 = atom_by_name(template_atoms, "C1'");
+    const template_c2 = atom_by_name(template_atoms, "C2'");
+    if (!source_o4 || !source_c1) {
+      throw Error('Sugar switch requires O4\', C1\' and C2\' atoms.');
+    }
+    if (!template_o4 || !template_c1 || !template_c2) {
+      throw Error('Template for ' + target_resname + ' is incomplete.');
+    }
+
+    const from = build_anchor_frame(template_o4.xyz, template_c1.xyz, template_c2.xyz,
+                                    'nucleotide sugar frame');
+    const to = build_anchor_frame(source_o4.xyz, source_c1.xyz, source_c2.xyz,
+                                  'nucleotide sugar frame');
+    const xyz = transform_point(template_o2.xyz, from, to);
+    add_atoms.push({name: "O2'", element: 'O', xyz: xyz});
+    focus = xyz;
+  }
+
+  const ref_atom = representative_atom(residue_atoms);
+  return {
+    source_resname: source_resname,
+    target_resname: target_resname,
+    label: mutation_label(residue_atoms),
+    remove_atoms: remove_atoms,
+    add_atoms: add_atoms,
+    focus: focus,
+    occupancy: ref_atom.occ,
+    b_iso: ref_atom.b,
+  };
+}
+
 function mutation_targets_for_residue(residue_atoms) {
   if (residue_atoms.length === 0) return [];
   const kind = residue_kind(residue_atoms[0].resname);
   if (kind === 'protein') return AMINO_ACID_MUTATION_TARGETS.slice();
-  if (kind === 'rna') return RNA_BASE_TARGETS.slice();
-  if (kind === 'dna') return DNA_BASE_TARGETS.slice();
+  if (kind === 'rna') return [...RNA_BASE_TARGETS, SUGAR_TO_DNA];
+  if (kind === 'dna') return [...DNA_BASE_TARGETS, SUGAR_TO_RNA];
   return [];
 }
 
@@ -7517,12 +7587,21 @@ function plan_residue_mutation(residue_atoms, target_resname) {
     return plan_protein_mutation(residue_atoms, target_resname.toUpperCase());
   }
   if (kind === 'rna' || kind === 'dna') {
+    if (target_resname === SUGAR_TO_DNA || target_resname === SUGAR_TO_RNA) {
+      return plan_sugar_switch(residue_atoms, kind);
+    }
     return plan_nucleotide_mutation(residue_atoms, kind, target_resname);
   }
   throw Error('Mutation is supported only for standard amino-acid and nucleic-acid residues.');
 }
 
 function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }
+
+
+
+
+
+
 
 
 
@@ -8319,6 +8398,7 @@ class Viewer {
   
   
   
+  
 
   constructor(options) {
     // rendered objects
@@ -8416,6 +8496,7 @@ class Viewer {
     this.place_select_el = null;
     this.metals_select_el = null;
     this.ligands_select_el = null;
+    this.sites_select_el = null;
     this.download_select_el = null;
     this.delete_select_el = null;
     this.mutate_select_el = null;
@@ -9291,6 +9372,21 @@ class Viewer {
     return select;
   }
 
+  create_site_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+    select.style.color = '#ddd';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    select.addEventListener('keydown', (evt) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
   create_download_select() {
     const select = document.createElement('select');
     select.style.padding = '3px 6px';
@@ -9501,6 +9597,7 @@ class Viewer {
     this.place_select_el = this.create_place_select();
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
+    this.sites_select_el = this.create_site_select();
     this.empty_blobs_select_el = this.create_empty_blobs_select();
     this.download_select_el = this.create_download_select();
     this.delete_select_el = this.create_delete_select();
@@ -9509,6 +9606,7 @@ class Viewer {
     row1.appendChild(this.place_select_el);
     row1.appendChild(this.metals_select_el);
     row1.appendChild(this.ligands_select_el);
+    row1.appendChild(this.sites_select_el);
     row1.appendChild(this.empty_blobs_select_el);
     row2.appendChild(this.delete_select_el);
     row2.appendChild(this.mutate_select_el);
@@ -9523,10 +9621,12 @@ class Viewer {
     const metal_items = bag ? this.collect_nav_items(bag, (atom) => atom.is_metal) : [];
     const ligand_items = bag ? this.collect_nav_items(
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
+    const site_items = bag ? this.collect_site_nav_items(bag) : [];
     this.update_blob_select(this.blob_select_el);
     this.update_place_select(this.place_select_el);
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
+    this.update_site_select(this.sites_select_el, bag, site_items);
     this.update_empty_blobs_select(this.empty_blobs_select_el);
     this.update_download_select(this.download_select_el, bag);
     this.update_delete_select(this.delete_select_el);
@@ -9704,6 +9804,117 @@ class Viewer {
     }
     select.disabled = (items.length === 0);
     select.style.display = '';
+  }
+
+  collect_site_nav_items(bag) {
+    const ctx = bag.gemmi_selection;
+    if (ctx == null || bag.symop !== '') return [];
+    const sites = ctx.structure.sites;
+    if (sites == null) return [];
+    const items = [];
+    try {
+      for (let i = 0; i < sites.size(); i++) {
+        const site = sites.get(i);
+        if (site == null) continue;
+        try {
+          const atom_indices = [];
+          const members = site.members;
+          try {
+            for (let j = 0; j < members.size(); j++) {
+              const member = members.get(j);
+              if (member == null) continue;
+              try {
+                const auth = member.auth;
+                try {
+                  const res_id = auth.res_id;
+                  try {
+                    const chain = auth.chain_name || member.label_asym_id || '';
+                    const seqid = res_id.seqid_string || member.label_seq_string || '';
+                    const atoms = bag.model.get_residues()[seqid + '/' + chain];
+                    if (atoms == null || atoms.length === 0) continue;
+                    for (const atom of atoms) {
+                      if (atom_indices.indexOf(atom.i_seq) === -1) atom_indices.push(atom.i_seq);
+                    }
+                  } finally {
+                    res_id.delete();
+                  }
+                } finally {
+                  auth.delete();
+                }
+              } finally {
+                member.delete();
+              }
+            }
+          } finally {
+            members.delete();
+          }
+          if (atom_indices.length === 0) continue;
+          let label = site.name;
+          if (site.details) label += ' - ' + site.details;
+          else if (site.evidence_code) label += ' (' + site.evidence_code + ')';
+          items.push({label: label, index: i, atom_indices: atom_indices});
+        } finally {
+          site.delete();
+        }
+      }
+    } finally {
+      sites.delete();
+    }
+    return items;
+  }
+
+  update_site_select(select, bag,
+                     items) {
+    if (select == null) return;
+    select.innerHTML = '';
+    if (bag == null || bag.gemmi_selection == null || bag.symop !== '') {
+      select.style.display = 'none';
+      select.disabled = true;
+      return;
+    }
+    const header = document.createElement('option');
+    header.textContent = 'SITEs (' + items.length + ')';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    for (const item of items) {
+      const opt = document.createElement('option');
+      opt.value = String(item.index);
+      opt.textContent = item.label;
+      select.appendChild(opt);
+    }
+    select.onchange = () => {
+      if (select.value === '') return;
+      const item = items.find((it) => String(it.index) === select.value);
+      if (item) this.focus_site_item(bag, item);
+      select.value = '';
+    };
+    select.disabled = (items.length === 0);
+    select.style.display = '';
+  }
+
+  focus_site_item(bag, item) {
+    if (item.atom_indices.length === 0) return;
+    let x = 0, y = 0, z = 0;
+    let count = 0;
+    let anchor = null;
+    for (const idx of item.atom_indices) {
+      const atom = bag.model.atoms[idx];
+      if (atom == null) continue;
+      x += atom.xyz[0];
+      y += atom.xyz[1];
+      z += atom.xyz[2];
+      count++;
+      if (anchor == null || atom.is_main_conformer()) anchor = atom;
+    }
+    if (anchor == null || count === 0) return;
+    this.hud('-> ' + bag.label + ' site ' + item.label);
+    this.toggle_label(this.selected, false);
+    this.selected = {bag: bag, atom: anchor};
+    this.update_nav_menus();
+    this.toggle_label(this.selected, true);
+    this.controls.go_to(new Vector3(x / count, y / count, z / count), null, null, 30);
+    this.request_render();
   }
 
   update_download_select(select,
