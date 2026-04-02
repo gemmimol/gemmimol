@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-10-gfcaef8b-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-11-gb70fd1f";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-140-gbe377b29";
 
 
