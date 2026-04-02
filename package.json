@@ -29,19 +29,19 @@
   },
   "scripts": {
     "build": "npm test",
-    "bundle": "rollup -c",
+    "bundle": "GIT_DESCRIBE=$(git describe --always --dirty --tags 2>/dev/null || echo $npm_package_version) rollup -c",
     "compare-three-r162": "node tools/compare-three-r162.js",
-    "coverage": "rollup -c --sourcemap && jest --testMatch='<rootDir>/test/*.js' --coverage --collectCoverageFrom='gemmimol.js'",
+    "coverage": "npm run bundle -- --sourcemap && jest --testMatch='<rootDir>/test/*.js' --coverage --collectCoverageFrom='gemmimol.js'",
     "ci": "npm run download-data && npm test",
     "download-data": "node perf/util.js download-data",
     "lint": "eslint src test perf",
     "prepack": "npm run build",
     "serve": "serve -l 7890",
     "start": "npm run watch & npm run serve",
-    "test": "npm run lint && npm run typecheck && rollup -c && npm run download-data && jest --testMatch='<rootDir>/test/*.js'",
+    "test": "npm run lint && npm run typecheck && npm run bundle && npm run download-data && jest --testMatch='<rootDir>/test/*.js'",
     "typecheck": "tsc -p .",
     "version": "npm run build && git add -A gemmimol.js gemmimol.min.js",
-    "watch": "rollup -c --watch"
+    "watch": "GIT_DESCRIBE=$(git describe --always --dirty --tags 2>/dev/null || echo $npm_package_version) rollup -c --watch"
   },
   "prettier": {
     "trailingComma": "es5",

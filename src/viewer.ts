@@ -3964,6 +3964,8 @@ Viewer.prototype.KEYBOARD_HELP = [
 Viewer.prototype.ABOUT_HELP =
   '&nbsp; <a href="https://gemmimol.github.io">GemmiMol</a> ' +
   // @ts-expect-error Cannot find name 'VERSION'
-  (typeof VERSION === 'string' ? VERSION : 'dev');
+  (typeof VERSION === 'string' ? VERSION : 'dev') +
+  // @ts-expect-error Cannot find name 'GIT_DESCRIBE'
+  (typeof GIT_DESCRIBE === 'string' ? ' (' + GIT_DESCRIBE + ')' : '');
 
 Viewer.prototype.ColorSchemes = ColorSchemes;

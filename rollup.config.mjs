@@ -4,6 +4,7 @@ import terser from '@rollup/plugin-terser';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const version = require('./package.json').version;
+const gitDescribe = process.env.GIT_DESCRIBE || version;
 
 const banner = `/*!
  * GemmiMol v${version}. Macromolecular Viewer for Crystallographers.
@@ -23,7 +24,8 @@ const basePlugins = [
 const output = {
   format: 'umd',
   name: 'GM',
-  intro: `var VERSION = exports.VERSION = '${version}';\n`,
+  intro: `var VERSION = exports.VERSION = ${JSON.stringify(version)};\n` +
+    `var GIT_DESCRIBE = exports.GIT_DESCRIBE = ${JSON.stringify(gitDescribe)};\n`,
   banner,
   sourcemap: false,
   indent: false,

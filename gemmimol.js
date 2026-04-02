@@ -11,7 +11,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.GM = {}));
 })(this, (function (exports) { 'use strict';
 
-var VERSION = exports.VERSION = '0.8.3';
+var VERSION = exports.VERSION = "0.8.3";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-3-g4c49a8c-dirty";
 
 
 const BondType = {
@@ -11474,7 +11475,9 @@ Viewer.prototype.KEYBOARD_HELP = [
 Viewer.prototype.ABOUT_HELP =
   '&nbsp; <a href="https://gemmimol.github.io">GemmiMol</a> ' +
   // @ts-expect-error Cannot find name 'VERSION'
-  (typeof VERSION === 'string' ? VERSION : 'dev');
+  (typeof VERSION === 'string' ? VERSION : 'dev') +
+  // @ts-expect-error Cannot find name 'GIT_DESCRIBE'
+  (typeof GIT_DESCRIBE === 'string' ? ' (' + GIT_DESCRIBE + ')' : '');
 
 Viewer.prototype.ColorSchemes = ColorSchemes$1;
 
