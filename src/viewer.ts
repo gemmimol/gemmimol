@@ -32,6 +32,13 @@ type SiteNavItem = {
   atom_indices: number[],
 };
 
+type ConnectionNavItem = {
+  label: string,
+  index: number,
+  atom_indices: number[],
+  anchor_index: number,
+};
+
 type ColorScheme = {
   bg: Color,
   fg: Color,
@@ -793,6 +800,7 @@ export class Viewer {
   metals_select_el: HTMLSelectElement | null;
   ligands_select_el: HTMLSelectElement | null;
   sites_select_el: HTMLSelectElement | null;
+  connections_select_el: HTMLSelectElement | null;
   download_select_el: HTMLSelectElement | null;
   delete_select_el: HTMLSelectElement | null;
   mutate_select_el: HTMLSelectElement | null;
@@ -913,6 +921,7 @@ export class Viewer {
     this.metals_select_el = null;
     this.ligands_select_el = null;
     this.sites_select_el = null;
+    this.connections_select_el = null;
     this.download_select_el = null;
     this.delete_select_el = null;
     this.mutate_select_el = null;
@@ -1803,6 +1812,21 @@ export class Viewer {
     return select;
   }
 
+  create_connection_select() {
+    const select = document.createElement('select');
+    select.style.padding = '3px 6px';
+    select.style.borderRadius = '4px';
+    select.style.border = '1px solid #666';
+    select.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
+    select.style.color = '#ddd';
+    select.style.fontSize = '13px';
+    select.style.display = 'none';
+    select.addEventListener('keydown', (evt: KeyboardEvent) => {
+      evt.stopPropagation();
+    });
+    return select;
+  }
+
   create_download_select() {
     const select = document.createElement('select');
     select.style.padding = '3px 6px';
@@ -2014,6 +2038,7 @@ export class Viewer {
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
     this.sites_select_el = this.create_site_select();
+    this.connections_select_el = this.create_connection_select();
     this.empty_blobs_select_el = this.create_empty_blobs_select();
     this.download_select_el = this.create_download_select();
     this.delete_select_el = this.create_delete_select();
@@ -2023,6 +2048,7 @@ export class Viewer {
     row1.appendChild(this.metals_select_el);
     row1.appendChild(this.ligands_select_el);
     row1.appendChild(this.sites_select_el);
+    row1.appendChild(this.connections_select_el);
     row1.appendChild(this.empty_blobs_select_el);
     row2.appendChild(this.delete_select_el);
     row2.appendChild(this.mutate_select_el);
@@ -2038,11 +2064,13 @@ export class Viewer {
     const ligand_items = bag ? this.collect_nav_items(
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
     const site_items = bag ? this.collect_site_nav_items(bag) : [];
+    const connection_items = bag ? this.collect_connection_nav_items(bag) : [];
     this.update_blob_select(this.blob_select_el);
     this.update_place_select(this.place_select_el);
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
     this.update_site_select(this.sites_select_el, bag, site_items);
+    this.update_connection_select(this.connections_select_el, bag, connection_items);
     this.update_empty_blobs_select(this.empty_blobs_select_el);
     this.update_download_select(this.download_select_el, bag);
     this.update_delete_select(this.delete_select_el);
@@ -2222,6 +2250,25 @@ export class Viewer {
     select.style.display = '';
   }
 
+  find_connection_residue_atoms(bag: ModelBag, chain: string, seqid: string): Atom[] {
+    return bag.model.get_residues()[seqid + '/' + chain] || [];
+  }
+
+  find_connection_atom(residue_atoms: Atom[], atom_name: string, altloc: string): Atom | null {
+    let fallback: Atom | null = null;
+    for (const atom of residue_atoms) {
+      if (atom.name !== atom_name) continue;
+      if (altloc !== '') {
+        if (atom.altloc === altloc) return atom;
+        if (fallback == null && atom.altloc === '') fallback = atom;
+      } else {
+        if (atom.is_main_conformer()) return atom;
+        if (fallback == null) fallback = atom;
+      }
+    }
+    return fallback;
+  }
+
   collect_site_nav_items(bag: ModelBag): SiteNavItem[] {
     const ctx = bag.gemmi_selection;
     if (ctx == null || bag.symop !== '') return [];
@@ -2279,6 +2326,87 @@ export class Viewer {
     return items;
   }
 
+  collect_connection_nav_items(bag: ModelBag): ConnectionNavItem[] {
+    const ctx = bag.gemmi_selection;
+    if (ctx == null || bag.symop !== '') return [];
+    const connections = ctx.structure.connections;
+    if (connections == null) return [];
+    const items: ConnectionNavItem[] = [];
+    try {
+      for (let i = 0; i < connections.size(); i++) {
+        const connection = connections.get(i);
+        if (connection == null) continue;
+        try {
+          if (connection.type === ctx.gemmi.ConnectionType.Hydrog ||
+              connection.type === ctx.gemmi.ConnectionType.Unknown) {
+            continue;
+          }
+          const kind = connection.type === ctx.gemmi.ConnectionType.Disulf ? 'SSBOND' : 'LINK';
+          const partner_data: {
+            chain: string,
+            seqid: string,
+            resname: string,
+            atom_name: string,
+            altloc: string,
+          }[] = [];
+          for (const partner of [connection.partner1, connection.partner2]) {
+            if (partner == null) continue;
+            try {
+              const res_id = partner.res_id;
+              try {
+                partner_data.push({
+                  chain: partner.chain_name || '',
+                  seqid: res_id.seqid_string || '',
+                  resname: res_id.name || '',
+                  atom_name: partner.atom_name || '',
+                  altloc: partner.altloc || '',
+                });
+              } finally {
+                res_id.delete();
+              }
+            } finally {
+              partner.delete();
+            }
+          }
+          if (partner_data.length !== 2) continue;
+          const residue_atoms = partner_data.map((partner) =>
+            this.find_connection_residue_atoms(bag, partner.chain, partner.seqid));
+          const atom_indices: number[] = [];
+          for (const atoms of residue_atoms) {
+            for (const atom of atoms) {
+              if (atom_indices.indexOf(atom.i_seq) === -1) atom_indices.push(atom.i_seq);
+            }
+          }
+          if (atom_indices.length === 0) continue;
+          const anchor =
+            this.find_connection_atom(residue_atoms[0], partner_data[0].atom_name,
+                                      partner_data[0].altloc) ||
+            this.find_connection_atom(residue_atoms[1], partner_data[1].atom_name,
+                                      partner_data[1].altloc);
+          const suffix = connection.asu === ctx.gemmi.Asu.Different ? ' [sym]' : '';
+          const label = kind + ' ' +
+                        partner_data[0].chain + '/' + partner_data[0].seqid + ' ' +
+                        partner_data[0].resname + ' ' + partner_data[0].atom_name +
+                        ' - ' +
+                        partner_data[1].chain + '/' + partner_data[1].seqid + ' ' +
+                        partner_data[1].resname + ' ' + partner_data[1].atom_name +
+                        suffix;
+          items.push({
+            label: label,
+            index: i,
+            atom_indices: atom_indices,
+            anchor_index: anchor ? anchor.i_seq : atom_indices[0],
+          });
+        } finally {
+          connection.delete();
+        }
+      }
+    } finally {
+      connections.delete();
+    }
+    return items;
+  }
+
   update_site_select(select: HTMLSelectElement | null, bag: ModelBag | undefined,
                      items: SiteNavItem[]) {
     if (select == null) return;
@@ -2309,6 +2437,36 @@ export class Viewer {
     select.style.display = '';
   }
 
+  update_connection_select(select: HTMLSelectElement | null, bag: ModelBag | undefined,
+                           items: ConnectionNavItem[]) {
+    if (select == null) return;
+    select.innerHTML = '';
+    if (bag == null || bag.gemmi_selection == null || bag.symop !== '') {
+      select.style.display = 'none';
+      select.disabled = true;
+      return;
+    }
+    const header = document.createElement('option');
+    header.textContent = 'LINKs+SSBONDs (' + items.length + ')';
+    header.value = '';
+    header.selected = true;
+    select.appendChild(header);
+    for (const item of items) {
+      const opt = document.createElement('option');
+      opt.value = String(item.index);
+      opt.textContent = item.label;
+      select.appendChild(opt);
+    }
+    select.onchange = () => {
+      if (select.value === '') return;
+      const item = items.find((it) => String(it.index) === select.value);
+      if (item) this.focus_connection_item(bag, item);
+      select.value = '';
+    };
+    select.disabled = (items.length === 0);
+    select.style.display = '';
+  }
+
   focus_site_item(bag: ModelBag, item: SiteNavItem) {
     if (item.atom_indices.length === 0) return;
     let x = 0, y = 0, z = 0;
@@ -2325,6 +2483,30 @@ export class Viewer {
     }
     if (anchor == null || count === 0) return;
     this.hud('-> ' + bag.label + ' site ' + item.label);
+    this.toggle_label(this.selected, false);
+    this.selected = {bag: bag, atom: anchor};
+    this.update_nav_menus();
+    this.toggle_label(this.selected, true);
+    this.controls.go_to(new Vector3(x / count, y / count, z / count), null, null, 30);
+    this.request_render();
+  }
+
+  focus_connection_item(bag: ModelBag, item: ConnectionNavItem) {
+    if (item.atom_indices.length === 0) return;
+    let x = 0, y = 0, z = 0;
+    let count = 0;
+    let anchor = bag.model.atoms[item.anchor_index] || null;
+    for (const idx of item.atom_indices) {
+      const atom = bag.model.atoms[idx];
+      if (atom == null) continue;
+      x += atom.xyz[0];
+      y += atom.xyz[1];
+      z += atom.xyz[2];
+      count++;
+      if (anchor == null || atom.is_main_conformer()) anchor = atom;
+    }
+    if (anchor == null || count === 0) return;
+    this.hud('-> ' + bag.label + ' ' + item.label);
     this.toggle_label(this.selected, false);
     this.selected = {bag: bag, atom: anchor};
     this.update_nav_menus();

@@ -25,6 +25,23 @@ const SITE_PDB = [
   '',
 ].join('\n');
 
+const CONNECTIONS_PDB = [
+  'HEADER    TEST',
+  'ATOM      1  N   ALA A   2       0.000   0.000   0.000  1.00 20.00           N',
+  'ATOM      2  CA  ALA A   2       1.200   0.000   0.000  1.00 20.00           C',
+  'ATOM      3  N   SER A   3       3.500   0.000   0.000  1.00 20.00           N',
+  'ATOM      4  CA  SER A   3       4.700   0.000   0.000  1.00 20.00           C',
+  'ATOM      5  OG  SER A   3       5.700   0.800   0.000  1.00 20.00           O',
+  'ATOM      6  N   CYS A   4       7.500   0.000   0.000  1.00 20.00           N',
+  'ATOM      7  CA  CYS A   4       8.700   0.000   0.000  1.00 20.00           C',
+  'ATOM      8  SG  CYS A   4       9.700   1.000   0.000  1.00 20.00           S',
+  'ATOM      9  N   CYS A  10      12.000   0.000   0.000  1.00 20.00           N',
+  'ATOM     10  CA  CYS A  10      13.200   0.000   0.000  1.00 20.00           C',
+  'ATOM     11  SG  CYS A  10      14.200   1.000   0.000  1.00 20.00           S',
+  'END',
+  '',
+].join('\n');
+
 class MockFileReader {
   constructor() {
     this.result = null;
@@ -227,6 +244,60 @@ describe('Viewer', () => {
       expect(viewer2.selected.bag).toBe(bag);
       expect(['94', '96']).toContain(viewer2.selected.atom.seqid);
       bag.gemmi_selection.structure.delete();
+    });
+  });
+
+  it('collects deposited LINK and SSBOND annotations for navigation', () => {
+    function make_address(chain, seqid, resname, atom_name) {
+      var address = new gemmi.AtomAddress();
+      var res_id = new gemmi.ResidueId();
+      res_id.name = resname;
+      res_id.seqid_string = seqid;
+      address.chain_name = chain;
+      address.res_id = res_id;
+      address.atom_name = atom_name;
+      res_id.delete();
+      return address;
+    }
+
+    var viewer2 = new GM.Viewer('viewer');
+    return viewer2.load_pdb_from_text(CONNECTIONS_PDB, 'connections.pdb', gemmi).then(function () {
+      var bag = viewer2.model_bags[0];
+      var structure = bag.gemmi_selection.structure;
+
+      var ssbond = new gemmi.Connection();
+      ssbond.name = 'ss1';
+      ssbond.type = gemmi.ConnectionType.Disulf;
+      ssbond.asu = gemmi.Asu.Same;
+      ssbond.partner1 = make_address('A', '4', 'CYS', 'SG');
+      ssbond.partner2 = make_address('A', '10', 'CYS', 'SG');
+      structure.add_connection(ssbond);
+
+      var link = new gemmi.Connection();
+      link.name = 'link1';
+      link.type = gemmi.ConnectionType.Covale;
+      link.asu = gemmi.Asu.Same;
+      link.partner1 = make_address('A', '2', 'ALA', 'N');
+      link.partner2 = make_address('A', '3', 'SER', 'OG');
+      structure.add_connection(link);
+
+      var items = viewer2.collect_connection_nav_items(bag);
+      expect(items.length).toBe(2);
+      expect(items[0].label).toContain('SSBOND');
+      expect(items[0].label).toContain('A/4 CYS SG');
+      expect(items[1].label).toContain('LINK');
+      expect(items[1].label).toContain('A/3 SER OG');
+
+      viewer2.focus_connection_item(bag, items[0]);
+      expect(viewer2.selected.bag).toBe(bag);
+      expect(['4', '10']).toContain(viewer2.selected.atom.seqid);
+
+      viewer2.focus_connection_item(bag, items[1]);
+      expect(['2', '3']).toContain(viewer2.selected.atom.seqid);
+
+      ssbond.delete();
+      link.delete();
+      structure.delete();
     });
   });
 
