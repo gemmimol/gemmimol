@@ -12,8 +12,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-11-gb70fd1f";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-140-gbe377b29";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-15-gcfc288d-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
 const BondType = {
@@ -7596,7 +7596,7 @@ function plan_residue_mutation(residue_atoms, target_resname) {
   throw Error('Mutation is supported only for standard amino-acid and nucleic-acid residues.');
 }
 
-function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }
+function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
 
 
 
@@ -8548,8 +8548,8 @@ class Viewer {
     if (options.focusable) {
       el.tabIndex = 0;
     }
-    this.create_cid_dialog();
     this.create_metals_menu();
+    this.create_cid_dialog();
     this.decor.zoom_grid.visible = false;
     this.scene.add(this.decor.zoom_grid);
 
@@ -8606,7 +8606,6 @@ class Viewer {
     el.style.right = '10px';
     el.style.padding = '3px 10px';
     el.style.borderRadius = '5px';
-    el.style.zIndex = '9';
     el.style.letterSpacing = '0.08em';
     el.style.fontWeight = 'bold';
     el.style.pointerEvents = 'none';
@@ -9246,6 +9245,7 @@ class Viewer {
       return;
     }
     const n = images.size();
+    const shown_symops = [];
     for (let i = 0; i < n; i++) {
       const image = images.get(i);
       const sym_st = gemmi.get_sym_image(structure, image);
@@ -9254,6 +9254,7 @@ class Viewer {
       const sym_bag = new ModelBag(model, this.config, this.window_size);
       sym_bag.hue_shift = 0;
       sym_bag.symop = image.symmetry_code(true);
+      shown_symops.push(sym_bag.symop);
       sym_bag.visible = true;
       this.model_bags.push(sym_bag);
       this.set_model_objects(sym_bag);
@@ -9296,7 +9297,8 @@ class Viewer {
         csb.delete();
       }
     }
-    this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') + ' shown');
+    this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') +
+             ' shown: ' + shown_symops.join(', '));
     images.delete();
     this.request_render();
   }
@@ -9315,15 +9317,11 @@ class Viewer {
     if (typeof document === 'undefined' || this.container == null) return;
     const dialog = document.createElement('div');
     dialog.style.display = 'none';
-    dialog.style.position = 'absolute';
-    dialog.style.left = '50%';
-    dialog.style.top = '20px';
-    dialog.style.transform = 'translateX(-50%)';
+    dialog.style.alignSelf = 'center';
     dialog.style.padding = '8px 10px';
     dialog.style.borderRadius = '6px';
     dialog.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
     dialog.style.color = '#ddd';
-    dialog.style.zIndex = '20';
     dialog.style.boxShadow = '0 2px 12px rgba(0,0,0,0.35)';
 
     const label = document.createElement('div');
@@ -9354,7 +9352,8 @@ class Viewer {
     });
     dialog.appendChild(input);
 
-    this.container.appendChild(dialog);
+    const overlay = document.getElementById('gm-overlay');
+    (overlay || this.container).appendChild(dialog);
     this.cid_dialog_el = dialog;
     this.cid_input_el = input;
   }
@@ -9596,16 +9595,8 @@ class Viewer {
 
   create_metals_menu() {
     if (typeof document === 'undefined' || this.container == null) return;
-    const wrapper = document.createElement('div');
-    wrapper.style.position = 'absolute';
-    wrapper.style.left = '5px';
-    wrapper.style.top = '5px';
-    wrapper.style.right = '5px';
-    wrapper.style.zIndex = '20';
-    wrapper.style.display = 'flex';
-    wrapper.style.flexDirection = 'column';
-    wrapper.style.alignItems = 'flex-start';
-    wrapper.style.gap = '4px';
+    const overlay = _optionalChain([this, 'access', _ => _.hud_el, 'optionalAccess', _2 => _2.parentElement]);
+    if (overlay == null) return;
     const row1 = document.createElement('div');
     row1.style.display = 'flex';
     row1.style.flexWrap = 'wrap';
@@ -9638,9 +9629,8 @@ class Viewer {
     row2.appendChild(this.delete_select_el);
     row2.appendChild(this.mutate_select_el);
     row2.appendChild(this.download_select_el);
-    wrapper.appendChild(row1);
-    wrapper.appendChild(row2);
-    this.container.appendChild(wrapper);
+    overlay.appendChild(row1);
+    overlay.appendChild(row2);
   }
 
   update_nav_menus() {
@@ -10167,7 +10157,7 @@ class Viewer {
       this.hud('No suitable map is loaded for blob search.', 'ERR');
       return;
     }
-    const ctx = this.download_target_context();
+    const ctx = this.blob_search_context();
     const sigma = _nullishCoalesce(search_sigma, () => ( map_bag.isolevel));
     let hits;
     try {
@@ -10415,6 +10405,34 @@ class Viewer {
     if (primary != null) return primary.gemmi_selection;
     const any = this.model_bags.find((it) => it.gemmi_selection != null);
     return any ? any.gemmi_selection : null;
+  }
+
+  blob_search_context() {
+    const bag = this.active_model_bag();
+    if (bag != null && bag.symop === '' && bag.gemmi_selection != null) {
+      return bag.gemmi_selection;
+    }
+    const target = [this.target.x, this.target.y, this.target.z] ;
+    let best = null;
+    for (const candidate of this.model_bags) {
+      if (candidate.symop !== '' || candidate.gemmi_selection == null) continue;
+      const atom = candidate.model.get_nearest_atom(target[0], target[1], target[2]);
+      let dist2;
+      if (atom != null) {
+        dist2 = ((atom.xyz[0] - target[0]) ** 2 +
+                 (atom.xyz[1] - target[1]) ** 2 +
+                 (atom.xyz[2] - target[2]) ** 2);
+      } else {
+        const center = candidate.model.get_center();
+        dist2 = ((center[0] - target[0]) ** 2 +
+                 (center[1] - target[1]) ** 2 +
+                 (center[2] - target[2]) ** 2);
+      }
+      if (best == null || dist2 < best.dist2) {
+        best = {ctx: candidate.gemmi_selection, dist2: dist2};
+      }
+    }
+    return best ? best.ctx : null;
   }
 
   download_model(format) {

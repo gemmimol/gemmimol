@@ -212,6 +212,29 @@ describe('Viewer', () => {
     expect(viewer2.blob_negate).toBe(false);
   });
 
+  it('uses nearest Gemmi-backed model for blob search recentering', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    return viewer2.load_coordinate_buffer(
+      util.open_as_array_buffer('1mru.pdb'),
+      '1mru.pdb',
+      gemmi
+    ).then(function () {
+      viewer2.add_model(model2);
+      viewer2.selected = {bag: viewer2.model_bags[1], atom: null};
+      viewer2.add_map(emap, false);
+      var captured = null;
+      viewer2.map_bags[0].map.find_blobs = function (_cutoff, options) {
+        captured = options;
+        return [];
+      };
+      viewer2.show_blobs(false);
+      expect(captured).not.toBeNull();
+      expect(captured.structure).toBe(viewer2.model_bags[0].gemmi_selection.structure);
+      expect(captured.model_index).toBe(viewer2.model_bags[0].gemmi_selection.model_index);
+      viewer2.model_bags[0].gemmi_selection.structure.delete();
+    });
+  });
+
   it('finds multiple empty blobs in dimple_thaum diff map', () => {
     var viewer2 = new GM.Viewer('viewer');
     return viewer2.load_coordinate_buffer(

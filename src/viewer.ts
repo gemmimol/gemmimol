@@ -963,8 +963,8 @@ export class Viewer {
     if (options.focusable) {
       el.tabIndex = 0;
     }
-    this.create_cid_dialog();
     this.create_metals_menu();
+    this.create_cid_dialog();
     this.decor.zoom_grid.visible = false;
     this.scene.add(this.decor.zoom_grid);
 
@@ -1021,7 +1021,6 @@ export class Viewer {
     el.style.right = '10px';
     el.style.padding = '3px 10px';
     el.style.borderRadius = '5px';
-    el.style.zIndex = '9';
     el.style.letterSpacing = '0.08em';
     el.style.fontWeight = 'bold';
     el.style.pointerEvents = 'none';
@@ -1661,6 +1660,7 @@ export class Viewer {
       return;
     }
     const n = images.size();
+    const shown_symops: string[] = [];
     for (let i = 0; i < n; i++) {
       const image = images.get(i)!;
       const sym_st = gemmi.get_sym_image(structure, image);
@@ -1669,6 +1669,7 @@ export class Viewer {
       const sym_bag = new ModelBag(model, this.config, this.window_size);
       sym_bag.hue_shift = 0;
       sym_bag.symop = image.symmetry_code(true);
+      shown_symops.push(sym_bag.symop);
       sym_bag.visible = true;
       this.model_bags.push(sym_bag);
       this.set_model_objects(sym_bag);
@@ -1711,7 +1712,8 @@ export class Viewer {
         csb.delete();
       }
     }
-    this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') + ' shown');
+    this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') +
+             ' shown: ' + shown_symops.join(', '));
     images.delete();
     this.request_render();
   }
@@ -1730,15 +1732,11 @@ export class Viewer {
     if (typeof document === 'undefined' || this.container == null) return;
     const dialog = document.createElement('div');
     dialog.style.display = 'none';
-    dialog.style.position = 'absolute';
-    dialog.style.left = '50%';
-    dialog.style.top = '20px';
-    dialog.style.transform = 'translateX(-50%)';
+    dialog.style.alignSelf = 'center';
     dialog.style.padding = '8px 10px';
     dialog.style.borderRadius = '6px';
     dialog.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
     dialog.style.color = '#ddd';
-    dialog.style.zIndex = '20';
     dialog.style.boxShadow = '0 2px 12px rgba(0,0,0,0.35)';
 
     const label = document.createElement('div');
@@ -1769,7 +1767,8 @@ export class Viewer {
     });
     dialog.appendChild(input);
 
-    this.container.appendChild(dialog);
+    const overlay = document.getElementById('gm-overlay');
+    (overlay || this.container).appendChild(dialog);
     this.cid_dialog_el = dialog;
     this.cid_input_el = input;
   }
@@ -2011,16 +2010,8 @@ export class Viewer {
 
   create_metals_menu() {
     if (typeof document === 'undefined' || this.container == null) return;
-    const wrapper = document.createElement('div');
-    wrapper.style.position = 'absolute';
-    wrapper.style.left = '5px';
-    wrapper.style.top = '5px';
-    wrapper.style.right = '5px';
-    wrapper.style.zIndex = '20';
-    wrapper.style.display = 'flex';
-    wrapper.style.flexDirection = 'column';
-    wrapper.style.alignItems = 'flex-start';
-    wrapper.style.gap = '4px';
+    const overlay = this.hud_el?.parentElement;
+    if (overlay == null) return;
     const row1 = document.createElement('div');
     row1.style.display = 'flex';
     row1.style.flexWrap = 'wrap';
@@ -2053,16 +2044,8 @@ export class Viewer {
     row2.appendChild(this.delete_select_el);
     row2.appendChild(this.mutate_select_el);
     row2.appendChild(this.download_select_el);
-    wrapper.appendChild(row1);
-    wrapper.appendChild(row2);
-    if (this.hud_el) {
-      this.hud_el.style.position = 'static';
-      this.hud_el.style.top = '';
-      this.hud_el.style.left = '';
-      this.hud_el.style.alignSelf = 'center';
-      wrapper.appendChild(this.hud_el);
-    }
-    this.container.appendChild(wrapper);
+    overlay.appendChild(row1);
+    overlay.appendChild(row2);
   }
 
   update_nav_menus() {
@@ -2589,7 +2572,7 @@ export class Viewer {
       this.hud('No suitable map is loaded for blob search.', 'ERR');
       return;
     }
-    const ctx = this.download_target_context();
+    const ctx = this.blob_search_context();
     const sigma = search_sigma ?? map_bag.isolevel;
     let hits;
     try {
@@ -2837,6 +2820,34 @@ export class Viewer {
     if (primary != null) return primary.gemmi_selection;
     const any = this.model_bags.find((it) => it.gemmi_selection != null);
     return any ? any.gemmi_selection : null;
+  }
+
+  blob_search_context() {
+    const bag = this.active_model_bag();
+    if (bag != null && bag.symop === '' && bag.gemmi_selection != null) {
+      return bag.gemmi_selection;
+    }
+    const target = [this.target.x, this.target.y, this.target.z] as Num3;
+    let best: {ctx: GemmiSelectionContext, dist2: number} | null = null;
+    for (const candidate of this.model_bags) {
+      if (candidate.symop !== '' || candidate.gemmi_selection == null) continue;
+      const atom = candidate.model.get_nearest_atom(target[0], target[1], target[2]);
+      let dist2;
+      if (atom != null) {
+        dist2 = ((atom.xyz[0] - target[0]) ** 2 +
+                 (atom.xyz[1] - target[1]) ** 2 +
+                 (atom.xyz[2] - target[2]) ** 2);
+      } else {
+        const center = candidate.model.get_center();
+        dist2 = ((center[0] - target[0]) ** 2 +
+                 (center[1] - target[1]) ** 2 +
+                 (center[2] - target[2]) ** 2);
+      }
+      if (best == null || dist2 < best.dist2) {
+        best = {ctx: candidate.gemmi_selection, dist2: dist2};
+      }
+    }
+    return best ? best.ctx : null;
   }
 
   download_model(format: 'pdb' | 'mmcif') {
