@@ -7,7 +7,7 @@ for crystallographers.
 It looks like [Coot](http://www2.mrc-lmb.cam.ac.uk/personal/pemsley/coot/)
 and walks (mouse controls) like Coot.
 But it's only a viewer. For situations when you want
-a quick look without downloading the data and starting Coot.
+a quick look and simple edits without downloading the data and starting Coot.
 For instance, when screening
 [Dimple](http://ccp4.github.io/dimple/) results in a synchrotron.
 Of course, for this to work, it needs to be integrated into a website
