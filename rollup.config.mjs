@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const version = require('./package.json').version;
 const gitDescribe = process.env.GIT_DESCRIBE || version;
+const gemmiGitDescribe = process.env.GEMMI_GIT_DESCRIBE || 'unknown';
 
 const banner = `/*!
  * GemmiMol v${version}. Macromolecular Viewer for Crystallographers.
@@ -25,7 +26,8 @@ const output = {
   format: 'umd',
   name: 'GM',
   intro: `var VERSION = exports.VERSION = ${JSON.stringify(version)};\n` +
-    `var GIT_DESCRIBE = exports.GIT_DESCRIBE = ${JSON.stringify(gitDescribe)};\n`,
+    `var GIT_DESCRIBE = exports.GIT_DESCRIBE = ${JSON.stringify(gitDescribe)};\n` +
+    `var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = ${JSON.stringify(gemmiGitDescribe)};\n`,
   banner,
   sourcemap: false,
   indent: false,

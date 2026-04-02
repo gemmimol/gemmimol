@@ -4286,6 +4286,9 @@ Viewer.prototype.ABOUT_HELP =
   // @ts-expect-error Cannot find name 'VERSION'
   (typeof VERSION === 'string' ? VERSION : 'dev') +
   // @ts-expect-error Cannot find name 'GIT_DESCRIBE'
-  (typeof GIT_DESCRIBE === 'string' ? ' (' + GIT_DESCRIBE + ')' : '');
+  (typeof GIT_DESCRIBE === 'string' ? ' (' + GIT_DESCRIBE + ')' : '') +
+  '<br>&nbsp; Gemmi ' +
+  // @ts-expect-error Cannot find name 'GEMMI_GIT_DESCRIBE'
+  (typeof GEMMI_GIT_DESCRIBE === 'string' ? GEMMI_GIT_DESCRIBE : 'unknown');
 
 Viewer.prototype.ColorSchemes = ColorSchemes;

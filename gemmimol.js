@@ -12,7 +12,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-9-gb451a35";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-10-gfcaef8b-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-140-gbe377b29";
 
 
 const BondType = {
@@ -11870,7 +11871,10 @@ Viewer.prototype.ABOUT_HELP =
   // @ts-expect-error Cannot find name 'VERSION'
   (typeof VERSION === 'string' ? VERSION : 'dev') +
   // @ts-expect-error Cannot find name 'GIT_DESCRIBE'
-  (typeof GIT_DESCRIBE === 'string' ? ' (' + GIT_DESCRIBE + ')' : '');
+  (typeof GIT_DESCRIBE === 'string' ? ' (' + GIT_DESCRIBE + ')' : '') +
+  '<br>&nbsp; Gemmi ' +
+  // @ts-expect-error Cannot find name 'GEMMI_GIT_DESCRIBE'
+  (typeof GEMMI_GIT_DESCRIBE === 'string' ? GEMMI_GIT_DESCRIBE : 'unknown');
 
 Viewer.prototype.ColorSchemes = ColorSchemes$1;
 
