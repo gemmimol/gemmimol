@@ -2055,6 +2055,13 @@ export class Viewer {
     row2.appendChild(this.download_select_el);
     wrapper.appendChild(row1);
     wrapper.appendChild(row2);
+    if (this.hud_el) {
+      this.hud_el.style.position = 'static';
+      this.hud_el.style.top = '';
+      this.hud_el.style.left = '';
+      this.hud_el.style.alignSelf = 'center';
+      wrapper.appendChild(this.hud_el);
+    }
     this.container.appendChild(wrapper);
   }
 
