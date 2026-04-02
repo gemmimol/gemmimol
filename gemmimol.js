@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-8-g965e70e-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-9-gb451a35";
 
 
 const BondType = {
