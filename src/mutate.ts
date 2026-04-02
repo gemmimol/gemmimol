@@ -1,6 +1,5 @@
 import type { Atom } from './model';
-import { aminoAcidTemplate } from './residue-templates';
-import { nucleotideTemplate } from './nucleotide-templates';
+import { aminoAcidTemplate, nucleotideTemplate } from './residue-templates';
 
 type Num3 = [number, number, number];
 

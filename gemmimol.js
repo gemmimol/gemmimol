@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-15-gcfc288d-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-16-g944353a-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -6897,13 +6897,6 @@ const AMINO_ACID_TEMPLATES = {
   },
 };
 
-function aminoAcidTemplate(resname) {
-  return AMINO_ACID_TEMPLATES[resname.toUpperCase()] || null;
-}
-
-// Generated from CCP4/Coot monomer library CIFs.
-
-
 const NUCLEOTIDE_TEMPLATES = {
   "A": {
     name: "A",
@@ -7228,6 +7221,10 @@ const NUCLEOTIDE_TEMPLATES = {
 
 function nucleotideTemplate(resname) {
   return NUCLEOTIDE_TEMPLATES[resname.toUpperCase()] || null;
+}
+
+function aminoAcidTemplate(resname) {
+  return AMINO_ACID_TEMPLATES[resname.toUpperCase()] || null;
 }
 
 const EPS = 1e-6;

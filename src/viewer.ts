@@ -9,8 +9,7 @@ import type { BlobHit } from './elmap';
 import { BondType, modelsFromGemmi, modelFromGemmiStructure,
          bondDataFromGemmiStructure } from './model';
 import { mutation_targets_for_residue, plan_residue_mutation } from './mutate';
-import { aminoAcidTemplate } from './residue-templates';
-import { nucleotideTemplate } from './nucleotide-templates';
+import { aminoAcidTemplate, nucleotideTemplate } from './residue-templates';
 
 import type { GemmiModule, Structure } from './gemmi';
 import type { Atom, Model } from './model';
