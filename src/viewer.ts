@@ -1,7 +1,8 @@
 import { OrthographicCamera, Scene, Color, Vector3,
          Ray, WebGLRenderer, Fog } from './three-r162/main';
 import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
-         makeChickenWire, makeGrid, makeSticks, makeBalls, makeWheels, makeCube,
+         makeChickenWire, makeSmoothSurface, makeGrid, makeSticks, makeBalls,
+         makeWheels, makeCube,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
 import { ElMap } from './elmap';
@@ -185,8 +186,17 @@ const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks
                        'ribbon', 'ball&stick'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
-const MAP_STYLES = ['marching cubes', 'squarish'/*, 'snapped MC'*/];
+const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
+
+function map_style_method(style: string) {
+  return style === 'smooth surface' ? 'marching cubes' : style;
+}
+
+function map_style_is_surface(style: string) {
+  return style === 'smooth surface';
+}
+
 function rainbow_value(v: number, vmin: number, vmax: number) {
   const c = new Color(0xe0e0e0);
   if (vmin < vmax) {
@@ -1464,12 +1474,18 @@ export class Viewer {
     }
     for (const mtype of map_bag.types) {
       const isolevel = (mtype === 'map_neg' ? -1 : 1) * map_bag.isolevel;
-      const iso = map_bag.map.isomesh_in_block(isolevel, this.config.map_style);
+      const iso = map_bag.map.isomesh_in_block(isolevel,
+                                               map_style_method(this.config.map_style));
       if (iso == null) continue;
-      const obj = makeChickenWire(iso, {
-        color: this.config.colors[mtype],
-        linewidth: this.config.map_line,
-      });
+      const obj = map_style_is_surface(this.config.map_style) ?
+        makeSmoothSurface(iso, {
+          color: this.config.colors[mtype],
+          opacity: 0.22,
+        }) :
+        makeChickenWire(iso, {
+          color: this.config.colors[mtype],
+          linewidth: this.config.map_line,
+        });
       map_bag.el_objects.push(obj);
       this.scene.add(obj);
     }
@@ -3269,8 +3285,13 @@ export class Viewer {
     const rms = map.stats.rms;
 
     const n_bins = 200;
-    const range_min = mean - 6 * rms;
-    const range_max = mean + 6 * rms;
+    // find actual data range for the right tail
+    let data_max = -Infinity;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] > data_max) data_max = data[i];
+    }
+    const range_min = Math.max(0, mean - 6 * rms);
+    const range_max = Math.max(mean + 6 * rms, data_max);
     const bin_width = (range_max - range_min) / n_bins;
     const counts = new Uint32Array(n_bins);
     for (let i = 0; i < data.length; i++) {
@@ -3474,7 +3495,8 @@ export class Viewer {
     let dragging = false;
     const set_level_from_x = (x: number) => {
       const sigma = x2sigma(x);
-      const clamped = Math.round(Math.max(-6, Math.min(6, sigma)) * 10) / 10;
+      const sigma_min = (range_min - mean) / rms;
+      const clamped = Math.round(Math.max(sigma_min, Math.min(6, sigma)) * 10) / 10;
       if (clamped === map_bag.isolevel) return;
       map_bag.isolevel = clamped;
       draw_isolevel();
@@ -4629,7 +4651,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   'V = inactive models',
   'R = center view',
   'G = density histogram',
-  'W = wireframe style',
+  'W = density style',
   'I = spin',
   'K = rock',
   'Home/End = stick width',

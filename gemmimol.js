@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-19-gb795cbe-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-20-g74ca2f1-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -777,7 +777,7 @@ class Cubicles {
   }
 }
 
-function _nullishCoalesce$1(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }
+function _nullishCoalesce$2(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }
 
 
 
@@ -1049,14 +1049,14 @@ class ElMap {
     }
     const result = this.wasm_map.find_blobs(
       cutoff,
-      _nullishCoalesce$1(options.min_volume, () => ( 10.0)),
-      _nullishCoalesce$1(options.min_score, () => ( 15.0)),
-      _nullishCoalesce$1(options.min_peak, () => ( 0.0)),
-      _nullishCoalesce$1(options.negate, () => ( false)),
-      _nullishCoalesce$1(options.structure, () => ( null)),
-      _nullishCoalesce$1(options.model_index, () => ( 0)),
-      _nullishCoalesce$1(options.mask_radius, () => ( 2.0)),
-      _nullishCoalesce$1(options.mask_waters, () => ( false))
+      _nullishCoalesce$2(options.min_volume, () => ( 10.0)),
+      _nullishCoalesce$2(options.min_score, () => ( 15.0)),
+      _nullishCoalesce$2(options.min_peak, () => ( 0.0)),
+      _nullishCoalesce$2(options.negate, () => ( false)),
+      _nullishCoalesce$2(options.structure, () => ( null)),
+      _nullishCoalesce$2(options.model_index, () => ( 0)),
+      _nullishCoalesce$2(options.mask_radius, () => ( 2.0)),
+      _nullishCoalesce$2(options.mask_waters, () => ( false))
     );
     if (result == null) return [];
     try {
@@ -5059,6 +5059,11 @@ let CatmullRomCurve3$1 = class CatmullRomCurve3 extends Curve {
 
 const CatmullRomCurve3 = CatmullRomCurve3$1;
 
+function _nullishCoalesce$1(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }
+
+
+
+
 const CUBE_EDGES =
   [[0, 0, 0], [1, 0, 0],
    [0, 0, 0], [0, 1, 0],
@@ -5665,6 +5670,129 @@ function makeChickenWire(data,
     type: 'um_line_chickenwire',
   });
   return new LineSegments(geom, material);
+}
+
+function weldSurface(data) {
+  const input_pos = data.vertices;
+  const input_idx = data.segments;
+  const pos = [];
+  const remapped = (input_pos.length / 3 < 65536 ? new Uint16Array(input_idx.length)
+                                                 : new Uint32Array(input_idx.length));
+  const key_to_index = new Map();
+  for (let i = 0; i < input_pos.length; i += 3) {
+    const key = Math.round(input_pos[i] * 1e4) + ',' +
+                Math.round(input_pos[i+1] * 1e4) + ',' +
+                Math.round(input_pos[i+2] * 1e4);
+    let idx = key_to_index.get(key);
+    if (idx === undefined) {
+      idx = pos.length / 3;
+      key_to_index.set(key, idx);
+      pos.push(input_pos[i], input_pos[i+1], input_pos[i+2]);
+    }
+    remapped[i / 3] = idx;
+  }
+  const tri = (pos.length < 3*65536 ? new Uint16Array(input_idx.length)
+                                    : new Uint32Array(input_idx.length));
+  for (let i = 0; i < input_idx.length; i++) {
+    tri[i] = remapped[input_idx[i]];
+  }
+  return {
+    position: new Float32Array(pos),
+    index: tri,
+  };
+}
+
+function surfaceNormals(position, index) {
+  const normal = new Float32Array(position.length);
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const i0 = 3 * index[i];
+    const i1 = 3 * index[i+1];
+    const i2 = 3 * index[i+2];
+    const ax = position[i1] - position[i0];
+    const ay = position[i1+1] - position[i0+1];
+    const az = position[i1+2] - position[i0+2];
+    const bx = position[i2] - position[i0];
+    const by = position[i2+1] - position[i0+1];
+    const bz = position[i2+2] - position[i0+2];
+    const nx = ay * bz - az * by;
+    const ny = az * bx - ax * bz;
+    const nz = ax * by - ay * bx;
+    normal[i0] += nx; normal[i0+1] += ny; normal[i0+2] += nz;
+    normal[i1] += nx; normal[i1+1] += ny; normal[i1+2] += nz;
+    normal[i2] += nx; normal[i2+1] += ny; normal[i2+2] += nz;
+  }
+  for (let i = 0; i < normal.length; i += 3) {
+    const nx = normal[i];
+    const ny = normal[i+1];
+    const nz = normal[i+2];
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 1e-12) {
+      normal[i] /= len;
+      normal[i+1] /= len;
+      normal[i+2] /= len;
+    } else {
+      normal[i] = 0;
+      normal[i+1] = 0;
+      normal[i+2] = 1;
+    }
+  }
+  return normal;
+}
+
+const surface_vert = `
+attribute vec3 normal;
+varying vec3 vnormal;
+varying vec3 vview;
+void main() {
+  vec4 mv_pos = modelViewMatrix * vec4(position, 1.0);
+  vnormal = normalize((modelViewMatrix * vec4(normal, 0.0)).xyz);
+  vview = -mv_pos.xyz;
+  gl_Position = projectionMatrix * mv_pos;
+}
+`;
+
+const surface_frag = `
+${fog_pars_fragment}
+uniform vec3 vcolor;
+uniform vec3 lightDir;
+uniform float opacity;
+varying vec3 vnormal;
+varying vec3 vview;
+void main() {
+  vec3 normal = normalize(vnormal);
+  if (!gl_FrontFacing) normal = -normal;
+  vec3 view_dir = normalize(vview);
+  vec3 light_dir = normalize(lightDir);
+  float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
+  float rim = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 1.7);
+  vec3 base = vcolor * (0.30 + 0.55 * diffuse);
+  vec3 color = mix(base, vec3(1.0), 0.22 * rim);
+  float alpha = opacity * (0.55 + 0.75 * rim);
+  gl_FragColor = vec4(color, alpha);
+${fog_end_fragment}
+}`;
+
+function makeSmoothSurface(data,
+                                  options) {
+  const welded = weldSurface(data);
+  const geom = new BufferGeometry();
+  geom.setAttribute('position', new BufferAttribute(welded.position, 3));
+  geom.setIndex(new BufferAttribute(welded.index, 1));
+  geom.setAttribute('normal', new BufferAttribute(surfaceNormals(welded.position, welded.index), 3));
+  const material = new ShaderMaterial({
+    uniforms: makeUniforms({
+      vcolor: options.color,
+      lightDir: light_dir,
+      opacity: _nullishCoalesce$1(options.opacity, () => ( 0.24)),
+    }),
+    vertexShader: surface_vert,
+    fragmentShader: surface_frag,
+    fog: true,
+    type: 'um_surface',
+  });
+  material.transparent = true;
+  material.depthWrite = false;
+  return new Mesh(geom, material);
 }
 
 
@@ -7768,8 +7896,17 @@ const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks
                        'ribbon', 'ball&stick'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
-const MAP_STYLES = ['marching cubes', 'squarish'/*, 'snapped MC'*/];
+const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
+
+function map_style_method(style) {
+  return style === 'smooth surface' ? 'marching cubes' : style;
+}
+
+function map_style_is_surface(style) {
+  return style === 'smooth surface';
+}
+
 function rainbow_value(v, vmin, vmax) {
   const c = new Color(0xe0e0e0);
   if (vmin < vmax) {
@@ -9047,12 +9184,18 @@ class Viewer {
     }
     for (const mtype of map_bag.types) {
       const isolevel = (mtype === 'map_neg' ? -1 : 1) * map_bag.isolevel;
-      const iso = map_bag.map.isomesh_in_block(isolevel, this.config.map_style);
+      const iso = map_bag.map.isomesh_in_block(isolevel,
+                                               map_style_method(this.config.map_style));
       if (iso == null) continue;
-      const obj = makeChickenWire(iso, {
-        color: this.config.colors[mtype],
-        linewidth: this.config.map_line,
-      });
+      const obj = map_style_is_surface(this.config.map_style) ?
+        makeSmoothSurface(iso, {
+          color: this.config.colors[mtype],
+          opacity: 0.22,
+        }) :
+        makeChickenWire(iso, {
+          color: this.config.colors[mtype],
+          linewidth: this.config.map_line,
+        });
       map_bag.el_objects.push(obj);
       this.scene.add(obj);
     }
@@ -10852,8 +10995,13 @@ class Viewer {
     const rms = map.stats.rms;
 
     const n_bins = 200;
-    const range_min = mean - 6 * rms;
-    const range_max = mean + 6 * rms;
+    // find actual data range for the right tail
+    let data_max = -Infinity;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] > data_max) data_max = data[i];
+    }
+    const range_min = Math.max(0, mean - 6 * rms);
+    const range_max = Math.max(mean + 6 * rms, data_max);
     const bin_width = (range_max - range_min) / n_bins;
     const counts = new Uint32Array(n_bins);
     for (let i = 0; i < data.length; i++) {
@@ -11057,7 +11205,8 @@ class Viewer {
     let dragging = false;
     const set_level_from_x = (x) => {
       const sigma = x2sigma(x);
-      const clamped = Math.round(Math.max(-6, Math.min(6, sigma)) * 10) / 10;
+      const sigma_min = (range_min - mean) / rms;
+      const clamped = Math.round(Math.max(sigma_min, Math.min(6, sigma)) * 10) / 10;
       if (clamped === map_bag.isolevel) return;
       map_bag.isolevel = clamped;
       draw_isolevel();
@@ -12212,7 +12361,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   'V = inactive models',
   'R = center view',
   'G = density histogram',
-  'W = wireframe style',
+  'W = density style',
   'I = spin',
   'K = rock',
   'Home/End = stick width',
@@ -12903,6 +13052,7 @@ exports.makeLineMaterial = makeLineMaterial;
 exports.makeLineSegments = makeLineSegments;
 exports.makeRgbBox = makeRgbBox;
 exports.makeRibbon = makeRibbon;
+exports.makeSmoothSurface = makeSmoothSurface;
 exports.makeSticks = makeSticks;
 exports.makeUniforms = makeUniforms;
 exports.makeWheels = makeWheels;

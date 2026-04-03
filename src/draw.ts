@@ -616,6 +616,129 @@ function makeChickenWire(data: IsosurfaceData,
   return new LineSegments(geom, material);
 }
 
+function weldSurface(data: IsosurfaceData) {
+  const input_pos = data.vertices;
+  const input_idx = data.segments;
+  const pos: number[] = [];
+  const remapped = (input_pos.length / 3 < 65536 ? new Uint16Array(input_idx.length)
+                                                 : new Uint32Array(input_idx.length));
+  const key_to_index = new Map<string, number>();
+  for (let i = 0; i < input_pos.length; i += 3) {
+    const key = Math.round(input_pos[i] * 1e4) + ',' +
+                Math.round(input_pos[i+1] * 1e4) + ',' +
+                Math.round(input_pos[i+2] * 1e4);
+    let idx = key_to_index.get(key);
+    if (idx === undefined) {
+      idx = pos.length / 3;
+      key_to_index.set(key, idx);
+      pos.push(input_pos[i], input_pos[i+1], input_pos[i+2]);
+    }
+    remapped[i / 3] = idx;
+  }
+  const tri = (pos.length < 3*65536 ? new Uint16Array(input_idx.length)
+                                    : new Uint32Array(input_idx.length));
+  for (let i = 0; i < input_idx.length; i++) {
+    tri[i] = remapped[input_idx[i]];
+  }
+  return {
+    position: new Float32Array(pos),
+    index: tri,
+  };
+}
+
+function surfaceNormals(position: Float32Array, index: Uint16Array | Uint32Array) {
+  const normal = new Float32Array(position.length);
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const i0 = 3 * index[i];
+    const i1 = 3 * index[i+1];
+    const i2 = 3 * index[i+2];
+    const ax = position[i1] - position[i0];
+    const ay = position[i1+1] - position[i0+1];
+    const az = position[i1+2] - position[i0+2];
+    const bx = position[i2] - position[i0];
+    const by = position[i2+1] - position[i0+1];
+    const bz = position[i2+2] - position[i0+2];
+    const nx = ay * bz - az * by;
+    const ny = az * bx - ax * bz;
+    const nz = ax * by - ay * bx;
+    normal[i0] += nx; normal[i0+1] += ny; normal[i0+2] += nz;
+    normal[i1] += nx; normal[i1+1] += ny; normal[i1+2] += nz;
+    normal[i2] += nx; normal[i2+1] += ny; normal[i2+2] += nz;
+  }
+  for (let i = 0; i < normal.length; i += 3) {
+    const nx = normal[i];
+    const ny = normal[i+1];
+    const nz = normal[i+2];
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 1e-12) {
+      normal[i] /= len;
+      normal[i+1] /= len;
+      normal[i+2] /= len;
+    } else {
+      normal[i] = 0;
+      normal[i+1] = 0;
+      normal[i+2] = 1;
+    }
+  }
+  return normal;
+}
+
+const surface_vert = `
+attribute vec3 normal;
+varying vec3 vnormal;
+varying vec3 vview;
+void main() {
+  vec4 mv_pos = modelViewMatrix * vec4(position, 1.0);
+  vnormal = normalize((modelViewMatrix * vec4(normal, 0.0)).xyz);
+  vview = -mv_pos.xyz;
+  gl_Position = projectionMatrix * mv_pos;
+}
+`;
+
+const surface_frag = `
+${fog_pars_fragment}
+uniform vec3 vcolor;
+uniform vec3 lightDir;
+uniform float opacity;
+varying vec3 vnormal;
+varying vec3 vview;
+void main() {
+  vec3 normal = normalize(vnormal);
+  if (!gl_FrontFacing) normal = -normal;
+  vec3 view_dir = normalize(vview);
+  vec3 light_dir = normalize(lightDir);
+  float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
+  float rim = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 1.7);
+  vec3 base = vcolor * (0.30 + 0.55 * diffuse);
+  vec3 color = mix(base, vec3(1.0), 0.22 * rim);
+  float alpha = opacity * (0.55 + 0.75 * rim);
+  gl_FragColor = vec4(color, alpha);
+${fog_end_fragment}
+}`;
+
+export function makeSmoothSurface(data: IsosurfaceData,
+                                  options: {[key: string]: unknown}) {
+  const welded = weldSurface(data);
+  const geom = new BufferGeometry();
+  geom.setAttribute('position', new BufferAttribute(welded.position, 3));
+  geom.setIndex(new BufferAttribute(welded.index, 1));
+  geom.setAttribute('normal', new BufferAttribute(surfaceNormals(welded.position, welded.index), 3));
+  const material = new ShaderMaterial({
+    uniforms: makeUniforms({
+      vcolor: options.color,
+      lightDir: light_dir,
+      opacity: options.opacity ?? 0.24,
+    }),
+    vertexShader: surface_vert,
+    fragmentShader: surface_frag,
+    fog: true,
+    type: 'um_surface',
+  });
+  material.transparent = true;
+  material.depthWrite = false;
+  return new Mesh(geom, material);
+}
+
 
 const grid_vert = `
 uniform vec3 ucolor;
