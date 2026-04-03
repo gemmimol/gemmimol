@@ -3496,7 +3496,8 @@ export class Viewer {
     const set_level_from_x = (x: number) => {
       const sigma = x2sigma(x);
       const sigma_min = (range_min - mean) / rms;
-      const clamped = Math.round(Math.max(sigma_min, Math.min(6, sigma)) * 10) / 10;
+      const sigma_max = (range_max - mean) / rms;
+      const clamped = Math.round(Math.max(sigma_min, Math.min(sigma_max, sigma)) * 10) / 10;
       if (clamped === map_bag.isolevel) return;
       map_bag.isolevel = clamped;
       draw_isolevel();

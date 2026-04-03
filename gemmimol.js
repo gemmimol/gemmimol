@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-20-g74ca2f1-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-21-g5581654-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -11206,7 +11206,8 @@ class Viewer {
     const set_level_from_x = (x) => {
       const sigma = x2sigma(x);
       const sigma_min = (range_min - mean) / rms;
-      const clamped = Math.round(Math.max(sigma_min, Math.min(6, sigma)) * 10) / 10;
+      const sigma_max = (range_max - mean) / rms;
+      const clamped = Math.round(Math.max(sigma_min, Math.min(sigma_max, sigma)) * 10) / 10;
       if (clamped === map_bag.isolevel) return;
       map_bag.isolevel = clamped;
       draw_isolevel();
