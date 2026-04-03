@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-21-g5581654-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-22-g29c82ba-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -7899,6 +7899,12 @@ const WATER_STYLES = ['sphere', 'cross', 'invisible'];
 const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
+function normalize_viewer_options(options) {
+  if (typeof options === 'string') return {viewer: options};
+  if (options && typeof options === 'object') return options;
+  return {};
+}
+
 function map_style_method(style) {
   return style === 'smooth surface' ? 'marching cubes' : style;
 }
@@ -8563,7 +8569,8 @@ class Viewer {
   
   
 
-  constructor(options) {
+  constructor(options = {}) {
+    options = normalize_viewer_options(options);
     // rendered objects
     this.model_bags = [];
     this.map_bags = [];
@@ -12587,6 +12594,7 @@ class ReciprocalViewer extends Viewer {
   
 
   constructor(options = {}) {
+    options = normalize_viewer_options(options);
     options.color_scheme = 'solarized dark';
     super(options);
     this.default_camera_pos = [100, 0, 0];
@@ -13059,6 +13067,7 @@ exports.makeUniforms = makeUniforms;
 exports.makeWheels = makeWheels;
 exports.modelFromGemmiStructure = modelFromGemmiStructure;
 exports.modelsFromGemmi = modelsFromGemmi;
+exports.normalize_viewer_options = normalize_viewer_options;
 exports.set_pdb_and_mtz_dropzone = set_pdb_and_mtz_dropzone;
 
 }));

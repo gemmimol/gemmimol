@@ -189,6 +189,12 @@ const WATER_STYLES = ['sphere', 'cross', 'invisible'];
 const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
+export function normalize_viewer_options(options?: Record<string, any> | string | null) {
+  if (typeof options === 'string') return {viewer: options};
+  if (options && typeof options === 'object') return options;
+  return {};
+}
+
 function map_style_method(style: string) {
   return style === 'smooth surface' ? 'marching cubes' : style;
 }
@@ -853,7 +859,8 @@ export class Viewer {
   histogram_redraw: (() => void) | null;
   declare ColorSchemes: typeof ColorSchemes;
 
-  constructor(options: Record<string, any>) {
+  constructor(options: Record<string, any> | string = {}) {
+    options = normalize_viewer_options(options);
     // rendered objects
     this.model_bags = [];
     this.map_bags = [];

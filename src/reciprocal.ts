@@ -1,5 +1,5 @@
 import { ElMap } from './elmap';
-import { Viewer } from './viewer';
+import { Viewer, normalize_viewer_options } from './viewer';
 import { addXyzCross, makeLineMaterial, makeLineSegments,
          makeUniforms, fog_pars_fragment, fog_end_fragment } from './draw';
 import { Points, BufferAttribute, BufferGeometry,
@@ -218,7 +218,8 @@ export class ReciprocalViewer extends Viewer {
   declare config: ReciprocalViewerConfig;
   declare ColorSchemes: typeof ColorSchemes;
 
-  constructor(options: Record<string, any> = {}) {
+  constructor(options: Record<string, any> | string = {}) {
+    options = normalize_viewer_options(options);
     options.color_scheme = 'solarized dark';
     super(options);
     this.default_camera_pos = [100, 0, 0];
