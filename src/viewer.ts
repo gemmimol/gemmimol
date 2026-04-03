@@ -831,6 +831,7 @@ export class Viewer {
   fps_text: string;
   last_frame_time: number;
   frame_times: number[];
+  map_radius_auto: boolean;
   scheduled: boolean;
   declare MOUSE_HELP: string;
   declare KEYBOARD_HELP: string;
@@ -838,6 +839,7 @@ export class Viewer {
   mousemove: (arg: MouseEvent) => void;
   mouseup: (arg: MouseEvent) => void;
   key_bindings: Array<((evt: KeyboardEvent) => void) | false | undefined>;
+  histogram_el: HTMLCanvasElement | null;
   declare ColorSchemes: typeof ColorSchemes;
 
   constructor(options: Record<string, any>) {
@@ -941,6 +943,7 @@ export class Viewer {
     this.download_select_el = null;
     this.delete_select_el = null;
     this.mutate_select_el = null;
+    this.histogram_el = null;
     this.blob_hits = [];
     this.blob_map_bag = null;
     this.blob_negate = false;
@@ -951,6 +954,7 @@ export class Viewer {
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
+    this.map_radius_auto = !('map_radius' in options) && !('max_map_radius' in options);
     if (this.hud_el) {
       if (this.hud_el.innerHTML === '') this.hud_el.innerHTML = INIT_HUD_TEXT;
       this.initial_hud_html = this.hud_el.innerHTML;
@@ -1489,9 +1493,15 @@ export class Viewer {
     }
     this.hud('map ' + (map_idx+1) + ' level =  ' + abs_text + ' ' +
              map_bag.map.unit + ' (' + map_bag.isolevel.toFixed(2) + ' rmsd)');
+    if (this.histogram_el && map_idx === 0) {
+      this.histogram_el.remove();
+      this.histogram_el = null;
+      this.toggle_histogram();
+    }
   }
 
   change_map_radius(delta: number) {
+    this.map_radius_auto = false;
     const rmax = this.config.max_map_radius;
     const cf = this.config;
     cf.map_radius = Math.min(Math.max(cf.map_radius + delta, 0), rmax);
@@ -3227,6 +3237,190 @@ export class Viewer {
     }
   }
 
+  toggle_histogram() {
+    if (this.histogram_el) {
+      this.histogram_el.remove();
+      this.histogram_el = null;
+      return;
+    }
+    const map_bag = this.map_bags[0];
+    if (!map_bag) {
+      this.hud('no map loaded');
+      return;
+    }
+    const map = map_bag.map;
+    let data: Float32Array | null = null;
+    if (map.wasm_map != null) {
+      data = map.wasm_map.data();
+    } else if (map.grid != null) {
+      data = map.grid.values;
+    }
+    if (data == null || data.length === 0) {
+      this.hud('no map data for histogram');
+      return;
+    }
+    this.draw_histogram(data, map_bag);
+  }
+
+  draw_histogram(data: Float32Array, map_bag: MapBag) {
+    const map = map_bag.map;
+    const mean = map.stats.mean;
+    const rms = map.stats.rms;
+
+    // compute histogram bins
+    const n_bins = 200;
+    // use mean ± 6σ range, clamping outliers
+    const range_min = mean - 6 * rms;
+    const range_max = mean + 6 * rms;
+    const bin_width = (range_max - range_min) / n_bins;
+    const counts = new Uint32Array(n_bins);
+    for (let i = 0; i < data.length; i++) {
+      const v = data[i];
+      let bin = Math.floor((v - range_min) / bin_width);
+      if (bin < 0) bin = 0;
+      if (bin >= n_bins) bin = n_bins - 1;
+      counts[bin]++;
+    }
+
+    // use log scale for counts
+    const log_counts = new Float64Array(n_bins);
+    let max_log = 0;
+    for (let i = 0; i < n_bins; i++) {
+      log_counts[i] = counts[i] > 0 ? Math.log10(counts[i]) : 0;
+      if (log_counts[i] > max_log) max_log = log_counts[i];
+    }
+
+    const W = 400;
+    const H = 220;
+    const pad_left = 40;
+    const pad_right = 10;
+    const pad_top = 25;
+    const pad_bottom = 35;
+    const plot_w = W - pad_left - pad_right;
+    const plot_h = H - pad_top - pad_bottom;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.position = 'absolute';
+    canvas.style.right = '10px';
+    canvas.style.top = '10px';
+    canvas.style.zIndex = '10';
+    canvas.style.cursor = 'pointer';
+    canvas.title = 'click to close';
+    canvas.onclick = () => {
+      canvas.remove();
+      this.histogram_el = null;
+    };
+
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(0, 0, W, H);
+
+    // draw bars
+    const bar_w = plot_w / n_bins;
+    ctx.fillStyle = '#5588cc';
+    for (let i = 0; i < n_bins; i++) {
+      if (log_counts[i] === 0) continue;
+      const bar_h = (log_counts[i] / max_log) * plot_h;
+      ctx.fillRect(pad_left + i * bar_w, pad_top + plot_h - bar_h,
+                   Math.max(bar_w - 0.5, 1), bar_h);
+    }
+
+    // helper to convert map value to x pixel
+    const val2x = (v: number) =>
+      pad_left + ((v - range_min) / (range_max - range_min)) * plot_w;
+
+    // draw isolevel line
+    const abs_level = map.abs_level(map_bag.isolevel);
+    const iso_x = val2x(abs_level);
+    if (iso_x >= pad_left && iso_x <= pad_left + plot_w) {
+      ctx.strokeStyle = map_bag.is_diff_map ? '#40b040' : '#ff6644';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(iso_x, pad_top);
+      ctx.lineTo(iso_x, pad_top + plot_h);
+      ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(map_bag.isolevel.toFixed(1) + '\u03c3', iso_x, pad_top - 3);
+    }
+
+    // draw mean line
+    const mean_x = val2x(mean);
+    if (mean_x >= pad_left && mean_x <= pad_left + plot_w) {
+      ctx.strokeStyle = '#aaa';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(mean_x, pad_top);
+      ctx.lineTo(mean_x, pad_top + plot_h);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // axes
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad_left, pad_top);
+    ctx.lineTo(pad_left, pad_top + plot_h);
+    ctx.lineTo(pad_left + plot_w, pad_top + plot_h);
+    ctx.stroke();
+
+    // x-axis labels (in sigma)
+    ctx.fillStyle = '#ccc';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    for (let s = -5; s <= 5; s += 1) {
+      const v = mean + s * rms;
+      const x = val2x(v);
+      if (x < pad_left || x > pad_left + plot_w) continue;
+      // tick
+      ctx.beginPath();
+      ctx.moveTo(x, pad_top + plot_h);
+      ctx.lineTo(x, pad_top + plot_h + 4);
+      ctx.stroke();
+      if (s % 2 === 0) {
+        ctx.fillText(s + '\u03c3', x, pad_top + plot_h + 15);
+      }
+    }
+
+    // y-axis labels (log10 scale)
+    ctx.textAlign = 'right';
+    for (let p = 0; p <= max_log; p += 1) {
+      const y = pad_top + plot_h - (p / max_log) * plot_h;
+      ctx.beginPath();
+      ctx.moveTo(pad_left - 4, y);
+      ctx.lineTo(pad_left, y);
+      ctx.stroke();
+      ctx.fillText('10' + (p === 0 ? '\u2070' :
+                           p === 1 ? '\u00b9' :
+                           p === 2 ? '\u00b2' :
+                           p === 3 ? '\u00b3' :
+                           '\u2074\u207a'), pad_left - 6, y + 3);
+    }
+
+    // title
+    ctx.fillStyle = '#ddd';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'left';
+    const title = (map_bag.name || 'map') +
+      '  \u03bc=' + mean.toFixed(3) + '  \u03c3=' + rms.toFixed(3);
+    ctx.fillText(title, pad_left, pad_top - 10);
+
+    // x-axis label
+    ctx.fillStyle = '#aaa';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('density (' + map.unit + ')', pad_left + plot_w / 2,
+                 H - 3);
+
+    this.histogram_el = canvas;
+    (this.container || document.body).appendChild(canvas);
+  }
+
   update_help() {
     const el = this.help_el;
     if (!el) return;
@@ -3421,6 +3615,10 @@ export class Viewer {
     kb[84] = function (this: Viewer, evt: KeyboardEvent) {
       this.select_next('waters as', 'water_style', WATER_STYLES, evt.shiftKey);
       this.redraw_models();
+    };
+    // g
+    kb[71] = function (this: Viewer) {
+      this.toggle_histogram();
     };
     // u
     kb[85] = function (this: Viewer) {
@@ -3790,11 +3988,47 @@ export class Viewer {
     }
   }
 
+  auto_adjust_map_radius() {
+    if (!this.map_radius_auto || this.map_bags.length === 0) return;
+    const model_bag = this.model_bags.find((bag) =>
+      bag.symop === '' &&
+      bag.model.unit_cell != null &&
+      !bag.model.unit_cell.is_crystal());
+    if (model_bag == null) return;
+    const center = model_bag.model.get_center();
+    const required_radius = Math.max(
+      center[0] - model_bag.model.lower_bound[0],
+      model_bag.model.upper_bound[0] - center[0],
+      center[1] - model_bag.model.lower_bound[1],
+      model_bag.model.upper_bound[1] - center[1],
+      center[2] - model_bag.model.lower_bound[2],
+      model_bag.model.upper_bound[2] - center[2]
+    ) + 2;
+    let cell_limit = Infinity;
+    for (const map_bag of this.map_bags) {
+      const uc = map_bag.map.unit_cell;
+      if (uc == null) continue;
+      const half_edge = 0.5 * Math.min(uc.a, uc.b, uc.c);
+      if (Number.isFinite(half_edge) && half_edge > 0) {
+        cell_limit = Math.min(cell_limit, half_edge);
+      }
+    }
+    const radius = Math.min(required_radius, cell_limit);
+    if (!Number.isFinite(radius) || radius <= this.config.map_radius + 1e-6) return;
+    const rounded_radius = Math.round(radius * 10) / 10;
+    const suggested_max = Math.max(rounded_radius + 20, rounded_radius * 1.25);
+    const rounded_max = Math.round(Math.min(cell_limit, suggested_max) * 10) / 10;
+    this.config.map_radius = rounded_radius;
+    this.config.max_map_radius = Math.max(this.config.max_map_radius, rounded_max);
+    this.redraw_maps(true);
+  }
+
   add_model(model: Model, options: {hue_shift?: number, gemmi_selection?: GemmiSelectionContext}={}) {
     const model_bag = new ModelBag(model, this.config, this.window_size);
     model_bag.hue_shift = options.hue_shift || 0.06 * this.model_bags.length;
     model_bag.gemmi_selection = options.gemmi_selection || null;
     this.model_bags.push(model_bag);
+    this.auto_adjust_map_radius();
     this.set_model_objects(model_bag);
     this.update_nav_menus();
     this.request_render();
@@ -3804,6 +4038,7 @@ export class Viewer {
     const map_bag = new MapBag(map, this.config, is_diff_map);
     this.map_bags.push(map_bag);
     this.add_el_objects(map_bag);
+    this.auto_adjust_map_radius();
     this.update_nav_menus();
     this.request_render();
   }
@@ -4303,6 +4538,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   'Y = hydrogens',
   'V = inactive models',
   'R = center view',
+  'G = density histogram',
   'W = wireframe style',
   'I = spin',
   'K = rock',
