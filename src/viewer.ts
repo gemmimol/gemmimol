@@ -823,7 +823,7 @@ export class Viewer {
   container: HTMLElement | null;
   hud_el: HTMLElement | null;
   help_el: HTMLElement | null;
-  structure_name_el: HTMLDivElement | null;
+  structure_name_el: HTMLElement | null;
   cid_dialog_el: HTMLDivElement | null;
   cid_input_el: HTMLInputElement | null;
   blob_select_el: HTMLSelectElement | null;
@@ -1050,20 +1050,25 @@ export class Viewer {
 
   create_structure_name_badge() {
     if (this.container == null || typeof document === 'undefined') return;
-    const el = document.createElement('div');
+    const el = document.createElement('header');
     el.style.display = 'none';
     el.style.fontSize = '18px';
     el.style.color = '#ddd';
     el.style.backgroundColor = 'rgba(0,0,0,0.6)';
-    el.style.position = 'absolute';
-    el.style.top = '10px';
-    el.style.right = '10px';
-    el.style.padding = '3px 10px';
+    el.style.textAlign = 'right';
+    el.style.alignSelf = 'stretch';
+    el.style.padding = '3px 8px';
     el.style.borderRadius = '5px';
     el.style.letterSpacing = '0.08em';
     el.style.fontWeight = 'bold';
-    el.style.pointerEvents = 'none';
-    this.container.appendChild(el);
+    el.style.pointerEvents = 'auto'; // ensure selectability
+    el.style.cursor = 'text';        // ensure selectability
+    el.style.userSelect = 'text';    // ensure selectability
+    el.style.webkitUserSelect = 'text'; // ensure selectability
+    el.onmousedown = (evt) => evt.stopPropagation();
+    const overlay = document.getElementById('gm-overlay');
+    if (overlay) overlay.insertBefore(el, overlay.firstChild);
+    else this.container.appendChild(el);
     this.structure_name_el = el;
   }
 
