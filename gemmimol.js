@@ -12,8 +12,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-31-g4cbedaf-dirty";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-32-ga3fc3e3-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-144-g0445d0c2";
 
 
 const BondType = {
@@ -952,9 +952,9 @@ class Block {
       }
       return {
         vertices: iso.vertices().slice(),
-        segments: iso.segments().slice(),
+        triangles: iso.triangles().slice(),
         field: this.field(),
-      };
+      } ;
     } finally {
       if (iso != null) iso.delete();
     }
@@ -1114,7 +1114,7 @@ class ElMap {
       }
       return {
         vertices: this.wasm_map.isosurface_vertices().slice(),
-        segments: this.wasm_map.isosurface_segments().slice(),
+        triangles: this.wasm_map.isosurface_triangles().slice(),
         field: this.block.field(),
       } ;
     }
@@ -5733,11 +5733,9 @@ function makeChickenWire(data,
   const position = new Float32Array(data.vertices);
   geom.setAttribute('position', new BufferAttribute(position, 3));
 
-  // Although almost all browsers support OES_element_index_uint nowadays,
-  // use Uint32 indexes only when needed.
-  const arr = (data.vertices.length < 3*65536 ? new Uint16Array(data.segments)
-                                              : new Uint32Array(data.segments));
-  //console.log('arr len:', data.vertices.length, data.segments.length);
+  const vertex_count = data.vertices.length / 3;
+  const arr = wireIndexFromTriangles(data.triangles, vertex_count);
+  //console.log('arr len:', data.vertices.length, data.triangles.length);
   geom.setIndex(new BufferAttribute(arr, 1));
   const material = new ShaderMaterial({
     uniforms: makeUniforms({vcolor: options.color}),
@@ -5752,7 +5750,8 @@ function makeChickenWire(data,
 
 function weldSurface(data) {
   const input_pos = data.vertices;
-  const input_idx = data.segments;
+  const input_idx = data.triangles;
+  const index_len = input_idx.length - input_idx.length % 3;
   const pos = [];
   const remapped = (input_pos.length / 3 < 65536 ? new Uint16Array(input_idx.length)
                                                  : new Uint32Array(input_idx.length));
@@ -5769,15 +5768,58 @@ function weldSurface(data) {
     }
     remapped[i / 3] = idx;
   }
-  const tri = (pos.length < 3*65536 ? new Uint16Array(input_idx.length)
-                                    : new Uint32Array(input_idx.length));
-  for (let i = 0; i < input_idx.length; i++) {
+  const tri = (pos.length < 3*65536 ? new Uint16Array(index_len)
+                                    : new Uint32Array(index_len));
+  for (let i = 0; i < index_len; i++) {
     tri[i] = remapped[input_idx[i]];
   }
   return {
     position: new Float32Array(pos),
-    index: tri,
+    index: cleanSurfaceTriangles(tri, pos.length / 3),
   };
+}
+
+function cleanSurfaceTriangles(index, vertex_count) {
+  const tri = [];
+  const seen = new Set();
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const a = index[i];
+    const b = index[i + 1];
+    const c = index[i + 2];
+    if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
+    if (a === b || b === c || c === a) continue;
+    const lo = Math.min(a, b, c);
+    const hi = Math.max(a, b, c);
+    const mid = a + b + c - lo - hi;
+    const key = lo + ',' + mid + ',' + hi;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tri.push(a, b, c);
+  }
+  return (vertex_count < 65536 ? new Uint16Array(tri)
+                               : new Uint32Array(tri));
+}
+
+function wireIndexFromTriangles(index, vertex_count) {
+  const edges = [];
+  const seen = new Set();
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const a = index[i];
+    const b = index[i + 1];
+    const c = index[i + 2];
+    if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
+    if (a === b || b === c || c === a) continue;
+    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+      const lo = Math.min(u, v);
+      const hi = Math.max(u, v);
+      const key = lo + ',' + hi;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push(u, v);
+    }
+  }
+  return (vertex_count < 65536 ? new Uint16Array(edges)
+                               : new Uint32Array(edges));
 }
 
 function areaSurfaceNormals(position, index) {
@@ -5939,7 +5981,7 @@ varying vec3 vnormal;
 varying vec3 vview;
 void main() {
   vec4 mv_pos = modelViewMatrix * vec4(position, 1.0);
-  vnormal = normalize(normalMatrix * normal);
+  vnormal = normalize((modelViewMatrix * vec4(normal, 0.0)).xyz);
   vview = -mv_pos.xyz;
   gl_Position = projectionMatrix * mv_pos;
 }
@@ -5953,8 +5995,8 @@ uniform float opacity;
 varying vec3 vnormal;
 varying vec3 vview;
 void main() {
-  if (!gl_FrontFacing) discard;
   vec3 normal = normalize(vnormal);
+  if (!gl_FrontFacing) normal = -normal;
   vec3 view_dir = normalize(vview);
   vec3 light_dir = normalize(lightDir);
   float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
@@ -8094,17 +8136,20 @@ const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks
                        'ribbon', 'ball&stick'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
-const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
+const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
 function normalize_viewer_options(options) {
   if (typeof options === 'string') return {viewer: options};
-  if (options && typeof options === 'object') return options;
+  if (options && typeof options === 'object') {
+    if (options.map_style === 'squarish') options.map_style = 'marching cubes';
+    return options;
+  }
   return {};
 }
 
 function map_style_method(style) {
-  return style === 'smooth surface' ? 'marching cubes' : style;
+  return style === 'smooth surface' || style === 'squarish' ? 'marching cubes' : style;
 }
 
 function map_style_is_surface(style) {

@@ -186,17 +186,20 @@ const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks
                        'ribbon', 'ball&stick'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
-const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
+const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
 export function normalize_viewer_options(options?: Record<string, any> | string | null) {
   if (typeof options === 'string') return {viewer: options};
-  if (options && typeof options === 'object') return options;
+  if (options && typeof options === 'object') {
+    if (options.map_style === 'squarish') options.map_style = 'marching cubes';
+    return options;
+  }
   return {};
 }
 
 function map_style_method(style: string) {
-  return style === 'smooth surface' ? 'marching cubes' : style;
+  return style === 'smooth surface' || style === 'squarish' ? 'marching cubes' : style;
 }
 
 function map_style_is_surface(style: string) {

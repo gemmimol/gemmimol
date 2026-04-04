@@ -599,11 +599,9 @@ function makeChickenWire(data: IsosurfaceData,
   const position = new Float32Array(data.vertices);
   geom.setAttribute('position', new BufferAttribute(position, 3));
 
-  // Although almost all browsers support OES_element_index_uint nowadays,
-  // use Uint32 indexes only when needed.
-  const arr = (data.vertices.length < 3*65536 ? new Uint16Array(data.segments)
-                                              : new Uint32Array(data.segments));
-  //console.log('arr len:', data.vertices.length, data.segments.length);
+  const vertex_count = data.vertices.length / 3;
+  const arr = wireIndexFromTriangles(data.triangles, vertex_count);
+  //console.log('arr len:', data.vertices.length, data.triangles.length);
   geom.setIndex(new BufferAttribute(arr, 1));
   const material = new ShaderMaterial({
     uniforms: makeUniforms({vcolor: options.color}),
@@ -618,7 +616,8 @@ function makeChickenWire(data: IsosurfaceData,
 
 function weldSurface(data: IsosurfaceData) {
   const input_pos = data.vertices;
-  const input_idx = data.segments;
+  const input_idx = data.triangles;
+  const index_len = input_idx.length - input_idx.length % 3;
   const pos: number[] = [];
   const remapped = (input_pos.length / 3 < 65536 ? new Uint16Array(input_idx.length)
                                                  : new Uint32Array(input_idx.length));
@@ -635,15 +634,58 @@ function weldSurface(data: IsosurfaceData) {
     }
     remapped[i / 3] = idx;
   }
-  const tri = (pos.length < 3*65536 ? new Uint16Array(input_idx.length)
-                                    : new Uint32Array(input_idx.length));
-  for (let i = 0; i < input_idx.length; i++) {
+  const tri = (pos.length < 3*65536 ? new Uint16Array(index_len)
+                                    : new Uint32Array(index_len));
+  for (let i = 0; i < index_len; i++) {
     tri[i] = remapped[input_idx[i]];
   }
   return {
     position: new Float32Array(pos),
-    index: tri,
+    index: cleanSurfaceTriangles(tri, pos.length / 3),
   };
+}
+
+function cleanSurfaceTriangles(index: Uint16Array | Uint32Array, vertex_count: number) {
+  const tri: number[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const a = index[i];
+    const b = index[i + 1];
+    const c = index[i + 2];
+    if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
+    if (a === b || b === c || c === a) continue;
+    const lo = Math.min(a, b, c);
+    const hi = Math.max(a, b, c);
+    const mid = a + b + c - lo - hi;
+    const key = lo + ',' + mid + ',' + hi;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tri.push(a, b, c);
+  }
+  return (vertex_count < 65536 ? new Uint16Array(tri)
+                               : new Uint32Array(tri));
+}
+
+function wireIndexFromTriangles(index: Uint32Array, vertex_count: number) {
+  const edges: number[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i + 2 < index.length; i += 3) {
+    const a = index[i];
+    const b = index[i + 1];
+    const c = index[i + 2];
+    if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
+    if (a === b || b === c || c === a) continue;
+    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+      const lo = Math.min(u, v);
+      const hi = Math.max(u, v);
+      const key = lo + ',' + hi;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push(u, v);
+    }
+  }
+  return (vertex_count < 65536 ? new Uint16Array(edges)
+                               : new Uint32Array(edges));
 }
 
 function areaSurfaceNormals(position: Float32Array, index: Uint16Array | Uint32Array) {
@@ -805,7 +847,7 @@ varying vec3 vnormal;
 varying vec3 vview;
 void main() {
   vec4 mv_pos = modelViewMatrix * vec4(position, 1.0);
-  vnormal = normalize(normalMatrix * normal);
+  vnormal = normalize((modelViewMatrix * vec4(normal, 0.0)).xyz);
   vview = -mv_pos.xyz;
   gl_Position = projectionMatrix * mv_pos;
 }
@@ -819,8 +861,8 @@ uniform float opacity;
 varying vec3 vnormal;
 varying vec3 vview;
 void main() {
-  if (!gl_FrontFacing) discard;
   vec3 normal = normalize(vnormal);
+  if (!gl_FrontFacing) normal = -normal;
   vec3 view_dir = normalize(vview);
   vec3 light_dir = normalize(lightDir);
   float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);

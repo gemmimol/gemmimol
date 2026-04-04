@@ -26,7 +26,7 @@ describe('MTZ loading', () => {
       delete: function () {},
       extract_isosurface: function () { return true; },
       isosurface_vertices: function () { return new Float32Array(); },
-      isosurface_segments: function () { return new Uint32Array(); },
+      isosurface_triangles: function () { return new Uint32Array(); },
     };
   }
 

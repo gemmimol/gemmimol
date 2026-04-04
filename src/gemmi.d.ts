@@ -58,7 +58,7 @@ export interface Isosurface extends ClassHandle {
   input_points(): any;
   input_values(): any;
   vertices(): any;
-  segments(): any;
+  triangles(): any;
 }
 
 export interface ResidueSsValue<T extends number> {
@@ -273,7 +273,7 @@ export interface MapData extends ClassHandle {
   extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
   data(): any;
   isosurface_vertices(): any;
-  isosurface_segments(): any;
+  isosurface_triangles(): any;
 }
 
 export interface Ccp4Map extends MapData {
@@ -296,7 +296,7 @@ export interface MtzMap extends ClassHandle {
   extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
   data(): any;
   isosurface_vertices(): any;
-  isosurface_segments(): any;
+  isosurface_triangles(): any;
 }
 
 export interface Mtz extends ClassHandle {
@@ -403,8 +403,12 @@ interface EmbindModule {
   Mtz: {
     new(_0: EmbindString): Mtz;
   };
+  readMtz(_0: EmbindString): Mtz;
+  readCcp4Map(_0: EmbindString, _1?: boolean): Ccp4Map;
+  readDsn6Map(_0: EmbindString): Dsn6Map;
+  read_structure(_0: EmbindString, _1: EmbindString, _2?: EmbindString): Structure;
   get_nearby_sym_ops(_0: Structure, _1: Position, _2: number): NearestImageVector;
-  get_residue_names(_0: Structure): string;
+  get_residue_names(_0: Structure): string[];
   get_missing_monomer_names(_0: Structure): string;
   make_pdb_string(_0: Structure): string;
   make_mmcif_string(_0: Structure): string;
@@ -412,10 +416,5 @@ interface EmbindModule {
 }
 
 export type MainModule = WasmModule & typeof RuntimeExports & EmbindModule;
-export type GemmiModule = MainModule & {
-  read_structure(buf: string | ArrayBuffer, name: string, format?: string): Structure;
-  readCcp4Map(buffer: ArrayBuffer, expand_symmetry?: boolean): Ccp4Map;
-  readDsn6Map(buffer: ArrayBuffer): Dsn6Map;
-  readMtz(buffer: string | ArrayBuffer): Mtz;
-};
-export default function MainModuleFactory (options?: unknown): Promise<GemmiModule>;
+export type GemmiModule = MainModule;
+export default function MainModuleFactory (options?: unknown): Promise<MainModule>;

@@ -21,14 +21,15 @@ describe('ElMap', () => {
   beforeAll(function () {
     return util.load_gemmi().then(function (loaded) {
       gemmi = loaded;
+      dmap.from_dsn6(dmap_buf, gemmi);
+      cmap.from_ccp4(cmap_buf, true, gemmi);
     });
   });
   it('#from_dsn6', () => {
-    dmap.from_dsn6(dmap_buf, gemmi);
     expect(dmap.grid).toBe(null);
   });
   it('#from_ccp4', () => {
-    cmap.from_ccp4(cmap_buf, true, gemmi);
+    expect(cmap.grid).toBe(null);
   });
   it('CCP4 maps keep density in wasm', () => {
     var center = [24.5, 26.0, 35.5];
@@ -40,14 +41,14 @@ describe('ElMap', () => {
     cmap.prepare_isosurface(radius, center);
     var iso = cmap.isomesh_in_block(sigma, method);
     expect(iso.vertices.length).toBeGreaterThan(0);
-    expect(iso.segments.length).toBeGreaterThan(0);
+    expect(iso.triangles.length).toBeGreaterThan(0);
   });
   it('DSN6 maps keep density in wasm', () => {
     var center = [24.5, 26.0, 35.5];
     dmap.prepare_isosurface(10, center);
     var iso = dmap.isomesh_in_block(1.5, 'marching cubes');
     expect(iso.vertices.length).toBeGreaterThan(0);
-    expect(iso.segments.length).toBeGreaterThan(0);
+    expect(iso.triangles.length).toBeGreaterThan(0);
   });
   it('compare unit cells', () => {
     var keys = ['a', 'b', 'c', 'alpha', 'beta', 'gamma'];

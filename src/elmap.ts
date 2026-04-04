@@ -17,7 +17,7 @@ export interface IsosurfaceField {
 
 export interface IsosurfaceData {
   vertices: Float32Array;
-  segments: Uint32Array;
+  triangles: Uint32Array;
   field?: IsosurfaceField;
 }
 
@@ -173,9 +173,9 @@ class Block {
       }
       return {
         vertices: iso.vertices().slice(),
-        segments: iso.segments().slice(),
+        triangles: iso.triangles().slice(),
         field: this.field(),
-      };
+      } as IsosurfaceData;
     } finally {
       if (iso != null) iso.delete();
     }
@@ -335,7 +335,7 @@ export class ElMap {
       }
       return {
         vertices: this.wasm_map.isosurface_vertices().slice(),
-        segments: this.wasm_map.isosurface_segments().slice(),
+        triangles: this.wasm_map.isosurface_triangles().slice(),
         field: this.block.field(),
       } as IsosurfaceData;
     }

@@ -10,6 +10,59 @@ function sphere_atom_count(bag) {
   }, 0);
 }
 
+function max_triangle_area(obj) {
+  if (!obj.geometry || !obj.geometry.attributes.position || !obj.geometry.index) return 0;
+  var pos = obj.geometry.attributes.position.array;
+  var idx = obj.geometry.index.array;
+  var max = 0;
+  for (var i = 0; i + 2 < idx.length; i += 3) {
+    var i0 = 3 * idx[i];
+    var i1 = 3 * idx[i + 1];
+    var i2 = 3 * idx[i + 2];
+    var ax = pos[i1] - pos[i0];
+    var ay = pos[i1 + 1] - pos[i0 + 1];
+    var az = pos[i1 + 2] - pos[i0 + 2];
+    var bx = pos[i2] - pos[i0];
+    var by = pos[i2 + 1] - pos[i0 + 1];
+    var bz = pos[i2 + 2] - pos[i0 + 2];
+    var cx = ay * bz - az * by;
+    var cy = az * bx - ax * bz;
+    var cz = ax * by - ay * bx;
+    var area = 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
+    if (area > max) max = area;
+  }
+  return max;
+}
+
+function degenerate_triangle_count(obj) {
+  if (!obj.geometry || !obj.geometry.attributes.position || !obj.geometry.index) return 0;
+  var idx = obj.geometry.index.array;
+  var count = 0;
+  for (var i = 0; i + 2 < idx.length; i += 3) {
+    if (idx[i] === idx[i + 1] || idx[i + 1] === idx[i + 2] || idx[i + 2] === idx[i]) {
+      count++;
+    }
+  }
+  return count;
+}
+
+function max_segment_length(obj) {
+  if (!obj.geometry || !obj.geometry.attributes.position || !obj.geometry.index) return 0;
+  var pos = obj.geometry.attributes.position.array;
+  var idx = obj.geometry.index.array;
+  var max = 0;
+  for (var i = 0; i + 1 < idx.length; i += 2) {
+    var i0 = 3 * idx[i];
+    var i1 = 3 * idx[i + 1];
+    var dx = pos[i1] - pos[i0];
+    var dy = pos[i1 + 1] - pos[i0 + 1];
+    var dz = pos[i1 + 2] - pos[i0 + 2];
+    var len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (len > max) max = len;
+  }
+  return max;
+}
+
 function text_to_array_buffer(text) {
   return new TextEncoder().encode(text).buffer;
 }
@@ -114,6 +167,35 @@ describe('Viewer', () => {
   it('uses sphere as the default water style', () => {
     var viewer2 = new GM.Viewer('viewer');
     expect(viewer2.config.water_style).toEqual('sphere');
+  });
+
+  it('builds compact triangles for smooth density surface', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    viewer2.add_model(model);
+    viewer2.add_map(emap, false);
+    viewer2.config.map_style = 'smooth surface';
+    viewer2.clear_el_objects(viewer2.map_bags[0]);
+    viewer2.add_el_objects(viewer2.map_bags[0]);
+    expect(viewer2.map_bags[0].el_objects.length).toBeGreaterThan(0);
+    var obj = viewer2.map_bags[0].el_objects[0];
+    expect(obj.material.type).toEqual('um_surface');
+    expect(obj.geometry.index.array.length).toBeGreaterThan(0);
+    expect(degenerate_triangle_count(obj)).toEqual(0);
+    expect(max_triangle_area(obj)).toBeLessThan(1.0);
+  });
+
+  it('derives short wireframe edges from marching-cubes triangles', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    viewer2.add_model(model);
+    viewer2.add_map(emap, false);
+    viewer2.config.map_style = 'marching cubes';
+    viewer2.clear_el_objects(viewer2.map_bags[0]);
+    viewer2.add_el_objects(viewer2.map_bags[0]);
+    expect(viewer2.map_bags[0].el_objects.length).toBeGreaterThan(0);
+    var obj = viewer2.map_bags[0].el_objects[0];
+    expect(obj.material.type).toEqual('um_line_chickenwire');
+    expect(obj.geometry.index.array.length % 2).toEqual(0);
+    expect(max_segment_length(obj)).toBeLessThan(2.0);
   });
 
   it('refreshes ligand bonding when a monomer cif is dropped later', () => {
