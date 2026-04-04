@@ -65,7 +65,8 @@ export class ReciprocalSpaceMap extends ElMap {
     this.unit_cell = null;
   }
 
-  prepare_isosurface(radius: number, center: Num3) {
+  prepare_isosurface(radius: number, center: Num3, _want_block: boolean=false) {
+    void _want_block;
     const grid = this.grid;
     if (grid == null) return;
     const b = this.box_size;

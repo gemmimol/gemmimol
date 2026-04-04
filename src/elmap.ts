@@ -6,9 +6,19 @@ import type { GemmiModule, UnitCell, Structure,
 
 type Num3 = [number, number, number];
 
+export interface IsosurfaceField {
+  values: Float32Array;
+  size: Num3;
+  origin: Num3;
+  axis_x: Num3;
+  axis_y: Num3;
+  axis_z: Num3;
+}
+
 export interface IsosurfaceData {
   vertices: Float32Array;
   segments: Uint32Array;
+  field?: IsosurfaceField;
 }
 
 export interface BlobHit {
@@ -121,6 +131,28 @@ class Block {
     return this._values === null;
   }
 
+  field() : IsosurfaceField | undefined {
+    if (this._values == null || this._points == null) return undefined;
+    const size = this._size;
+    if (size[0] < 2 || size[1] < 2 || size[2] < 2) return undefined;
+    const yz = size[1] * size[2];
+    const y = size[2];
+    return {
+      values: this._values,
+      size: [size[0], size[1], size[2]],
+      origin: [this._points[0], this._points[1], this._points[2]],
+      axis_x: [this._points[3*yz] - this._points[0],
+               this._points[3*yz+1] - this._points[1],
+               this._points[3*yz+2] - this._points[2]],
+      axis_y: [this._points[3*y] - this._points[0],
+               this._points[3*y+1] - this._points[1],
+               this._points[3*y+2] - this._points[2]],
+      axis_z: [this._points[3] - this._points[0],
+               this._points[4] - this._points[1],
+               this._points[5] - this._points[2]],
+    };
+  }
+
   isosurface(gemmi_module: GemmiModule | null, isolevel: number, method: string='') {
     if (gemmi_module == null) {
       throw Error('Gemmi is required for isosurface extraction.');
@@ -142,11 +174,19 @@ class Block {
       return {
         vertices: iso.vertices().slice(),
         segments: iso.segments().slice(),
+        field: this.field(),
       };
     } finally {
       if (iso != null) iso.delete();
     }
   }
+}
+
+function map_index(dim: Num3, i: number, j: number, k: number) {
+  i = modulo(i, dim[0]);
+  j = modulo(j, dim[1]);
+  k = modulo(k, dim[2]);
+  return dim[2] * (dim[1] * i + j) + k;
 }
 
 function extract_block_from_grid(block: Block, grid: GridArray, unit_cell: UnitCell,
@@ -170,6 +210,37 @@ function extract_block_from_grid(block: Block, grid: GridArray, unit_cell: UnitC
         points.push(orth);
         const map_value = grid.get_grid_value(i, j, k);
         values.push(map_value);
+      }
+    }
+  }
+  block.set(points, values, size);
+}
+
+function extract_block_from_map(block: Block, map: WasmDensityMap, unit_cell: UnitCell,
+                                radius: number, center: Num3) {
+  const fc = unit_cell.fractionalize(center);
+  const r = [radius / unit_cell.a,
+             radius / unit_cell.b,
+             radius / unit_cell.c];
+  const dim: Num3 = [map.nx, map.ny, map.nz];
+  const grid_min: Num3 = [Math.floor((fc[0] - r[0]) * dim[0]) | 0,
+                          Math.floor((fc[1] - r[1]) * dim[1]) | 0,
+                          Math.floor((fc[2] - r[2]) * dim[2]) | 0];
+  const grid_max: Num3 = [Math.floor((fc[0] + r[0]) * dim[0]) | 0,
+                          Math.floor((fc[1] + r[1]) * dim[1]) | 0,
+                          Math.floor((fc[2] + r[2]) * dim[2]) | 0];
+  const size: Num3 = [grid_max[0] - grid_min[0] + 1,
+                      grid_max[1] - grid_min[1] + 1,
+                      grid_max[2] - grid_min[2] + 1];
+  const data = map.data() as Float32Array;
+  const points = [];
+  const values = [];
+  for (let i = grid_min[0]; i <= grid_max[0]; i++) {
+    for (let j = grid_min[1]; j <= grid_max[1]; j++) {
+      for (let k = grid_min[2]; k <= grid_max[2]; k++) {
+        const frac: Num3 = [i / dim[0], j / dim[1], k / dim[2]];
+        points.push(unit_cell.orthogonalize(frac));
+        values.push(data[map_index(dim, i, j, k)]);
       }
     }
   }
@@ -235,13 +306,19 @@ export class ElMap {
     this.set_from_wasm_map(dsn6, gemmi);
   }
 
-  prepare_isosurface(radius: number, center: Num3) {
+  prepare_isosurface(radius: number, center: Num3, want_block: boolean=false) {
     this.block_center = center;
     this.block_radius = radius;
-    if (this.wasm_map != null && this.unit_cell != null) return;
-    const grid = this.grid;
     const unit_cell = this.unit_cell;
-    if (grid == null || unit_cell == null) return;
+    if (unit_cell == null) return;
+    if (this.wasm_map != null) {
+      if (want_block) {
+        extract_block_from_map(this.block, this.wasm_map, unit_cell, radius, center);
+      }
+      return;
+    }
+    const grid = this.grid;
+    if (grid == null) return;
     extract_block_from_grid(this.block, grid, unit_cell, radius, center);
   }
 
@@ -259,6 +336,7 @@ export class ElMap {
       return {
         vertices: this.wasm_map.isosurface_vertices().slice(),
         segments: this.wasm_map.isosurface_segments().slice(),
+        field: this.block.field(),
       } as IsosurfaceData;
     }
     return this.block.isosurface(this.gemmi_module, abs_level, method);

@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-24-g0f62c21-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-30-g664b6c0-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -811,6 +811,16 @@ function _nullishCoalesce$2(lhs, rhsFn) { if (lhs != null) { return lhs; } else 
 
 
 
+
+
+
+
+
+
+
+
+
+
 function modulo(a, b) {
   const reminder = a % b;
   return reminder >= 0 ? reminder : reminder + b;
@@ -900,6 +910,28 @@ class Block {
     return this._values === null;
   }
 
+  field()  {
+    if (this._values == null || this._points == null) return undefined;
+    const size = this._size;
+    if (size[0] < 2 || size[1] < 2 || size[2] < 2) return undefined;
+    const yz = size[1] * size[2];
+    const y = size[2];
+    return {
+      values: this._values,
+      size: [size[0], size[1], size[2]],
+      origin: [this._points[0], this._points[1], this._points[2]],
+      axis_x: [this._points[3*yz] - this._points[0],
+               this._points[3*yz+1] - this._points[1],
+               this._points[3*yz+2] - this._points[2]],
+      axis_y: [this._points[3*y] - this._points[0],
+               this._points[3*y+1] - this._points[1],
+               this._points[3*y+2] - this._points[2]],
+      axis_z: [this._points[3] - this._points[0],
+               this._points[4] - this._points[1],
+               this._points[5] - this._points[2]],
+    };
+  }
+
   isosurface(gemmi_module, isolevel, method='') {
     if (gemmi_module == null) {
       throw Error('Gemmi is required for isosurface extraction.');
@@ -921,11 +953,19 @@ class Block {
       return {
         vertices: iso.vertices().slice(),
         segments: iso.segments().slice(),
+        field: this.field(),
       };
     } finally {
       if (iso != null) iso.delete();
     }
   }
+}
+
+function map_index(dim, i, j, k) {
+  i = modulo(i, dim[0]);
+  j = modulo(j, dim[1]);
+  k = modulo(k, dim[2]);
+  return dim[2] * (dim[1] * i + j) + k;
 }
 
 function extract_block_from_grid(block, grid, unit_cell,
@@ -949,6 +989,37 @@ function extract_block_from_grid(block, grid, unit_cell,
         points.push(orth);
         const map_value = grid.get_grid_value(i, j, k);
         values.push(map_value);
+      }
+    }
+  }
+  block.set(points, values, size);
+}
+
+function extract_block_from_map(block, map, unit_cell,
+                                radius, center) {
+  const fc = unit_cell.fractionalize(center);
+  const r = [radius / unit_cell.a,
+             radius / unit_cell.b,
+             radius / unit_cell.c];
+  const dim = [map.nx, map.ny, map.nz];
+  const grid_min = [Math.floor((fc[0] - r[0]) * dim[0]) | 0,
+                          Math.floor((fc[1] - r[1]) * dim[1]) | 0,
+                          Math.floor((fc[2] - r[2]) * dim[2]) | 0];
+  const grid_max = [Math.floor((fc[0] + r[0]) * dim[0]) | 0,
+                          Math.floor((fc[1] + r[1]) * dim[1]) | 0,
+                          Math.floor((fc[2] + r[2]) * dim[2]) | 0];
+  const size = [grid_max[0] - grid_min[0] + 1,
+                      grid_max[1] - grid_min[1] + 1,
+                      grid_max[2] - grid_min[2] + 1];
+  const data = map.data() ;
+  const points = [];
+  const values = [];
+  for (let i = grid_min[0]; i <= grid_max[0]; i++) {
+    for (let j = grid_min[1]; j <= grid_max[1]; j++) {
+      for (let k = grid_min[2]; k <= grid_max[2]; k++) {
+        const frac = [i / dim[0], j / dim[1], k / dim[2]];
+        points.push(unit_cell.orthogonalize(frac));
+        values.push(data[map_index(dim, i, j, k)]);
       }
     }
   }
@@ -1014,13 +1085,19 @@ class ElMap {
     this.set_from_wasm_map(dsn6, gemmi);
   }
 
-  prepare_isosurface(radius, center) {
+  prepare_isosurface(radius, center, want_block=false) {
     this.block_center = center;
     this.block_radius = radius;
-    if (this.wasm_map != null && this.unit_cell != null) return;
-    const grid = this.grid;
     const unit_cell = this.unit_cell;
-    if (grid == null || unit_cell == null) return;
+    if (unit_cell == null) return;
+    if (this.wasm_map != null) {
+      if (want_block) {
+        extract_block_from_map(this.block, this.wasm_map, unit_cell, radius, center);
+      }
+      return;
+    }
+    const grid = this.grid;
+    if (grid == null) return;
     extract_block_from_grid(this.block, grid, unit_cell, radius, center);
   }
 
@@ -1038,6 +1115,7 @@ class ElMap {
       return {
         vertices: this.wasm_map.isosurface_vertices().slice(),
         segments: this.wasm_map.isosurface_segments().slice(),
+        field: this.block.field(),
       } ;
     }
     return this.block.isosurface(this.gemmi_module, abs_level, method);
@@ -5702,7 +5780,7 @@ function weldSurface(data) {
   };
 }
 
-function surfaceNormals(position, index) {
+function areaSurfaceNormals(position, index) {
   const normal = new Float32Array(position.length);
   for (let i = 0; i + 2 < index.length; i += 3) {
     const i0 = 3 * index[i];
@@ -5739,13 +5817,129 @@ function surfaceNormals(position, index) {
   return normal;
 }
 
+function invertFieldBasis(field) {
+  const ax = field.axis_x;
+  const ay = field.axis_y;
+  const az = field.axis_z;
+  const a00 = ax[0], a01 = ay[0], a02 = az[0];
+  const a10 = ax[1], a11 = ay[1], a12 = az[1];
+  const a20 = ax[2], a21 = ay[2], a22 = az[2];
+  const det = a00 * (a11 * a22 - a12 * a21) -
+              a01 * (a10 * a22 - a12 * a20) +
+              a02 * (a10 * a21 - a11 * a20);
+  if (Math.abs(det) < 1e-12) return null;
+  const inv_det = 1 / det;
+  return [
+    (a11 * a22 - a12 * a21) * inv_det,
+    (a02 * a21 - a01 * a22) * inv_det,
+    (a01 * a12 - a02 * a11) * inv_det,
+    (a12 * a20 - a10 * a22) * inv_det,
+    (a00 * a22 - a02 * a20) * inv_det,
+    (a02 * a10 - a00 * a12) * inv_det,
+    (a10 * a21 - a11 * a20) * inv_det,
+    (a01 * a20 - a00 * a21) * inv_det,
+    (a00 * a11 - a01 * a10) * inv_det,
+  ];
+}
+
+function fieldValue(field, x, y, z) {
+  const size = field.size;
+  x = Math.min(Math.max(x, 0), size[0] - 1);
+  y = Math.min(Math.max(y, 0), size[1] - 1);
+  z = Math.min(Math.max(z, 0), size[2] - 1);
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const iz = Math.floor(z);
+  const jx = Math.min(ix + 1, size[0] - 1);
+  const jy = Math.min(iy + 1, size[1] - 1);
+  const jz = Math.min(iz + 1, size[2] - 1);
+  const tx = x - ix;
+  const ty = y - iy;
+  const tz = z - iz;
+  const yz = size[1] * size[2];
+  const stride = size[2];
+  const values = field.values;
+  const idx000 = yz * ix + stride * iy + iz;
+  const idx001 = yz * ix + stride * iy + jz;
+  const idx010 = yz * ix + stride * jy + iz;
+  const idx011 = yz * ix + stride * jy + jz;
+  const idx100 = yz * jx + stride * iy + iz;
+  const idx101 = yz * jx + stride * iy + jz;
+  const idx110 = yz * jx + stride * jy + iz;
+  const idx111 = yz * jx + stride * jy + jz;
+  const c00 = values[idx000] * (1 - tx) + values[idx100] * tx;
+  const c01 = values[idx001] * (1 - tx) + values[idx101] * tx;
+  const c10 = values[idx010] * (1 - tx) + values[idx110] * tx;
+  const c11 = values[idx011] * (1 - tx) + values[idx111] * tx;
+  const c0 = c00 * (1 - ty) + c10 * ty;
+  const c1 = c01 * (1 - ty) + c11 * ty;
+  return c0 * (1 - tz) + c1 * tz;
+}
+
+function fieldSurfaceNormals(position, field,
+                             fallback) {
+  if (field.size[0] < 2 || field.size[1] < 2 || field.size[2] < 2) return null;
+  const inv = invertFieldBasis(field);
+  if (inv == null) return null;
+  const origin = field.origin;
+  const normal = new Float32Array(position.length);
+  let valid = 0;
+  let align = 0;
+  for (let i = 0; i < position.length; i += 3) {
+    const dx = position[i] - origin[0];
+    const dy = position[i+1] - origin[1];
+    const dz = position[i+2] - origin[2];
+    const x = inv[0] * dx + inv[1] * dy + inv[2] * dz;
+    const y = inv[3] * dx + inv[4] * dy + inv[5] * dz;
+    const z = inv[6] * dx + inv[7] * dy + inv[8] * dz;
+    const gx = fieldValue(field, x - 1, y, z) - fieldValue(field, x + 1, y, z);
+    const gy = fieldValue(field, x, y - 1, z) - fieldValue(field, x, y + 1, z);
+    const gz = fieldValue(field, x, y, z - 1) - fieldValue(field, x, y, z + 1);
+    let nx = inv[0] * gx + inv[3] * gy + inv[6] * gz;
+    let ny = inv[1] * gx + inv[4] * gy + inv[7] * gz;
+    let nz = inv[2] * gx + inv[5] * gy + inv[8] * gz;
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 1e-12) {
+      nx /= len;
+      ny /= len;
+      nz /= len;
+      normal[i] = nx;
+      normal[i+1] = ny;
+      normal[i+2] = nz;
+      const fx = fallback[i];
+      const fy = fallback[i+1];
+      const fz = fallback[i+2];
+      if (fx !== 0 || fy !== 0 || fz !== 0) {
+        align += nx * fx + ny * fy + nz * fz;
+      }
+      valid++;
+    } else {
+      normal[i] = fallback[i];
+      normal[i+1] = fallback[i+1];
+      normal[i+2] = fallback[i+2];
+    }
+  }
+  if (valid === 0) return null;
+  if (align < 0) {
+    for (let i = 0; i < normal.length; i++) normal[i] = -normal[i];
+  }
+  return normal;
+}
+
+function surfaceNormals(position, index,
+                        field) {
+  const fallback = areaSurfaceNormals(position, index);
+  if (field == null) return fallback;
+  return fieldSurfaceNormals(position, field, fallback) || fallback;
+}
+
 const surface_vert = `
 attribute vec3 normal;
 varying vec3 vnormal;
 varying vec3 vview;
 void main() {
   vec4 mv_pos = modelViewMatrix * vec4(position, 1.0);
-  vnormal = normalize((modelViewMatrix * vec4(normal, 0.0)).xyz);
+  vnormal = normalize(normalMatrix * normal);
   vview = -mv_pos.xyz;
   gl_Position = projectionMatrix * mv_pos;
 }
@@ -5759,19 +5953,17 @@ uniform float opacity;
 varying vec3 vnormal;
 varying vec3 vview;
 void main() {
+  if (!gl_FrontFacing) discard;
   vec3 normal = normalize(vnormal);
-  if (!gl_FrontFacing) normal = -normal;
   vec3 view_dir = normalize(vview);
   vec3 light_dir = normalize(lightDir);
-  float NdotL = clamp(dot(normal, light_dir), 0.0, 1.0);
+  float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
   vec3 halfway = normalize(light_dir + view_dir);
-  float NdotH = clamp(dot(normal, halfway), 0.0, 1.0);
-  float specular = pow(NdotH, 40.0);
-  float rim = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 2.0);
-  vec3 color = vcolor * (0.25 + 0.65 * NdotL) + 0.4 * specular * vec3(1.0);
-  color = mix(color, vec3(1.0), 0.15 * rim);
-  float alpha = opacity + (1.0 - opacity) * 0.4 * rim;
-  gl_FragColor = vec4(color, alpha);
+  float specular = pow(clamp(dot(normal, halfway), 0.0, 1.0), 80.0);
+  float fresnel = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 3.0);
+  vec3 color = vcolor * (0.22 + 0.78 * diffuse);
+  color += vec3(1.0) * (0.16 * specular + 0.08 * fresnel);
+  gl_FragColor = vec4(color, opacity);
 ${fog_end_fragment}
 }`;
 
@@ -5781,7 +5973,10 @@ function makeSmoothSurface(data,
   const geom = new BufferGeometry();
   geom.setAttribute('position', new BufferAttribute(welded.position, 3));
   geom.setIndex(new BufferAttribute(welded.index, 1));
-  geom.setAttribute('normal', new BufferAttribute(surfaceNormals(welded.position, welded.index), 3));
+  geom.setAttribute('normal',
+                    new BufferAttribute(surfaceNormals(welded.position,
+                                                       welded.index,
+                                                       data.field), 3));
   const material = new ShaderMaterial({
     uniforms: makeUniforms({
       vcolor: options.color,
@@ -12448,7 +12643,7 @@ class ReciprocalSpaceMap extends ElMap {
     this.unit_cell = null;
   }
 
-  prepare_isosurface(radius, center) {
+  prepare_isosurface(radius, center, _want_block=false) {
     const grid = this.grid;
     if (grid == null) return;
     const b = this.box_size;
