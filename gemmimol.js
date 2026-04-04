@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-23-g07fa101";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-24-g0f62c21-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -5763,11 +5763,14 @@ void main() {
   if (!gl_FrontFacing) normal = -normal;
   vec3 view_dir = normalize(vview);
   vec3 light_dir = normalize(lightDir);
-  float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
-  float rim = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 1.7);
-  vec3 base = vcolor * (0.30 + 0.55 * diffuse);
-  vec3 color = mix(base, vec3(1.0), 0.22 * rim);
-  float alpha = opacity * (0.55 + 0.75 * rim);
+  float NdotL = clamp(dot(normal, light_dir), 0.0, 1.0);
+  vec3 halfway = normalize(light_dir + view_dir);
+  float NdotH = clamp(dot(normal, halfway), 0.0, 1.0);
+  float specular = pow(NdotH, 40.0);
+  float rim = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 2.0);
+  vec3 color = vcolor * (0.25 + 0.65 * NdotL) + 0.4 * specular * vec3(1.0);
+  color = mix(color, vec3(1.0), 0.15 * rim);
+  float alpha = opacity + (1.0 - opacity) * 0.4 * rim;
   gl_FragColor = vec4(color, alpha);
 ${fog_end_fragment}
 }`;
@@ -8760,20 +8763,25 @@ class Viewer {
 
   create_structure_name_badge() {
     if (this.container == null || typeof document === 'undefined') return;
-    const el = document.createElement('div');
+    const el = document.createElement('header');
     el.style.display = 'none';
     el.style.fontSize = '18px';
     el.style.color = '#ddd';
     el.style.backgroundColor = 'rgba(0,0,0,0.6)';
-    el.style.position = 'absolute';
-    el.style.top = '10px';
-    el.style.right = '10px';
-    el.style.padding = '3px 10px';
+    el.style.textAlign = 'right';
+    el.style.alignSelf = 'stretch';
+    el.style.padding = '3px 8px';
     el.style.borderRadius = '5px';
     el.style.letterSpacing = '0.08em';
     el.style.fontWeight = 'bold';
-    el.style.pointerEvents = 'none';
-    this.container.appendChild(el);
+    el.style.pointerEvents = 'auto'; // ensure selectability
+    el.style.cursor = 'text';        // ensure selectability
+    el.style.userSelect = 'text';    // ensure selectability
+    el.style.webkitUserSelect = 'text'; // ensure selectability
+    el.onmousedown = (evt) => evt.stopPropagation();
+    const overlay = document.getElementById('gm-overlay');
+    if (overlay) overlay.insertBefore(el, overlay.firstChild);
+    else this.container.appendChild(el);
     this.structure_name_el = el;
   }
 
@@ -9197,7 +9205,7 @@ class Viewer {
       const obj = map_style_is_surface(this.config.map_style) ?
         makeSmoothSurface(iso, {
           color: this.config.colors[mtype],
-          opacity: 0.22,
+          opacity: 0.5,
         }) :
         makeChickenWire(iso, {
           color: this.config.colors[mtype],
