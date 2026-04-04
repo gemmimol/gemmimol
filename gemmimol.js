@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-30-g664b6c0-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-31-g4cbedaf-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-141-g3fd5922f";
 
 
@@ -8766,6 +8766,14 @@ class Viewer {
   
   
   
+  
+  
+  
+  
+  
+  
+  
+  
 
   constructor(options = {}) {
     options = normalize_viewer_options(options);
@@ -8869,6 +8877,14 @@ class Viewer {
     this.download_select_el = null;
     this.delete_select_el = null;
     this.mutate_select_el = null;
+    this.mutate_button_el = null;
+    this.mutate_list_el = null;
+    this.mutate_targets = [];
+    this.mutate_open = false;
+    this.mutate_select_target = null;
+    this.mutate_select_residue_key = null;
+    this.mutate_select_busy = false;
+    this.queued_mutation_preview = null;
     this.histogram_el = null;
     this.histogram_redraw = null;
     this.blob_hits = [];
@@ -9390,7 +9406,8 @@ class Viewer {
     if (map_bag.map.block.empty()) {
       const t = this.target;
       map_bag.block_ctr.copy(t);
-      map_bag.map.prepare_isosurface(this.config.map_radius, [t.x, t.y, t.z]);
+      map_bag.map.prepare_isosurface(this.config.map_radius, [t.x, t.y, t.z],
+                                     map_style_is_surface(this.config.map_style));
     }
     for (const mtype of map_bag.types) {
       const isolevel = (mtype === 'map_neg' ? -1 : 1) * map_bag.isolevel;
@@ -9939,27 +9956,73 @@ class Viewer {
   }
 
   create_mutate_select() {
-    const select = document.createElement('select');
-    select.style.padding = '3px 6px';
-    select.style.borderRadius = '4px';
-    select.style.border = '1px solid #666';
-    select.style.backgroundColor = 'rgba(0, 28, 56, 0.9)';
-    select.style.color = '#d6e8ff';
-    select.style.fontSize = '13px';
-    select.style.display = 'none';
-    const header = document.createElement('option');
-    header.textContent = 'Mutate';
-    header.value = '';
-    header.selected = true;
-    select.appendChild(header);
-    select.addEventListener('change', () => {
-      if (select.value !== '') this.mutate_selected_residue(select.value);
-      select.value = '';
-    });
-    select.addEventListener('keydown', (evt) => {
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+    wrapper.style.display = 'none';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Mutate';
+    button.style.padding = '3px 6px';
+    button.style.borderRadius = '4px';
+    button.style.border = '1px solid #666';
+    button.style.backgroundColor = 'rgba(0, 28, 56, 0.9)';
+    button.style.color = '#d6e8ff';
+    button.style.fontSize = '13px';
+    button.style.minWidth = '84px';
+    button.style.textAlign = 'left';
+    button.style.cursor = 'pointer';
+
+    const list = document.createElement('div');
+    list.style.position = 'absolute';
+    list.style.left = '0';
+    list.style.top = 'calc(100% + 2px)';
+    list.style.minWidth = '100%';
+    list.style.maxHeight = '280px';
+    list.style.overflowY = 'auto';
+    list.style.borderRadius = '4px';
+    list.style.border = '1px solid #666';
+    list.style.backgroundColor = 'rgba(0, 28, 56, 0.96)';
+    list.style.boxShadow = '0 4px 10px rgba(0, 0, 0, 0.35)';
+    list.style.zIndex = '20';
+    list.style.display = 'none';
+
+    wrapper.appendChild(button);
+    wrapper.appendChild(list);
+    this.mutate_button_el = button;
+    this.mutate_list_el = list;
+
+    button.addEventListener('click', (evt) => {
       evt.stopPropagation();
+      if (button.disabled) return;
+      this.set_mutate_menu_open(!this.mutate_open);
     });
-    return select;
+    button.addEventListener('keydown', (evt) => {
+      evt.stopPropagation();
+      if (evt.key === 'ArrowDown' || evt.key === 'ArrowUp') {
+        evt.preventDefault();
+        if (this.mutate_targets.length === 0) return;
+        this.set_mutate_menu_open(true);
+        const next = this.mutation_target_step(this.mutate_targets,
+                                               this.mutate_select_target || '',
+                                               evt.key === 'ArrowDown' ? 1 : -1);
+        if (next == null) return;
+        this.mutate_select_target = next;
+        this.sync_mutate_menu_ui();
+        this.request_mutation_preview(next);
+      } else if (evt.key === 'Enter' || evt.key === ' ') {
+        evt.preventDefault();
+        if (!button.disabled) this.set_mutate_menu_open(!this.mutate_open);
+      } else if (evt.key === 'Escape') {
+        evt.preventDefault();
+        this.set_mutate_menu_open(false);
+      }
+    });
+    wrapper.addEventListener('focusout', (evt) => {
+      const next = evt.relatedTarget ;
+      if (next == null || !wrapper.contains(next)) this.set_mutate_menu_open(false);
+    });
+    return wrapper;
   }
 
   active_model_bag(preferred) {
@@ -10485,30 +10548,132 @@ class Viewer {
     select.value = '';
   }
 
+  mutation_target_from_resname(resname) {
+    const upper = resname.toUpperCase();
+    if (upper === 'A' || upper === 'C' || upper === 'G' || upper === 'U') return upper;
+    if (upper === 'DA' || upper === 'DC' || upper === 'DG' || upper === 'DT') return upper.slice(1);
+    return upper;
+  }
+
+  edit_target_key(edit) {
+    return this.model_bags.indexOf(edit.bag) + ':' + edit.atom.chain + ':' + edit.atom.seqid;
+  }
+
+  mutation_target_step(targets, current_target, dir) {
+    if (targets.length === 0) return null;
+    let index = targets.indexOf(current_target);
+    if (index === -1) {
+      return dir < 0 ? null : targets[0];
+    }
+    const next_index = Math.max(0, Math.min(targets.length - 1, index + dir));
+    if (next_index === index) return null;
+    return targets[next_index];
+  }
+
+  set_mutate_menu_open(open) {
+    this.mutate_open = open && this.mutate_targets.length > 0;
+    this.sync_mutate_menu_ui();
+  }
+
+  sync_mutate_menu_ui() {
+    const button = this.mutate_button_el;
+    const list = this.mutate_list_el;
+    if (button == null || list == null) return;
+    button.textContent = this.mutate_select_target ? ('Mutate: ' + this.mutate_select_target) : 'Mutate';
+    button.setAttribute('aria-expanded', this.mutate_open ? 'true' : 'false');
+    list.style.display = this.mutate_open ? '' : 'none';
+    for (const child of Array.from(list.children)) {
+      if (!(child instanceof HTMLButtonElement)) continue;
+      const active = child.dataset.target === this.mutate_select_target;
+      child.style.backgroundColor = active ? 'rgba(90, 145, 210, 0.35)' : 'transparent';
+    }
+  }
+
+  request_mutation_preview(target_resname) {
+    if (target_resname === '') return;
+    const edit = this.current_edit_target();
+    if (edit == null) return;
+    const residue_key = this.edit_target_key(edit);
+    const current_target = this.mutation_target_from_resname(edit.atom.resname);
+    this.mutate_select_target = target_resname;
+    this.mutate_select_residue_key = residue_key;
+    if (this.mutate_select_busy) {
+      this.queued_mutation_preview = {target: target_resname, residue_key: residue_key};
+      return;
+    }
+    if (target_resname === current_target) return;
+    this.mutate_select_busy = true;
+    Promise.resolve(this.mutate_selected_residue(target_resname)).finally(() => {
+      this.mutate_select_busy = false;
+      const queued = this.queued_mutation_preview;
+      this.queued_mutation_preview = null;
+      if (queued == null) return;
+      const next_edit = this.current_edit_target();
+      if (next_edit == null || this.edit_target_key(next_edit) !== queued.residue_key) return;
+      if (this.mutation_target_from_resname(next_edit.atom.resname) === queued.target) {
+        this.mutate_select_target = queued.target;
+        return;
+      }
+      this.request_mutation_preview(queued.target);
+    });
+  }
+
   update_mutate_select(select) {
     if (select == null) return;
     const editable_bag = this.editable_model_bag();
     const edit = this.current_edit_target();
-    select.innerHTML = '';
-    const header = document.createElement('option');
+    const button = this.mutate_button_el;
+    const list = this.mutate_list_el;
+    if (button == null || list == null) return;
+    const residue_key = edit == null ? null : this.edit_target_key(edit);
+    const same_residue = (residue_key != null && residue_key === this.mutate_select_residue_key);
+    const preferred_target = same_residue ? (this.mutate_select_target || '') : '';
     let targets = [];
     if (edit != null) {
       const residue_atoms = edit.bag.model.get_residues()[edit.atom.resid()] || [edit.atom];
       targets = mutation_targets_for_residue(residue_atoms);
     }
-    header.textContent = targets.length === 0 ? 'Mutate' : 'Mutate';
-    header.value = '';
-    header.selected = true;
-    select.appendChild(header);
+    this.mutate_targets = targets;
+    if (!same_residue) this.mutate_open = false;
+    list.innerHTML = '';
     for (const target of targets) {
-      const opt = document.createElement('option');
-      opt.textContent = target;
-      opt.value = target;
-      select.appendChild(opt);
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.tabIndex = -1;
+      item.dataset.target = target;
+      item.textContent = target;
+      item.style.display = 'block';
+      item.style.width = '100%';
+      item.style.padding = '3px 8px';
+      item.style.border = '0';
+      item.style.backgroundColor = 'transparent';
+      item.style.color = '#d6e8ff';
+      item.style.fontSize = '13px';
+      item.style.textAlign = 'left';
+      item.style.cursor = 'pointer';
+      item.addEventListener('mousedown', (evt) => {
+        evt.preventDefault();
+      });
+      item.addEventListener('click', (evt) => {
+        evt.stopPropagation();
+        this.mutate_select_target = target;
+        this.sync_mutate_menu_ui();
+        this.request_mutation_preview(target);
+        _optionalChain([this, 'access', _3 => _3.mutate_button_el, 'optionalAccess', _4 => _4.focus, 'call', _5 => _5()]);
+      });
+      list.appendChild(item);
     }
-    select.disabled = (edit == null || targets.length === 0);
+    button.disabled = (edit == null || targets.length === 0);
+    button.style.opacity = button.disabled ? '0.7' : '1';
+    button.style.cursor = button.disabled ? 'default' : 'pointer';
     select.style.display = (editable_bag == null) ? 'none' : '';
-    select.value = '';
+    const current_target = edit == null ? '' : this.mutation_target_from_resname(edit.atom.resname);
+    const value = targets.indexOf(preferred_target) !== -1 ? preferred_target :
+      (targets.indexOf(current_target) !== -1 ? current_target : '');
+    if (value === '' && targets.length === 0) this.mutate_open = false;
+    this.mutate_select_residue_key = residue_key;
+    this.mutate_select_target = value === '' ? null : value;
+    this.sync_mutate_menu_ui();
   }
 
   unresolved_monomer_message() {

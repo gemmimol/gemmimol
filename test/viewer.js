@@ -576,6 +576,35 @@ describe('Viewer', () => {
     });
   });
 
+  it('mutates from the menu while stepping with arrow keys', () => {
+    return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
+      var targets = [
+        'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 'ILE',
+        'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
+      ];
+      var bag = loaded_viewer.model_bags[0];
+      var residues = bag.model.get_residues();
+      var target_atom = null;
+      for (var resid in residues) {
+        var residue = residues[resid];
+        var names = residue.map(function (atom) { return atom.name; });
+        if (targets.indexOf(residue[0].resname) === -1 || residue[0].resname === 'VAL') continue;
+        if (names.indexOf('N') === -1 || names.indexOf('CA') === -1 || names.indexOf('C') === -1) {
+          continue;
+        }
+        target_atom = residue[0];
+        break;
+      }
+      expect(target_atom).not.toBeNull();
+      loaded_viewer.select_atom({bag: bag, atom: target_atom});
+      var current_index = targets.indexOf(target_atom.resname);
+      expect(current_index).toBeGreaterThan(0);
+      expect(current_index).toBeLessThan(targets.length - 1);
+      expect(loaded_viewer.mutation_target_step(targets, target_atom.resname, 1))
+        .toEqual(targets[current_index + 1]);
+    });
+  });
+
   it('places water and metal sites at blob positions', () => {
     var structure;
     return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
