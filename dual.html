@@ -5,55 +5,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, user-scalable=no">
   <meta name="theme-color" content="#333333">
+  <link rel="stylesheet" href="gemmimol.css">
   <style>
-   body {  background-color: #888; font-family: sans-serif; }
-   canvas { display: block; }
    #viewer1, #viewer2 { position:absolute; top:0; width:49.6%; height:100%; }
    #viewer1 { left: 0; }
    #viewer2 { right: 0; }
-   #gm-overlay {
-     position: absolute;
-     top: 5px;
-     left: 5px;
-     right: 5px;
-     display: flex;
-     flex-direction: column;
-     align-items: flex-start;
-     gap: 4px;
-     pointer-events: none;
-     z-index: 9;
-   }
-   #gm-overlay > * { pointer-events: auto; }
-   #hud {
-     font-size: 14px;
-     color: #ddd;
-     background-color: rgba(0,0,0,0.6);
-     text-align: center;
-     align-self: center;
-     width: 80%;
-     padding: 2px 8px;
-     border-radius: 5px;
-     white-space: pre-line;
-   }
-   #hud u { padding: 0 8px; text-decoration: none;
-            border: solid; border-width: 1px 0; }
-   #hud s { padding: 0 8px; text-decoration: none; opacity: 0.5; }
-   #help {
-     display: none;
-     font-size: 16px;
-     color: #eee;
-     background-color: rgba(0,0,0,0.7);
-     position: absolute;
-     left: 20px;
-     top: 50%;
-     transform: translateY(-50%);
-     cursor: default;
-     padding: 5px;
-     border-radius: 5px;
-     z-index: 9;
-     white-space: pre-line;
-   }
-   a { color: #59C; }
+   #hud { font-size: 14px; }
    #viewer1 b, #viewer2 b { color: #fff; background-color: rgba(0,0,0,0.6); }
    #viewer1 b { position: absolute; bottom: 30px; left: 30px; }
    #viewer2 b { position: absolute; bottom: 30px; right: 30px; }
@@ -63,7 +20,7 @@
   <script src="vendor/wasm/gemmi.js"></script>
 
 </head>
-<body>
+<body style="background-color: #888">
   <div id="viewer1"><b>PDB original</b></div>
   <div id="viewer2"><b>PDB_REDO</b></div>
   <div id="gm-overlay">
