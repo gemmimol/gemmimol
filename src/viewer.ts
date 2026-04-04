@@ -1487,7 +1487,7 @@ export class Viewer {
       const obj = map_style_is_surface(this.config.map_style) ?
         makeSmoothSurface(iso, {
           color: this.config.colors[mtype],
-          opacity: 0.22,
+          opacity: 0.5,
         }) :
         makeChickenWire(iso, {
           color: this.config.colors[mtype],

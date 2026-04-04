@@ -707,11 +707,14 @@ void main() {
   if (!gl_FrontFacing) normal = -normal;
   vec3 view_dir = normalize(vview);
   vec3 light_dir = normalize(lightDir);
-  float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
-  float rim = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 1.7);
-  vec3 base = vcolor * (0.30 + 0.55 * diffuse);
-  vec3 color = mix(base, vec3(1.0), 0.22 * rim);
-  float alpha = opacity * (0.55 + 0.75 * rim);
+  float NdotL = clamp(dot(normal, light_dir), 0.0, 1.0);
+  vec3 halfway = normalize(light_dir + view_dir);
+  float NdotH = clamp(dot(normal, halfway), 0.0, 1.0);
+  float specular = pow(NdotH, 40.0);
+  float rim = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 2.0);
+  vec3 color = vcolor * (0.25 + 0.65 * NdotL) + 0.4 * specular * vec3(1.0);
+  color = mix(color, vec3(1.0), 0.15 * rim);
+  float alpha = opacity + (1.0 - opacity) * 0.4 * rim;
   gl_FragColor = vec4(color, alpha);
 ${fog_end_fragment}
 }`;
