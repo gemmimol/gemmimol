@@ -1,5 +1,5 @@
 /*!
- * GemmiMol v0.8.3. Macromolecular Viewer for Crystallographers.
+ * GemmiMol v0.8.4. Macromolecular Viewer for Crystallographers.
  * Copyright 2014 Nat Echols
  * Copyright 2016 Diamond Light Source Ltd
  * Copyright 2016 Marcin Wojdyr
@@ -11,8 +11,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.GM = {}));
 })(this, (function (exports) { 'use strict';
 
-var VERSION = exports.VERSION = "0.8.3";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-32-ga3fc3e3-dirty";
+var VERSION = exports.VERSION = "0.8.4";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.3-36-ga394669";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-144-g0445d0c2";
 
 
@@ -8032,6 +8032,7 @@ function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { 
 
 
 
+
 const ColorSchemes$1 = {
   // the default scheme that generally mimicks Coot
   'coot dark': {
@@ -8125,19 +8126,47 @@ function symmetry_mate_color(atom, elem_colors) {
 }
 
 
-const INIT_HUD_TEXT = 'This is GemmiMol not Coot. ' +
-  '<a href="#" onclick="V.toggle_help(); return false;">H shows help.</a>';
+const INIT_HUD_TEXT = 'This is GemmiMol not Coot.';
 
 // options handled by select_next()
 
 const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
                      'index', 'chain', 'secondary structure'];
-const RENDER_STYLES = ['sticks', 'lines', 'backbone', 'cartoon', 'cartoon+sticks',
-                       'ribbon', 'ball&stick'];
+const MAINCHAIN_STYLES = ['sticks', 'lines', 'backbone', 'cartoon',
+                          'ribbon', 'ball&stick'];
+const SIDECHAIN_STYLES = ['sticks', 'lines', 'ball&stick', 'invisible'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
 const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
+
+
+
+
+
+
+
+function escape_html(text) {
+  return text.replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    '\'': '&#39;',
+  }[ch] || ch));
+}
+
+function help_action_attrs(spec) {
+  let attrs = ' data-help-keycode="' + spec.keyCode + '"';
+  if (spec.shiftKey) attrs += ' data-help-shift="1"';
+  if (spec.ctrlKey) attrs += ' data-help-ctrl="1"';
+  return attrs;
+}
+
+function help_action_link(text, spec) {
+  return '<a href="#" class="gm-help-action"' + help_action_attrs(spec) + '>' +
+         escape_html(text) + '</a>';
+}
 
 function normalize_viewer_options(options) {
   if (typeof options === 'string') return {viewer: options};
@@ -8361,7 +8390,10 @@ class ModelBag {
     return color_by(this.conf.color_prop, atoms, this.conf.colors, this.hue_shift);
   }
 
-  add_bonds(polymers, ligands, ball_size) {
+  add_bonds(polymers, ligands, ball_size,
+            atom_filter,
+            bond_filter,
+            wheel_caps=true) {
     const visible_atoms = this.get_visible_atoms();
     const colors = this.atom_colors(visible_atoms);
     const vertex_arr = [];
@@ -8379,6 +8411,7 @@ class ModelBag {
       const atom = visible_atoms[i];
       const color = colors[i];
       if (!(atom.is_ligand ? ligands : polymers)) continue;
+      if (atom_filter && !atom_filter(atom)) continue;
       if (atom.is_water() && this.conf.water_style === 'invisible') continue;
       if (atom.bonds.length === 0 && ball_size == null) { // nonbonded - cross
         if (!atom.is_water() || this.conf.water_style === 'cross') {
@@ -8391,6 +8424,7 @@ class ModelBag {
         for (let j = 0; j < atom.bonds.length; j++) {
           const other = this.model.atoms[atom.bonds[j]];
           if (!hydrogens && other.is_hydrogen()) continue;
+          if (bond_filter && !bond_filter(atom, other)) continue;
           // Coot show X-H bonds as thinner lines in a single color.
           // Here we keep it simple and render such bonds like all others.
           const bond_type = atom.bond_types[j];
@@ -8456,8 +8490,10 @@ class ModelBag {
         metal_obj.userData.bond_types = metal_bond_type_arr;
         this.objects.push(metal_obj);
       }
-      // wheels (discs) as round caps
-      this.objects.push(makeWheels(sphere_arr, sphere_color_arr, linewidth));
+      if (wheel_caps && sphere_arr.length !== 0) {
+        // wheels (discs) as round caps
+        this.objects.push(makeWheels(sphere_arr, sphere_color_arr, linewidth));
+      }
     }
     if (water_sphere_arr.length !== 0) {
       this.objects.push(makeBalls(water_sphere_arr, water_sphere_color_arr,
@@ -8469,7 +8505,8 @@ class ModelBag {
   }
 
   add_sticks(polymers, ligands, radius,
-             atom_filter) {
+             atom_filter,
+             bond_filter) {
     const visible_atoms = this.get_visible_atoms();
     const colors = this.atom_colors(visible_atoms);
     const vertex_arr = [];
@@ -8497,6 +8534,7 @@ class ModelBag {
       for (let j = 0; j < atom.bonds.length; j++) {
         const other = this.model.atoms[atom.bonds[j]];
         if (!hydrogens && other.is_hydrogen()) continue;
+        if (bond_filter && !bond_filter(atom, other)) continue;
         const bond_type = atom.bond_types[j];
         if (bond_type === BondType.Metal) {
           const mid = this.bond_half_end(atom, other, radius * 0.5);
@@ -8850,7 +8888,8 @@ class Viewer {
       default_isolevel: 1.5,
       center_cube_size: 0.1,
       map_style: MAP_STYLES[0],
-      render_style: RENDER_STYLES[0],
+      mainchain_style: 'sticks',
+      sidechain_style: 'sticks',
       ligand_style: LIGAND_STYLES[0],
       water_style: WATER_STYLES[0],
       color_prop: COLOR_PROPS[0],
@@ -8907,8 +8946,14 @@ class Viewer {
       return document.getElementById(options[name] || name);
     }
     this.hud_el = get_elem('hud');
+    if (this.hud_el) {
+      this.hud_el.addEventListener('click', this.on_hud_click.bind(this));
+    }
     this.container = get_elem('viewer');
     this.help_el = get_elem('help');
+    if (this.help_el) {
+      this.help_el.addEventListener('click', this.on_help_click.bind(this));
+    }
     this.structure_name_el = null;
     this.cid_dialog_el = null;
     this.cid_input_el = null;
@@ -8968,6 +9013,7 @@ class Viewer {
     const el = this.renderer.domElement;
     this.container.appendChild(el);
     this.create_structure_name_badge();
+    this.create_help_toggle_link();
     if (options.focusable) {
       el.tabIndex = 0;
     }
@@ -9039,6 +9085,32 @@ class Viewer {
     if (overlay) overlay.insertBefore(el, overlay.firstChild);
     else this.container.appendChild(el);
     this.structure_name_el = el;
+  }
+
+  create_help_toggle_link() {
+    if (this.container == null || this.help_el == null || typeof document === 'undefined') return;
+    const el = document.createElement('a');
+    el.className = 'gm-help-toggle';
+    el.href = '#';
+    el.textContent = 'H = toggle help';
+    el.style.fontSize = '13px';
+    el.style.color = '#9dd3ff';
+    el.style.backgroundColor = 'rgba(0,0,0,0.65)';
+    el.style.alignSelf = 'flex-end';
+    el.style.padding = '2px 8px';
+    el.style.borderRadius = '999px';
+    el.style.textDecoration = 'underline';
+    el.style.textUnderlineOffset = '2px';
+    el.style.cursor = 'pointer';
+    el.style.pointerEvents = 'auto';
+    el.onclick = (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      this.toggle_help();
+    };
+    const overlay = _optionalChain([this, 'access', _ => _.hud_el, 'optionalAccess', _2 => _2.parentElement]) || document.getElementById('gm-overlay');
+    if (overlay) overlay.insertBefore(el, this.hud_el || overlay.firstChild);
+    else this.container.appendChild(el);
   }
 
   set_structure_name(name) {
@@ -9283,25 +9355,54 @@ class Viewer {
     }
   }
 
+  add_rendered_atoms(target, seen, atoms) {
+    for (const atom of atoms) {
+      if (!seen.has(atom.i_seq)) {
+        seen.add(atom.i_seq);
+        target.push(atom);
+      }
+    }
+  }
+
+  is_atom_visible_in_current_style(atom, conf) {
+    if (atom.is_water()) return conf.water_style !== 'invisible';
+    if (atom.is_ligand) return true;
+    return atom.is_backbone() || conf.sidechain_style !== 'invisible';
+  }
+
+  atom_style_key(atom) {
+    if (atom.is_water()) return 'water_style';
+    if (atom.is_ligand) return 'ligand_style';
+    return atom.is_backbone() ? 'mainchain_style' : 'sidechain_style';
+  }
+
   set_model_objects(model_bag) {
     model_bag.objects = [];
     model_bag.atom_array = [];
+    const rendered_atoms = [];
+    const seen_atoms = new Set();
+    const finish_pass = () => {
+      this.add_rendered_atoms(rendered_atoms, seen_atoms, model_bag.atom_array);
+      model_bag.atom_array = [];
+    };
+    const partner_visible = (_atom, other) =>
+      this.is_atom_visible_in_current_style(other, model_bag.conf);
     let ligand_balls = null;
     const ligand_sticks = (model_bag.conf.ligand_style === 'sticks');
     if (model_bag.conf.ligand_style === 'ball&stick' && this.has_frag_depth()) {
       ligand_balls = this.config.ball_size;
     }
-    switch (model_bag.conf.render_style) {
+    const mainchain_style = model_bag.conf.mainchain_style;
+    const sidechain_style = model_bag.conf.sidechain_style;
+    const wheel_caps = (mainchain_style === 'lines' &&
+                        sidechain_style === 'lines' &&
+                        model_bag.conf.ligand_style === 'lines');
+    const mainchain_filter = (atom) => atom.is_backbone();
+    const sidechain_filter = (atom) => !atom.is_backbone();
+    switch (mainchain_style) {
       case 'lines':
-        if (ligand_balls === null && !ligand_sticks) {
-          model_bag.add_bonds(true, true);
-        } else if (ligand_sticks) {
-          model_bag.add_bonds(true, false);
-          model_bag.add_sticks(false, true, this.config.stick_radius);
-        } else {
-          model_bag.add_bonds(true, false);
-          model_bag.add_bonds(false, true, ligand_balls);
-        }
+        model_bag.add_bonds(true, false, undefined, mainchain_filter, partner_visible, wheel_caps);
+        finish_pass();
         break;
       case 'sticks':
         if (!this.has_frag_depth()) {
@@ -9309,7 +9410,9 @@ class Viewer {
                    '\ndue to lack of suppport for EXT_frag_depth', 'ERR');
           return;
         }
-        model_bag.add_sticks(true, true, this.config.stick_radius);
+        model_bag.add_sticks(true, false, this.config.stick_radius,
+                             mainchain_filter, partner_visible);
+        finish_pass();
         break;
       case 'ball&stick':
         if (!this.has_frag_depth()) {
@@ -9317,49 +9420,47 @@ class Viewer {
                    '\ndue to lack of suppport for EXT_frag_depth', 'ERR');
           return;
         }
-        if (ligand_balls === null) {
-          model_bag.add_bonds(true, false, this.config.ball_size);
-          model_bag.add_bonds(false, true);
-        } else {
-          model_bag.add_bonds(true, true, this.config.ball_size);
-        }
+        model_bag.add_bonds(true, false, this.config.ball_size,
+                            mainchain_filter, partner_visible);
+        finish_pass();
         break;
       case 'backbone':
         model_bag.add_trace();
-        if (ligand_sticks) {
-          model_bag.add_sticks(false, true, this.config.stick_radius);
-        } else {
-          model_bag.add_bonds(false, true, ligand_balls);
-        }
+        finish_pass();
         break;
       case 'ribbon':
         model_bag.add_ribbon(8);
-        if (ligand_sticks) {
-          model_bag.add_sticks(false, true, this.config.stick_radius);
-        } else {
-          model_bag.add_bonds(false, true, ligand_balls);
-        }
+        finish_pass();
         break;
       case 'cartoon':
         model_bag.add_cartoon(8);
-        if (ligand_sticks) {
-          model_bag.add_sticks(false, true, this.config.stick_radius);
-        } else {
-          model_bag.add_bonds(false, true, ligand_balls);
-        }
-        break;
-      case 'cartoon+sticks':
-        model_bag.add_cartoon(8);
-        model_bag.add_sticks(true, false, this.config.stick_radius,
-                             (atom) => !atom.is_backbone());
-        if (ligand_sticks) {
-          model_bag.add_sticks(false, true, this.config.stick_radius);
-        } else {
-          model_bag.add_bonds(false, true, ligand_balls);
-        }
-        model_bag.atom_array = model_bag.get_visible_atoms();
+        finish_pass();
         break;
     }
+    switch (sidechain_style) {
+      case 'lines':
+        model_bag.add_bonds(true, false, undefined, sidechain_filter, partner_visible, wheel_caps);
+        finish_pass();
+        break;
+      case 'sticks':
+        model_bag.add_sticks(true, false, this.config.stick_radius,
+                             sidechain_filter, partner_visible);
+        finish_pass();
+        break;
+      case 'ball&stick':
+        model_bag.add_bonds(true, false, this.has_frag_depth() ? this.config.ball_size : undefined,
+                            sidechain_filter, partner_visible);
+        finish_pass();
+        break;
+    }
+    if (ligand_sticks) {
+      model_bag.add_sticks(false, true, this.config.stick_radius);
+      finish_pass();
+    } else {
+      model_bag.add_bonds(false, true, ligand_balls, undefined, undefined, wheel_caps);
+      finish_pass();
+    }
+    model_bag.atom_array = rendered_atoms;
     for (const o of model_bag.objects) {
       this.scene.add(o);
     }
@@ -9375,7 +9476,7 @@ class Viewer {
     if (show === undefined) show = !is_shown;
     if (show) {
       if (is_shown) return;
-      const atom_style = pick.atom.is_ligand ? 'ligand_style' : 'render_style';
+      const atom_style = this.atom_style_key(pick.atom);
       const balls = pick.bag && pick.bag.conf[atom_style] === 'ball&stick';
       const label = new Label(text, {
         pos: pick.atom.xyz,
@@ -10080,7 +10181,7 @@ class Viewer {
 
   create_metals_menu() {
     if (typeof document === 'undefined' || this.container == null) return;
-    const overlay = _optionalChain([this, 'access', _ => _.hud_el, 'optionalAccess', _2 => _2.parentElement]);
+    const overlay = _optionalChain([this, 'access', _3 => _3.hud_el, 'optionalAccess', _4 => _4.parentElement]);
     if (overlay == null) return;
     const row1 = document.createElement('div');
     row1.style.display = 'flex';
@@ -10704,7 +10805,7 @@ class Viewer {
         this.mutate_select_target = target;
         this.sync_mutate_menu_ui();
         this.request_mutation_preview(target);
-        _optionalChain([this, 'access', _3 => _3.mutate_button_el, 'optionalAccess', _4 => _4.focus, 'call', _5 => _5()]);
+        _optionalChain([this, 'access', _5 => _5.mutate_button_el, 'optionalAccess', _6 => _6.focus, 'call', _7 => _7()]);
       });
       list.appendChild(item);
     }
@@ -11671,6 +11772,94 @@ class Viewer {
                     this.ABOUT_HELP, this.fps_text].join('\n\n');
   }
 
+  trigger_help_action(keyCode, shiftKey=false, ctrlKey=false) {
+    this.keydown({
+      keyCode: keyCode,
+      shiftKey: shiftKey,
+      ctrlKey: ctrlKey,
+      preventDefault() {},
+    } );
+  }
+
+  on_help_click(event) {
+    let el = event.target ;
+    while (el && el !== this.help_el) {
+      const keycode = el.getAttribute('data-help-keycode');
+      if (keycode != null) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.trigger_help_action(
+          parseInt(keycode, 10),
+          el.getAttribute('data-help-shift') === '1',
+          el.getAttribute('data-help-ctrl') === '1'
+        );
+        return;
+      }
+      el = el.parentElement;
+    }
+  }
+
+  select_menu_html(info, key, options) {
+    const value = this.config[key];
+    const encoded_options = JSON.stringify(options);
+    let html = escape_html(info) + ':';
+    for (const option of options) {
+      const tag = (option === value ? 'u' : 's');
+      html += ' <a href="#" class="gm-hud-option" data-hud-select-key="' + escape_html(key) +
+              '" data-hud-select-value="' + escape_html(option) +
+              '" data-hud-select-info="' + escape_html(info) +
+              '" data-hud-select-options="' + escape_html(encoded_options) + '">' +
+              '<' + tag + '>' + escape_html(option) + '</' + tag + '></a>';
+    }
+    return html;
+  }
+
+  apply_selected_option(key) {
+    switch (key) {
+      case 'color_scheme':
+        this.set_colors();
+        break;
+      case 'color_prop':
+      case 'mainchain_style':
+      case 'sidechain_style':
+      case 'ligand_style':
+      case 'water_style':
+        this.redraw_models();
+        break;
+      case 'label_font':
+        this.redraw_labels();
+        break;
+      case 'map_style':
+        this.redraw_maps(true);
+        break;
+    }
+    this.request_render();
+  }
+
+  set_selected_option(info, key, options, value) {
+    if (options.indexOf(value) === -1) return;
+    this.config[key] = value;
+    this.apply_selected_option(key);
+    this.hud(this.select_menu_html(info, key, options), 'HTML');
+  }
+
+  on_hud_click(event) {
+    let el = event.target ;
+    while (el && el !== this.hud_el) {
+      const key = el.getAttribute('data-hud-select-key');
+      if (key != null) {
+        event.preventDefault();
+        event.stopPropagation();
+        const value = el.getAttribute('data-hud-select-value') || '';
+        const info = el.getAttribute('data-hud-select-info') || key;
+        const options = JSON.parse(el.getAttribute('data-hud-select-options') || '[]');
+        this.set_selected_option(info, key, options, value);
+        return;
+      }
+      el = el.parentElement;
+    }
+  }
+
   update_fps() {
     const now = performance.now();
     if (this.last_frame_time !== 0) {
@@ -11693,13 +11882,7 @@ class Viewer {
     const old_idx = options.indexOf(this.config[key]);
     const len = options.length;
     const new_idx = (old_idx + (back ? len - 1 : 1)) % len;
-    this.config[key] = options[new_idx];
-    let html = info + ':';
-    for (let i = 0; i < len; i++) {
-      const tag = (i === new_idx ? 'u' : 's');
-      html += ' <' + tag + '>' + options[i] + '</' + tag + '>';
-    }
-    this.hud(html, 'HTML');
+    this.set_selected_option(info, key, options, options[new_idx]);
   }
 
   keydown(evt) {
@@ -11753,14 +11936,6 @@ class Viewer {
     kb[75] = function () {
       this.hud('toggled rocking');
       this.controls.toggle_auto(0.0);
-    };
-    // m
-    kb[77] = function ( evt) {
-      this.change_zoom_by_factor(evt.shiftKey ? 1.2 : 1.03);
-    };
-    // n
-    kb[78] = function ( evt) {
-      this.change_zoom_by_factor(1 / (evt.shiftKey ? 1.2 : 1.03));
     };
     // q
     kb[81] = function ( evt) {
@@ -11849,9 +12024,14 @@ class Viewer {
         this.go_to_nearest_Ca();
       }
     };
+    // m
+    kb[77] = function ( evt) {
+      this.select_next('mainchain as', 'mainchain_style', MAINCHAIN_STYLES, evt.shiftKey);
+      this.redraw_models();
+    };
     // s
     kb[83] = function ( evt) {
-      this.select_next('rendering as', 'render_style', RENDER_STYLES, evt.shiftKey);
+      this.select_next('sidechains as', 'sidechain_style', SIDECHAIN_STYLES, evt.shiftKey);
       this.redraw_models();
     };
     // t
@@ -12763,35 +12943,40 @@ Viewer.prototype.MOUSE_HELP = [
 
 Viewer.prototype.KEYBOARD_HELP = [
   '<b>keyboard:</b>',
-  'H = toggle help',
-  'S = general style',
-  'L = ligand style',
-  'T = water style',
-  'C = coloring',
-  'B = bg color',
-  'E = toggle fog',
-  'Q = label font',
-  '+/- = sigma level',
-  ']/[ = map radius',
-  'D/F = clip width',
-  '&lt;/> = move clip',
-  'M/N = zoom',
-  'U = unitcell box',
-  '\\ = toggle symmetry',
-  'Y = hydrogens',
-  'V = inactive models',
-  'R = center view',
-  'G = density histogram',
-  'W = density style',
-  'I = spin',
-  'K = rock',
-  'Home/End = stick width',
-  'P = nearest Cα',
-  'Ctrl+G = go to CID',
+  help_action_link('M = mainchain style', {keyCode: 77}),
+  help_action_link('S = sidechain style', {keyCode: 83}),
+  help_action_link('L = ligand style', {keyCode: 76}),
+  help_action_link('T = water style', {keyCode: 84}),
+  help_action_link('C = coloring', {keyCode: 67}),
+  help_action_link('B = bg color', {keyCode: 66}),
+  help_action_link('E = toggle fog', {keyCode: 69}),
+  help_action_link('Q = label font', {keyCode: 81}),
+  help_action_link('+ = sigma level up', {keyCode: 187}),
+  help_action_link('- = sigma level down', {keyCode: 189}),
+  help_action_link('] = larger map radius', {keyCode: 221}),
+  help_action_link('[ = smaller map radius', {keyCode: 219}),
+  help_action_link('D = narrower clip', {keyCode: 68}),
+  help_action_link('F = wider clip', {keyCode: 70}),
+  help_action_link('Shift+, = move clip', {keyCode: 188, shiftKey: true}),
+  help_action_link('Shift+. = move clip', {keyCode: 190, shiftKey: true}),
+  help_action_link('U = unitcell box', {keyCode: 85}),
+  help_action_link('\\ = toggle symmetry', {keyCode: 220}),
+  help_action_link('Y = hydrogens', {keyCode: 89}),
+  help_action_link('V = inactive models', {keyCode: 86}),
+  help_action_link('R = center view', {keyCode: 82}),
+  help_action_link('G = density histogram', {keyCode: 71}),
+  help_action_link('W = density style', {keyCode: 87}),
+  help_action_link('I = spin', {keyCode: 73}),
+  help_action_link('K = rock', {keyCode: 75}),
+  help_action_link('Home = wider sticks', {keyCode: 36}),
+  help_action_link('End = thinner sticks', {keyCode: 35}),
+  help_action_link('P = nearest Cα', {keyCode: 80}),
+  help_action_link('Ctrl+G = go to CID', {keyCode: 71, ctrlKey: true}),
   'Delete menu = selected atom/residue/chain',
-  'Shift+P = permalink',
-  '(Shift+)space = next res.',
-  'Shift+F = full screen',
+  help_action_link('Shift+P = permalink', {keyCode: 80, shiftKey: true}),
+  help_action_link('Space = next residue', {keyCode: 32}),
+  help_action_link('Shift+Space = previous residue', {keyCode: 32, shiftKey: true}),
+  help_action_link('Shift+F = full screen', {keyCode: 70, shiftKey: true}),
 ].join('\n');
 
 Viewer.prototype.ABOUT_HELP =
@@ -13293,6 +13478,28 @@ class ReciprocalViewer extends Viewer {
     this.set_points(this.data);
   }
 
+  apply_selected_option(key) {
+    switch (key) {
+      case 'show_axes':
+        this.set_axes();
+        break;
+      case 'spot_shape':
+        this.point_material.fragmentShader = this.config.spot_shape === 'wheel' ?
+          round_point_frag : square_point_frag;
+        this.point_material.needsUpdate = true;
+        break;
+      case 'show_only': {
+        const idx = SPOT_SEL.indexOf(this.config.show_only);
+        this.point_material.uniforms.show_only.value = idx - 2;
+        break;
+      }
+      default:
+        super.apply_selected_option(key);
+        return;
+    }
+    this.request_render();
+  }
+
   get_cell_box_func() {
     if (this.map_bags.length === 0) return null;
     // here the map is ReciprocalSpaceMap not ElMap
@@ -13305,23 +13512,29 @@ class ReciprocalViewer extends Viewer {
 
 ReciprocalViewer.prototype.KEYBOARD_HELP = [
   '<b>keyboard:</b>',
-  'H = toggle help',
-  'V = show (un)indexed',
-  'A = toggle axes',
-  'U = toggle map box',
-  'B = bg color',
-  'E = toggle fog',
-  'M/N = zoom',
-  'D/F = clip width',
-  '&lt;/> = move clip',
-  'R = center view',
-  'Z/X = point size',
-  'S = point shape',
-  'Shift+P = permalink',
-  'Shift+F = full screen',
-  '←/→ = max resol.',
-  '↑/↓ = min resol.',
-  '+/- = map level',
+  help_action_link('V = show (un)indexed', {keyCode: 86}),
+  help_action_link('A = toggle axes', {keyCode: 65}),
+  help_action_link('U = toggle map box', {keyCode: 85}),
+  help_action_link('B = bg color', {keyCode: 66}),
+  help_action_link('E = toggle fog', {keyCode: 69}),
+  help_action_link('M = zoom in', {keyCode: 77}),
+  help_action_link('N = zoom out', {keyCode: 78}),
+  help_action_link('D = narrower clip', {keyCode: 68}),
+  help_action_link('F = wider clip', {keyCode: 70}),
+  help_action_link('Shift+, = move clip', {keyCode: 188, shiftKey: true}),
+  help_action_link('Shift+. = move clip', {keyCode: 190, shiftKey: true}),
+  help_action_link('R = center view', {keyCode: 82}),
+  help_action_link('Z = smaller points', {keyCode: 90}),
+  help_action_link('X = larger points', {keyCode: 88}),
+  help_action_link('S = point shape', {keyCode: 83}),
+  help_action_link('P = permalink', {keyCode: 80}),
+  help_action_link('Shift+F = full screen', {keyCode: 70, shiftKey: true}),
+  help_action_link('← = lower max resolution', {keyCode: 37}),
+  help_action_link('→ = higher max resolution', {keyCode: 39}),
+  help_action_link('↑ = higher min resolution', {keyCode: 38}),
+  help_action_link('↓ = lower min resolution', {keyCode: 40}),
+  help_action_link('+ = map level up', {keyCode: 187}),
+  help_action_link('- = map level down', {keyCode: 189}),
 ].join('\n');
 
 ReciprocalViewer.prototype.MOUSE_HELP =
@@ -13463,6 +13676,7 @@ exports.addXyzCross = addXyzCross;
 exports.bondDataFromGemmiStructure = bondDataFromGemmiStructure;
 exports.fog_end_fragment = fog_end_fragment;
 exports.fog_pars_fragment = fog_pars_fragment;
+exports.help_action_link = help_action_link;
 exports.load_maps_from_mtz = load_maps_from_mtz;
 exports.load_maps_from_mtz_buffer = load_maps_from_mtz_buffer;
 exports.makeBalls = makeBalls;
