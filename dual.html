@@ -12,11 +12,18 @@
    #viewer2 { right: 0; }
    #hud { font-size: 14px; }
    #viewer1 b, #viewer2 b { color: #fff; background-color: rgba(0,0,0,0.6); }
-   #viewer1 b { position: absolute; bottom: 30px; left: 30px; }
+   #viewer1 b { position: absolute; bottom: 30px; right: 30px; }
    #viewer2 b { position: absolute; bottom: 30px; right: 30px; }
+   #viewer1 .gm-viewer-overlay > header,
+   #viewer2 .gm-viewer-overlay > header { display: none !important; }
+   #viewer2 .gm-viewer-overlay { align-items: flex-end !important; }
+   #viewer2 .gm-viewer-overlay > header {
+     align-self: flex-end !important;
+     text-align: right !important;
+   }
   </style>
 
-  <script src="gemmimol.js?v=symm-colors-1"></script>
+  <script src="gemmimol.js?v=dual-overlay-3"></script>
   <script src="vendor/wasm/gemmi.js"></script>
 
 </head>
@@ -28,12 +35,30 @@
   </div>
   <footer id="help"></footer>
   <script>
-    V1 = new GM.Viewer({viewer: "viewer1", focusable: true});
-    V1.load_pdb("data/1mru.pdb");
-    V2 = new GM.Viewer({viewer: "viewer2", focusable: true, share_view: V1});
+    function sync_label(viewer, viewer_id, fallback) {
+      var label = document.querySelector(viewer_id + ' b');
+      if (!label) return;
+      var text = fallback;
+      if (viewer.structure_name_el && viewer.structure_name_el.textContent) {
+        text = viewer.structure_name_el.textContent;
+        viewer.structure_name_el.style.display = 'none';
+      }
+      label.textContent = text;
+    }
+
+    V1 = new GM.Viewer({viewer: "viewer1", focusable: true, hud: "hud", help: "help"});
+    V1.load_pdb("data/1mru.pdb", null, function () {
+      sync_label(V1, "#viewer1", "PDB original");
+    });
+    V2 = new GM.Viewer({viewer: "viewer2", focusable: true, share_view: V1,
+                        hud: null, help: null});
+    V2.hud_el = V1.hud_el;
+    V2.initial_hud_html = V1.initial_hud_html;
+    V2.help_el = V1.help_el;
     V2.load_pdb_and_ccp4_maps("data/pdb_redo/1mru_final.pdb",
                               "data/pdb_redo/1mru.map",
                               "data/pdb_redo/1mru_diff.map", function () {
+      sync_label(V2, "#viewer2", "PDB_REDO");
       V1.load_ccp4_maps("data/1mru.map", "data/1mru_diff.map");
     });
     V1.renderer.domElement.focus();

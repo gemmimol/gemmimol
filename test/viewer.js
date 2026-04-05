@@ -184,6 +184,80 @@ describe('Viewer', () => {
     expect(viewer2.help_el.style.display).toEqual('none');
   });
 
+  it('keeps structure badges scoped to each viewer container', () => {
+    function fakeElement(tagName) {
+      var el = {
+        tagName: tagName.toUpperCase(),
+        style: {},
+        className: '',
+        children: [],
+        parentElement: null,
+        textContent: '',
+        appendChild: function (child) {
+          child.parentElement = this;
+          this.children.push(child);
+          return child;
+        },
+        insertBefore: function (child, before) {
+          child.parentElement = this;
+          var idx = this.children.indexOf(before);
+          if (idx === -1) this.children.push(child);
+          else this.children.splice(idx, 0, child);
+          return child;
+        },
+        querySelector: function (selector) {
+          if (selector !== '.gm-viewer-overlay') return null;
+          for (var i = 0; i < this.children.length; i++) {
+            if (this.children[i].className === 'gm-viewer-overlay') return this.children[i];
+          }
+          return null;
+        },
+        contains: function (child) {
+          return this.children.indexOf(child) !== -1;
+        },
+        getBoundingClientRect: function () {
+          return {top: 0, bottom: 0};
+        },
+      };
+      Object.defineProperty(el, 'firstChild', {
+        get: function () {
+          return this.children[0] || null;
+        },
+      });
+      return el;
+    }
+
+    var savedDocument = global.document;
+    var overlay = fakeElement('div');
+    global.document = {
+      createElement: fakeElement,
+      getElementById: function (id) {
+        return id === 'gm-overlay' ? overlay : null;
+      },
+    };
+
+    try {
+      var viewerLeft = new GM.Viewer();
+      var viewerRight = new GM.Viewer();
+      viewerLeft.container = fakeElement('div');
+      viewerRight.container = fakeElement('div');
+      viewerLeft.create_structure_name_badge();
+      viewerRight.create_structure_name_badge();
+      viewerLeft.set_structure_name('left');
+      viewerRight.set_structure_name('right');
+
+      expect(viewerLeft.structure_name_el.parentElement).toBe(viewerLeft.viewer_overlay_el);
+      expect(viewerRight.structure_name_el.parentElement).toBe(viewerRight.viewer_overlay_el);
+      expect(viewerLeft.viewer_overlay_el.parentElement).toBe(viewerLeft.container);
+      expect(viewerRight.viewer_overlay_el.parentElement).toBe(viewerRight.container);
+      expect(viewerLeft.structure_name_el.textContent).toEqual('LEFT');
+      expect(viewerRight.structure_name_el.textContent).toEqual('RIGHT');
+      expect(overlay.children.length).toEqual(0);
+    } finally {
+      global.document = savedDocument;
+    }
+  });
+
   it('renders clickable HUD options', () => {
     var viewer2 = new GM.Viewer();
     var html = viewer2.select_menu_html('mainchain as', 'mainchain_style',

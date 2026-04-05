@@ -864,6 +864,7 @@ export class Viewer {
   container: HTMLElement | null;
   hud_el: HTMLElement | null;
   help_el: HTMLElement | null;
+  viewer_overlay_el: HTMLDivElement | null;
   structure_name_el: HTMLElement | null;
   cid_dialog_el: HTMLDivElement | null;
   cid_input_el: HTMLInputElement | null;
@@ -1004,6 +1005,7 @@ export class Viewer {
     if (this.help_el) {
       this.help_el.addEventListener('click', this.on_help_click.bind(this));
     }
+    this.viewer_overlay_el = null;
     this.structure_name_el = null;
     this.cid_dialog_el = null;
     this.cid_input_el = null;
@@ -1068,6 +1070,7 @@ export class Viewer {
       el.tabIndex = 0;
     }
     this.create_metals_menu();
+    this.update_viewer_overlay_position();
     this.create_cid_dialog();
     this.decor.zoom_grid.visible = false;
     this.scene.add(this.decor.zoom_grid);
@@ -1120,21 +1123,66 @@ export class Viewer {
     el.style.fontSize = '18px';
     el.style.color = '#ddd';
     el.style.backgroundColor = 'rgba(0,0,0,0.6)';
-    el.style.textAlign = 'right';
-    el.style.alignSelf = 'stretch';
+    el.style.textAlign = 'left';
+    el.style.alignSelf = 'flex-start';
+    el.style.maxWidth = '75%';
     el.style.padding = '3px 8px';
     el.style.borderRadius = '5px';
     el.style.letterSpacing = '0.08em';
     el.style.fontWeight = 'bold';
+    el.style.whiteSpace = 'nowrap';
+    el.style.overflow = 'hidden';
+    el.style.textOverflow = 'ellipsis';
     el.style.pointerEvents = 'auto'; // ensure selectability
     el.style.cursor = 'text';        // ensure selectability
     el.style.userSelect = 'text';    // ensure selectability
     el.style.webkitUserSelect = 'text'; // ensure selectability
     el.onmousedown = (evt) => evt.stopPropagation();
-    const overlay = document.getElementById('gm-overlay');
+    const overlay = this.get_or_create_viewer_overlay();
     if (overlay) overlay.insertBefore(el, overlay.firstChild);
     else this.container.appendChild(el);
     this.structure_name_el = el;
+  }
+
+  get_or_create_viewer_overlay() {
+    if (this.container == null || typeof document === 'undefined') return null;
+    if (this.viewer_overlay_el && this.viewer_overlay_el.parentElement === this.container) {
+      this.update_viewer_overlay_position();
+      return this.viewer_overlay_el;
+    }
+    let overlay = this.container.querySelector('.gm-viewer-overlay') as HTMLDivElement | null;
+    if (overlay == null) {
+      overlay = document.createElement('div');
+      overlay.className = 'gm-viewer-overlay';
+      overlay.style.position = 'absolute';
+      overlay.style.top = '5px';
+      overlay.style.left = '5px';
+      overlay.style.right = '5px';
+      overlay.style.display = 'flex';
+      overlay.style.flexDirection = 'column';
+      overlay.style.alignItems = 'flex-start';
+      overlay.style.gap = '4px';
+      overlay.style.pointerEvents = 'none';
+      overlay.style.zIndex = '9';
+      this.container.appendChild(overlay);
+    }
+    this.viewer_overlay_el = overlay;
+    this.update_viewer_overlay_position();
+    return overlay;
+  }
+
+  update_viewer_overlay_position() {
+    const overlay = this.viewer_overlay_el;
+    if (overlay == null || this.container == null || typeof document === 'undefined') return;
+    const global_overlay = document.getElementById('gm-overlay');
+    if (global_overlay == null || this.container.contains(global_overlay)) {
+      overlay.style.top = '5px';
+      return;
+    }
+    const global_rect = global_overlay.getBoundingClientRect();
+    const container_rect = this.container.getBoundingClientRect();
+    const top = Math.max(5, Math.ceil(global_rect.bottom - container_rect.top + 4));
+    overlay.style.top = top + 'px';
   }
 
   create_help_toggle_link() {
@@ -1158,8 +1206,8 @@ export class Viewer {
       evt.stopPropagation();
       this.toggle_help();
     };
-    const overlay = this.hud_el?.parentElement || document.getElementById('gm-overlay');
-    if (overlay) overlay.insertBefore(el, this.hud_el || overlay.firstChild);
+    const overlay = this.get_or_create_viewer_overlay();
+    if (overlay) overlay.appendChild(el);
     else this.container.appendChild(el);
   }
 
@@ -2267,6 +2315,8 @@ export class Viewer {
     row2.appendChild(this.download_select_el);
     overlay.appendChild(row1);
     overlay.appendChild(row2);
+    this.update_viewer_overlay_position();
+    if (this.tied_viewer) this.tied_viewer.update_viewer_overlay_position();
   }
 
   update_nav_menus() {
