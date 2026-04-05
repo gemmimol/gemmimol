@@ -10,6 +10,12 @@ function sphere_atom_count(bag) {
   }, 0);
 }
 
+function object_type_count(bag, type) {
+  return bag.objects.reduce(function (count, obj) {
+    return count + ((obj.material && obj.material.type === type) ? 1 : 0);
+  }, 0);
+}
+
 function max_triangle_area(obj) {
   if (!obj.geometry || !obj.geometry.attributes.position || !obj.geometry.index) return 0;
   var pos = obj.geometry.attributes.position.array;
@@ -148,9 +154,11 @@ describe('Viewer', () => {
     viewer.change_isolevel_by(0, 0.1);
     viewer.center_next_residue();
     viewer.add_model(model);
-    viewer.model_bags[0].conf.render_style = 'cartoon';
+    viewer.model_bags[0].conf.mainchain_style = 'cartoon';
+    viewer.model_bags[0].conf.sidechain_style = 'invisible';
     viewer.redraw_models();
-    viewer.model_bags[0].conf.render_style = 'cartoon+sticks';
+    viewer.model_bags[0].conf.mainchain_style = 'cartoon';
+    viewer.model_bags[0].conf.sidechain_style = 'sticks';
     viewer.redraw_models();
     viewer.center_next_residue();
     viewer.recenter();
@@ -167,6 +175,68 @@ describe('Viewer', () => {
   it('uses sphere as the default water style', () => {
     var viewer2 = new GM.Viewer('viewer');
     expect(viewer2.config.water_style).toEqual('sphere');
+  });
+
+  it('lets help links trigger viewer actions', () => {
+    var viewer2 = new GM.Viewer();
+    viewer2.help_el = {style: {display: 'block'}};
+    viewer2.trigger_help_action(72);
+    expect(viewer2.help_el.style.display).toEqual('none');
+  });
+
+  it('renders clickable HUD options', () => {
+    var viewer2 = new GM.Viewer();
+    var html = viewer2.select_menu_html('mainchain as', 'mainchain_style',
+                                        ['sticks', 'lines', 'ball&stick']);
+    expect(html).toContain('data-hud-select-key="mainchain_style"');
+    expect(html).toContain('data-hud-select-value="ball&amp;stick"');
+    viewer2.on_hud_click({
+      target: {
+        getAttribute: function (name) {
+          return {
+            'data-hud-select-key': 'mainchain_style',
+            'data-hud-select-value': 'lines',
+            'data-hud-select-info': 'mainchain as',
+            'data-hud-select-options': '["sticks","lines","ball&stick"]',
+          }[name] || null;
+        },
+        parentElement: null,
+      },
+      preventDefault: function () {},
+      stopPropagation: function () {},
+    });
+    expect(viewer2.config.mainchain_style).toEqual('lines');
+  });
+
+  it('uses M for mainchain style and S for sidechain style', () => {
+    var viewer2 = new GM.Viewer();
+    viewer2.config.mainchain_style = 'sticks';
+    viewer2.config.sidechain_style = 'sticks';
+    viewer2.keydown({
+      keyCode: 77,
+      shiftKey: false,
+      ctrlKey: false,
+      preventDefault: function () {},
+    });
+    expect(viewer2.config.mainchain_style).toEqual('lines');
+    expect(viewer2.config.sidechain_style).toEqual('sticks');
+    viewer2.keydown({
+      keyCode: 83,
+      shiftKey: false,
+      ctrlKey: false,
+      preventDefault: function () {},
+    });
+    expect(viewer2.config.mainchain_style).toEqual('lines');
+    expect(viewer2.config.sidechain_style).toEqual('lines');
+  });
+
+  it('avoids wheel caps outside pure line rendering', () => {
+    var viewer2 = new GM.Viewer('viewer');
+    viewer2.add_model(model);
+    viewer2.config.mainchain_style = 'cartoon';
+    viewer2.config.sidechain_style = 'lines';
+    viewer2.redraw_models();
+    expect(object_type_count(viewer2.model_bags[0], 'um_wheel')).toEqual(0);
   });
 
   it('builds compact triangles for smooth density surface', () => {
@@ -736,7 +806,8 @@ describe('Viewer', () => {
     var structure;
     return load_viewer_model('1mru.pdb').then(function (loaded_viewer) {
       var bag = loaded_viewer.model_bags[0];
-      bag.conf.render_style = 'lines';
+      bag.conf.mainchain_style = 'lines';
+      bag.conf.sidechain_style = 'lines';
       loaded_viewer.redraw_model(bag);
       var spheres_before = sphere_atom_count(bag);
       structure = bag.gemmi_selection.structure;

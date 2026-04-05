@@ -1,5 +1,5 @@
 import { ElMap } from './elmap';
-import { Viewer, normalize_viewer_options } from './viewer';
+import { Viewer, normalize_viewer_options, help_action_link } from './viewer';
 import { addXyzCross, makeLineMaterial, makeLineSegments,
          makeUniforms, fog_pars_fragment, fog_end_fragment } from './draw';
 import { Points, BufferAttribute, BufferGeometry,
@@ -506,6 +506,28 @@ export class ReciprocalViewer extends Viewer {
     this.set_points(this.data);
   }
 
+  apply_selected_option(key: string) {
+    switch (key) {
+      case 'show_axes':
+        this.set_axes();
+        break;
+      case 'spot_shape':
+        this.point_material.fragmentShader = this.config.spot_shape === 'wheel' ?
+          round_point_frag : square_point_frag;
+        this.point_material.needsUpdate = true;
+        break;
+      case 'show_only': {
+        const idx = SPOT_SEL.indexOf(this.config.show_only);
+        this.point_material.uniforms.show_only.value = idx - 2;
+        break;
+      }
+      default:
+        super.apply_selected_option(key);
+        return;
+    }
+    this.request_render();
+  }
+
   get_cell_box_func() {
     if (this.map_bags.length === 0) return null;
     // here the map is ReciprocalSpaceMap not ElMap
@@ -518,23 +540,29 @@ export class ReciprocalViewer extends Viewer {
 
 ReciprocalViewer.prototype.KEYBOARD_HELP = [
   '<b>keyboard:</b>',
-  'H = toggle help',
-  'V = show (un)indexed',
-  'A = toggle axes',
-  'U = toggle map box',
-  'B = bg color',
-  'E = toggle fog',
-  'M/N = zoom',
-  'D/F = clip width',
-  '&lt;/> = move clip',
-  'R = center view',
-  'Z/X = point size',
-  'S = point shape',
-  'Shift+P = permalink',
-  'Shift+F = full screen',
-  '←/→ = max resol.',
-  '↑/↓ = min resol.',
-  '+/- = map level',
+  help_action_link('V = show (un)indexed', {keyCode: 86}),
+  help_action_link('A = toggle axes', {keyCode: 65}),
+  help_action_link('U = toggle map box', {keyCode: 85}),
+  help_action_link('B = bg color', {keyCode: 66}),
+  help_action_link('E = toggle fog', {keyCode: 69}),
+  help_action_link('M = zoom in', {keyCode: 77}),
+  help_action_link('N = zoom out', {keyCode: 78}),
+  help_action_link('D = narrower clip', {keyCode: 68}),
+  help_action_link('F = wider clip', {keyCode: 70}),
+  help_action_link('Shift+, = move clip', {keyCode: 188, shiftKey: true}),
+  help_action_link('Shift+. = move clip', {keyCode: 190, shiftKey: true}),
+  help_action_link('R = center view', {keyCode: 82}),
+  help_action_link('Z = smaller points', {keyCode: 90}),
+  help_action_link('X = larger points', {keyCode: 88}),
+  help_action_link('S = point shape', {keyCode: 83}),
+  help_action_link('P = permalink', {keyCode: 80}),
+  help_action_link('Shift+F = full screen', {keyCode: 70, shiftKey: true}),
+  help_action_link('← = lower max resolution', {keyCode: 37}),
+  help_action_link('→ = higher max resolution', {keyCode: 39}),
+  help_action_link('↑ = higher min resolution', {keyCode: 38}),
+  help_action_link('↓ = lower min resolution', {keyCode: 40}),
+  help_action_link('+ = map level up', {keyCode: 187}),
+  help_action_link('- = map level down', {keyCode: 189}),
 ].join('\n');
 
 ReciprocalViewer.prototype.MOUSE_HELP =

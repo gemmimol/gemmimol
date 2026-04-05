@@ -37,7 +37,8 @@
     V1.load_pdb("../data/1mru.pdb");
     V1.load_ccp4_maps("../data/1mru.map", "../data/1mru_diff.map");
     V2 = new GM.Viewer({viewer:"viewer2", hud:"hud2", focusable:true});
-    V2.config.render_style = "ribbon";
+    V2.config.mainchain_style = "ribbon";
+    V2.config.sidechain_style = "invisible";
     V2.config.color_aim = "index";
     V2.load_pdb("../data/1mru.pdb");
     V3 = new GM.Viewer({viewer:"viewer3", hud:"hud3", focusable:true});

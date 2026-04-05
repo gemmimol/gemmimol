@@ -34,6 +34,28 @@ canvas { display: block; }
 #hud u { padding: 0 8px; text-decoration: none;
          border: solid; border-width: 1px 0; }
 #hud s { padding: 0 8px; text-decoration: none; opacity: 0.5; }
+#hud a.gm-hud-option {
+  color: #7fc3ff;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+#hud a.gm-hud-option:hover {
+  color: #b7deff;
+}
+#hud a.gm-hud-option u,
+#hud a.gm-hud-option s {
+  padding: 0 6px;
+  border: 0;
+  text-decoration: underline;
+}
+#hud a.gm-hud-option u {
+  color: #fff;
+  opacity: 1;
+}
+#hud a.gm-hud-option s {
+  opacity: 0.85;
+}
 #help {
   display: none;
   font-size: 16px;
