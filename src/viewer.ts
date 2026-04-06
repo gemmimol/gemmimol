@@ -2,9 +2,10 @@ import { OrthographicCamera, Scene, Color, Vector3,
          Ray, WebGLRenderer, Fog } from './three-r162/main';
 import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
          makeChickenWire, makeSmoothSurface, makeGrid, makeSticks, makeBalls,
-         makeWheels, makeCube,
+         makeWheels, makeCube, makeSpaceFilling,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
+import { SpeckAO } from './ao';
 import { ElMap } from './elmap';
 import type { BlobHit } from './elmap';
 import { BondType, modelsFromGemmi, modelFromGemmiStructure,
@@ -183,7 +184,8 @@ const INIT_HUD_TEXT = 'This is GemmiMol not Coot.';
 const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
                      'index', 'chain', 'secondary structure'];
 const MAINCHAIN_STYLES = ['sticks', 'lines', 'backbone', 'cartoon',
-                          'ribbon', 'ball&stick'];
+                          'ribbon', 'ball&stick', 'space-filling',
+                          'space-filling+AO'];
 const SIDECHAIN_STYLES = ['sticks', 'lines', 'ball&stick', 'invisible'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
@@ -861,6 +863,7 @@ export class Viewer {
   controls: Controls;
   tied_viewer: Viewer | null;
   renderer: WebGLRenderer;
+  speckAO: SpeckAO | null;
   container: HTMLElement | null;
   hud_el: HTMLElement | null;
   help_el: HTMLElement | null;
@@ -1039,6 +1042,7 @@ export class Viewer {
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
+    this.speckAO = null;
     this.map_radius_auto = !('map_radius' in options) && !('max_map_radius' in options);
     if (this.hud_el) {
       if (this.hud_el.innerHTML === '') this.hud_el.innerHTML = INIT_HUD_TEXT;
@@ -1123,8 +1127,8 @@ export class Viewer {
     el.style.fontSize = '18px';
     el.style.color = '#ddd';
     el.style.backgroundColor = 'rgba(0,0,0,0.6)';
-    el.style.textAlign = 'left';
-    el.style.alignSelf = 'flex-start';
+    el.style.textAlign = 'right';
+    el.style.alignSelf = 'flex-end';
     el.style.maxWidth = '75%';
     el.style.padding = '3px 8px';
     el.style.borderRadius = '5px';
@@ -1307,6 +1311,7 @@ export class Viewer {
       const err = (type === 'ERR');
       el.style.backgroundColor = (err ? '#b00' : '');
       if (err && text) console.log('ERR: ' + text);
+      this.update_viewer_overlay_position();
     } else {
       console.log('hud:', text);
     }
@@ -1491,72 +1496,87 @@ export class Viewer {
       ligand_balls = this.config.ball_size;
     }
     const mainchain_style = model_bag.conf.mainchain_style;
-    const sidechain_style = model_bag.conf.sidechain_style;
-    const wheel_caps = (mainchain_style === 'lines' &&
-                        sidechain_style === 'lines' &&
-                        model_bag.conf.ligand_style === 'lines');
-    const mainchain_filter = (atom: Atom) => atom.is_backbone();
-    const sidechain_filter = (atom: Atom) => !atom.is_backbone();
-    switch (mainchain_style) {
-      case 'lines':
-        model_bag.add_bonds(true, false, undefined, mainchain_filter, partner_visible, wheel_caps);
-        finish_pass();
-        break;
-      case 'sticks':
-        if (!this.has_frag_depth()) {
-          this.hud('Stick rendering is not working in this browser' +
-                   '\ndue to lack of suppport for EXT_frag_depth', 'ERR');
-          return;
-        }
-        model_bag.add_sticks(true, false, this.config.stick_radius,
-                             mainchain_filter, partner_visible);
-        finish_pass();
-        break;
-      case 'ball&stick':
-        if (!this.has_frag_depth()) {
-          this.hud('Ball-and-stick rendering is not working in this browser' +
-                   '\ndue to lack of suppport for EXT_frag_depth', 'ERR');
-          return;
-        }
-        model_bag.add_bonds(true, false, this.config.ball_size,
-                            mainchain_filter, partner_visible);
-        finish_pass();
-        break;
-      case 'backbone':
-        model_bag.add_trace();
-        finish_pass();
-        break;
-      case 'ribbon':
-        model_bag.add_ribbon(8);
-        finish_pass();
-        break;
-      case 'cartoon':
-        model_bag.add_cartoon(8);
-        finish_pass();
-        break;
-    }
-    switch (sidechain_style) {
-      case 'lines':
-        model_bag.add_bonds(true, false, undefined, sidechain_filter, partner_visible, wheel_caps);
-        finish_pass();
-        break;
-      case 'sticks':
-        model_bag.add_sticks(true, false, this.config.stick_radius,
-                             sidechain_filter, partner_visible);
-        finish_pass();
-        break;
-      case 'ball&stick':
-        model_bag.add_bonds(true, false, this.has_frag_depth() ? this.config.ball_size : undefined,
-                            sidechain_filter, partner_visible);
-        finish_pass();
-        break;
-    }
-    if (ligand_sticks) {
-      model_bag.add_sticks(false, true, this.config.stick_radius);
-      finish_pass();
+
+    // Space-filling is a global style — all atoms as VdW spheres
+    if (mainchain_style.startsWith('space-filling')) {
+      if (!this.has_frag_depth()) {
+        this.hud('Space-filling rendering is not working in this browser' +
+                 '\ndue to lack of support for EXT_frag_depth', 'ERR');
+        return;
+      }
+      const visible_atoms = model_bag.get_visible_atoms();
+      const colors = model_bag.atom_colors(visible_atoms);
+      model_bag.objects.push(makeSpaceFilling(visible_atoms, colors));
+      model_bag.atom_array = visible_atoms;
+      this.add_rendered_atoms(rendered_atoms, seen_atoms, visible_atoms);
     } else {
-      model_bag.add_bonds(false, true, ligand_balls, undefined, undefined, wheel_caps);
-      finish_pass();
+      const sidechain_style = model_bag.conf.sidechain_style;
+      const wheel_caps = (mainchain_style === 'lines' &&
+                          sidechain_style === 'lines' &&
+                          model_bag.conf.ligand_style === 'lines');
+      const mainchain_filter = (atom: Atom) => atom.is_backbone();
+      const sidechain_filter = (atom: Atom) => !atom.is_backbone();
+      switch (mainchain_style) {
+        case 'lines':
+          model_bag.add_bonds(true, false, undefined, mainchain_filter, partner_visible, wheel_caps);
+          finish_pass();
+          break;
+        case 'sticks':
+          if (!this.has_frag_depth()) {
+            this.hud('Stick rendering is not working in this browser' +
+                     '\ndue to lack of suppport for EXT_frag_depth', 'ERR');
+            return;
+          }
+          model_bag.add_sticks(true, false, this.config.stick_radius,
+                               mainchain_filter, partner_visible);
+          finish_pass();
+          break;
+        case 'ball&stick':
+          if (!this.has_frag_depth()) {
+            this.hud('Ball-and-stick rendering is not working in this browser' +
+                     '\ndue to lack of suppport for EXT_frag_depth', 'ERR');
+            return;
+          }
+          model_bag.add_bonds(true, false, this.config.ball_size,
+                              mainchain_filter, partner_visible);
+          finish_pass();
+          break;
+        case 'backbone':
+          model_bag.add_trace();
+          finish_pass();
+          break;
+        case 'ribbon':
+          model_bag.add_ribbon(8);
+          finish_pass();
+          break;
+        case 'cartoon':
+          model_bag.add_cartoon(8);
+          finish_pass();
+          break;
+      }
+      switch (sidechain_style) {
+        case 'lines':
+          model_bag.add_bonds(true, false, undefined, sidechain_filter, partner_visible, wheel_caps);
+          finish_pass();
+          break;
+        case 'sticks':
+          model_bag.add_sticks(true, false, this.config.stick_radius,
+                               sidechain_filter, partner_visible);
+          finish_pass();
+          break;
+        case 'ball&stick':
+          model_bag.add_bonds(true, false, this.has_frag_depth() ? this.config.ball_size : undefined,
+                              sidechain_filter, partner_visible);
+          finish_pass();
+          break;
+      }
+      if (ligand_sticks) {
+        model_bag.add_sticks(false, true, this.config.stick_radius);
+        finish_pass();
+      } else {
+        model_bag.add_bonds(false, true, ligand_balls, undefined, undefined, wheel_caps);
+        finish_pass();
+      }
     }
     model_bag.atom_array = rendered_atoms;
     for (const o of model_bag.objects) {
@@ -1642,6 +1662,36 @@ export class Viewer {
   redraw_models() {
     for (const model_bag of this.model_bags) {
       this.redraw_model(model_bag);
+    }
+    // Manage AO lifecycle based on style
+    const needsAO = this.model_bags.some(
+      (bag) => bag.conf.mainchain_style === 'space-filling+AO');
+    if (needsAO && this.renderer) {
+      if (!this.speckAO) {
+        // Compute bounding radius from all visible atoms
+        let cx = 0, cy = 0, cz = 0, n = 0;
+        for (const bag of this.model_bags) {
+          for (const atom of bag.atom_array) {
+            cx += atom.xyz[0]; cy += atom.xyz[1]; cz += atom.xyz[2]; n++;
+          }
+        }
+        if (n > 0) { cx /= n; cy /= n; cz /= n; }
+        let maxR2 = 0;
+        for (const bag of this.model_bags) {
+          for (const atom of bag.atom_array) {
+            const dx = atom.xyz[0] - cx, dy = atom.xyz[1] - cy, dz = atom.xyz[2] - cz;
+            const r2 = dx * dx + dy * dy + dz * dz;
+            if (r2 > maxR2) maxR2 = r2;
+          }
+        }
+        const boundingRadius = Math.sqrt(maxR2) + 2; // +2 for VdW radii
+        this.speckAO = new SpeckAO(this.renderer, this.scene, this.camera,
+                                   boundingRadius);
+      }
+      this.speckAO.reset();
+    } else if (this.speckAO) {
+      this.speckAO.dispose();
+      this.speckAO = null;
     }
   }
 
@@ -2336,6 +2386,8 @@ export class Viewer {
     this.update_download_select(this.download_select_el, bag);
     this.update_delete_select(this.delete_select_el);
     this.update_mutate_select(this.mutate_select_el);
+    this.update_viewer_overlay_position();
+    if (this.tied_viewer) this.tied_viewer.update_viewer_overlay_position();
   }
 
   update_blob_select(select: HTMLSelectElement | null) {
@@ -4489,11 +4541,25 @@ export class Viewer {
       this.update_camera();
     }
     const tied = this.tied_viewer;
-    if (!this.controls.is_going()) {
+    if (!this.controls.is_moving()) {
       this.redraw_maps();
       if (tied && !tied.scheduled) tied.redraw_maps();
     }
-    this.renderer.render(this.scene, this.camera);
+    if (this.speckAO) {
+      if (this.controls.is_moving()) {
+        this.speckAO.reset();
+        this.renderer.render(this.scene, this.camera);
+      } else {
+        this.speckAO.render();
+        const pct = Math.min(100, Math.round(100 * this.speckAO.sampleCount /
+                                              this.speckAO.maxSamples));
+        if (pct < 100) {
+          this.hud('calculating AO: ' + pct + '%');
+        }
+      }
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
     if (tied && !tied.scheduled) tied.renderer.render(tied.scene, tied.camera);
     //if (this.nav) {
     //  this.nav.renderer.render(this.nav.scene, this.camera);
@@ -4501,6 +4567,9 @@ export class Viewer {
     this.scheduled = false;
     if (this.controls.is_moving()) {
       this.request_render();
+    } else if (this.speckAO && !this.speckAO.isDone()) {
+      // Throttle AO accumulation to keep UI responsive
+      setTimeout(() => this.request_render(), 50);
     }
   }
 

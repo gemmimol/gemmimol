@@ -1039,6 +1039,21 @@ export function makeWheels(atom_arr: Atom[], color_arr: Color[], size: number) {
   return obj;
 }
 
+// Van der Waals radii (in Angstroms) for space-filling rendering.
+const VDW_RADII: Record<string, number> = {
+  H: 1.20, D: 1.20, He: 1.40,
+  C: 1.70, N: 1.55, O: 1.52, F: 1.47, Ne: 1.54,
+  Si: 2.10, P: 1.80, S: 1.80, Cl: 1.75, Ar: 1.88,
+  Se: 1.90, Br: 1.85, Kr: 2.02, I: 1.98, Xe: 2.16,
+  Na: 2.27, Mg: 1.73, K: 2.75, Ca: 2.31, Fe: 1.63,
+  Zn: 1.39, Cu: 1.40, Mn: 1.39, Co: 1.26, Ni: 1.24,
+};
+const VDW_DEFAULT = 1.50;
+
+function getVdwRadius(element: string): number {
+  return VDW_RADII[element] ?? VDW_DEFAULT;
+}
+
 // For the ball-and-stick rendering we use so-called imposters.
 // This technique was described in:
 // http://doi.ieeecomputersociety.org/10.1109/TVCG.2006.115
@@ -1065,12 +1080,62 @@ void main() {
 }
 `;
 
+// Variant with per-vertex radius for space-filling rendering
+const sphere_var_vert = `
+attribute vec3 color;
+attribute vec2 corner;
+attribute float aRadius;
+varying vec3 vcolor;
+varying vec2 vcorner;
+varying vec3 vpos;
+varying float vRadius;
+
+void main() {
+  vcolor = color;
+  vcorner = corner;
+  vRadius = aRadius;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  vpos = mvPosition.xyz;
+  mvPosition.xy += corner * aRadius;
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+const sphere_var_frag = `
+${fog_pars_fragment}
+uniform mat4 projectionMatrix;
+uniform vec3 lightDir;
+uniform int uMode;
+varying vec3 vcolor;
+varying vec2 vcorner;
+varying vec3 vpos;
+varying float vRadius;
+
+void main() {
+  float sq = dot(vcorner, vcorner);
+  if (sq > 1.0) discard;
+  float z = sqrt(1.0-sq);
+  vec3 xyz = vec3(vcorner.x, vcorner.y, z);
+  vec4 projPos = projectionMatrix * vec4(vpos + vRadius * xyz, 1.0);
+  gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
+                           gl_DepthRange.near + gl_DepthRange.far);
+  if (uMode == 1) {
+    gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
+  } else {
+    float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
+    gl_FragColor = vec4(weight * vcolor, 1.0);
+    ${fog_end_fragment}
+  }
+}
+`;
+
 // based on 3Dmol imposter shaders
 const sphere_frag = `
 ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
 uniform float radius;
+uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -1083,9 +1148,13 @@ void main() {
   vec4 projPos = projectionMatrix * vec4(vpos + radius * xyz, 1.0);
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
-  gl_FragColor = vec4(weight * vcolor, 1.0);
-  ${fog_end_fragment}
+  if (uMode == 1) {
+    gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
+  } else {
+    float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
+    gl_FragColor = vec4(weight * vcolor, 1.0);
+    ${fog_end_fragment}
+  }
 }
 `;
 
@@ -1118,6 +1187,7 @@ uniform float radius;
 uniform float shineStrength;
 uniform float shinePower;
 uniform vec3 shineColor;
+uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -1129,12 +1199,17 @@ void main() {
   vec4 projPos = projectionMatrix * pos;
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  float diffuse = length(cross(vaxis, lightDir)) * central;
-  float weight = diffuse * 0.8 + 0.2;
-  float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
-  vec3 shaded = min(weight, 1.0) * vcolor;
-  gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
-${fog_end_fragment}
+  if (uMode == 1) {
+    vec3 normal = normalize(vec3(vcorner[1] * vaxis.xy, central));
+    gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+  } else {
+    float diffuse = length(cross(vaxis, lightDir)) * central;
+    float weight = diffuse * 0.8 + 0.2;
+    float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
+    vec3 shaded = min(weight, 1.0) * vcolor;
+    gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
+    ${fog_end_fragment}
+  }
 }`;
 
 type StickOptions = {
@@ -1152,6 +1227,7 @@ function makeSticks(vertex_arr: Num3[], color_arr: Color[], radius: number,
     shineStrength: options.shineStrength || 0.0,
     shinePower: options.shinePower || 8.0,
     shineColor: options.shineColor || new Color(0xffffff),
+    uMode: 0,
   });
   const material = new ShaderMaterial({
     uniforms: uniforms,
@@ -1240,6 +1316,7 @@ function makeBalls(atom_arr: Atom[], color_arr: Color[], radius: number) {
     uniforms: makeUniforms({
       radius: radius,
       lightDir: light_dir,
+      uMode: 0,
     }),
     vertexShader: sphere_vert,
     fragmentShader: sphere_frag,
@@ -1249,6 +1326,66 @@ function makeBalls(atom_arr: Atom[], color_arr: Color[], radius: number) {
   material.extensions.fragDepth = true;
   const obj = new Mesh(geometry, material);
   return obj;
+}
+
+export
+function makeSpaceFilling(atom_arr: Atom[], color_arr: Color[]) {
+  const N = atom_arr.length;
+  const geometry = new BufferGeometry();
+
+  const pos = new Float32Array(N * 4 * 3);
+  const radii = new Float32Array(N * 4);
+  for (let i = 0; i < N; i++) {
+    const xyz = atom_arr[i].xyz;
+    const r = getVdwRadius(atom_arr[i].element);
+    for (let j = 0; j < 4; j++) {
+      for (let k = 0; k < 3; k++) {
+        pos[3 * (4*i + j) + k] = xyz[k];
+      }
+      radii[4*i + j] = r;
+    }
+  }
+  geometry.setAttribute('position', new BufferAttribute(pos, 3));
+  geometry.setAttribute('aRadius', new BufferAttribute(radii, 1));
+
+  const corner = new Float32Array(N * 4 * 2);
+  for (let i = 0; i < N; i++) {
+    corner[8*i + 0] = -1;
+    corner[8*i + 1] = -1;
+    corner[8*i + 2] = -1;
+    corner[8*i + 3] = +1;
+    corner[8*i + 4] = +1;
+    corner[8*i + 5] = +1;
+    corner[8*i + 6] = +1;
+    corner[8*i + 7] = -1;
+  }
+  geometry.setAttribute('corner', new BufferAttribute(corner, 2));
+
+  const colors = new Float32Array(N * 4 * 3);
+  for (let i = 0; i < N; i++) {
+    const col = color_arr[i];
+    for (let j = 0; j < 4; j++) {
+      colors[3 * (4*i + j) + 0] = col.r;
+      colors[3 * (4*i + j) + 1] = col.g;
+      colors[3 * (4*i + j) + 2] = col.b;
+    }
+  }
+  geometry.setAttribute('color', new BufferAttribute(colors, 3));
+
+  geometry.setIndex(make_quad_index_buffer(N));
+
+  const material = new ShaderMaterial({
+    uniforms: makeUniforms({
+      lightDir: light_dir,
+      uMode: 0,
+    }),
+    vertexShader: sphere_var_vert,
+    fragmentShader: sphere_var_frag,
+    fog: true,
+    type: 'um_sphere_var',
+  });
+  material.extensions.fragDepth = true;
+  return new Mesh(geometry, material);
 }
 
 const label_vert = `
