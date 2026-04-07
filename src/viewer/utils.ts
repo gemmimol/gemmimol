@@ -6,11 +6,11 @@ export function scale_by_height(value: number, win_size: Num2): number {
   return value * win_size[1] / 640;
 }
 
-type ColorStrategy = (atoms: Atom[], scheme: ColorScheme, hue_shift: number, temp: Color) => Color[];
+type ColorStrategy = (atoms: Atom[], scheme: Partial<ColorScheme>, hue_shift: number, temp: Color) => Color[];
 
 const color_strategies: Record<string, ColorStrategy> = {
   element: (atoms, scheme) => atoms.map(a => 
-    new Color((scheme as any)[a.element] || scheme.def)),
+    new Color((scheme as any)[a.element] || scheme.def || 0x808080)),
 
   chain: (atoms, _, hue_shift, temp) => {
     const cache: Record<string, Color> = {};
@@ -24,7 +24,7 @@ const color_strategies: Record<string, ColorStrategy> = {
   },
 
   polymer: (atoms, scheme) => atoms.map(a => 
-    new Color(a.is_ligand ? scheme.def : 0x00dd00)),
+    new Color(a.is_ligand ? (scheme.def || 0x808080) : 0x00dd00)),
 
   bfactor: (atoms, _, __, temp) => atoms.map(a => {
     const t = Math.min(1, Math.max(0, (a.b - 20) / 80));
@@ -37,7 +37,7 @@ const color_strategies: Record<string, ColorStrategy> = {
 
 export function color_by(prop: string, atoms: Atom[], colors?: ColorScheme,
                          hue_shift = 0): Color[] {
-  const scheme = colors || {};
+  const scheme = (colors || {}) as Partial<ColorScheme>;
   const temp = new Color();
   
   const strategy = color_strategies[prop];
