@@ -1652,41 +1652,61 @@ export class Viewer {
     this.request_render();
   }
 
-  redraw_model(model_bag: ModelBag) {
+  redraw_model(model_bag: ModelBag, skip_ao_update?: boolean) {
     this.clear_model_objects(model_bag);
     if (model_bag.visible) {
       this.set_model_objects(model_bag);
     }
+    if (!skip_ao_update) this.update_speck_ao();
   }
 
   redraw_models() {
     for (const model_bag of this.model_bags) {
-      this.redraw_model(model_bag);
+      this.redraw_model(model_bag, true);
     }
-    // Manage AO lifecycle based on style
+    this.update_speck_ao();
+  }
+
+  space_filling_bounding_radius() {
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    let n = 0;
+    for (const bag of this.model_bags) {
+      for (const atom of bag.atom_array) {
+        cx += atom.xyz[0];
+        cy += atom.xyz[1];
+        cz += atom.xyz[2];
+        n++;
+      }
+    }
+    if (n === 0) return 2;
+    cx /= n;
+    cy /= n;
+    cz /= n;
+    let maxR2 = 0;
+    for (const bag of this.model_bags) {
+      for (const atom of bag.atom_array) {
+        const dx = atom.xyz[0] - cx;
+        const dy = atom.xyz[1] - cy;
+        const dz = atom.xyz[2] - cz;
+        const r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 > maxR2) maxR2 = r2;
+      }
+    }
+    return Math.sqrt(maxR2) + 2; // +2 for VdW radii
+  }
+
+  update_speck_ao() {
     const needsAO = this.model_bags.some(
       (bag) => bag.conf.mainchain_style === 'space-filling+AO');
     if (needsAO && this.renderer) {
+      const boundingRadius = this.space_filling_bounding_radius();
       if (!this.speckAO) {
-        // Compute bounding radius from all visible atoms
-        let cx = 0, cy = 0, cz = 0, n = 0;
-        for (const bag of this.model_bags) {
-          for (const atom of bag.atom_array) {
-            cx += atom.xyz[0]; cy += atom.xyz[1]; cz += atom.xyz[2]; n++;
-          }
-        }
-        if (n > 0) { cx /= n; cy /= n; cz /= n; }
-        let maxR2 = 0;
-        for (const bag of this.model_bags) {
-          for (const atom of bag.atom_array) {
-            const dx = atom.xyz[0] - cx, dy = atom.xyz[1] - cy, dz = atom.xyz[2] - cz;
-            const r2 = dx * dx + dy * dy + dz * dz;
-            if (r2 > maxR2) maxR2 = r2;
-          }
-        }
-        const boundingRadius = Math.sqrt(maxR2) + 2; // +2 for VdW radii
         this.speckAO = new SpeckAO(this.renderer, this.scene, this.camera,
                                    boundingRadius);
+      } else {
+        this.speckAO.setBoundingRadius(boundingRadius);
       }
       this.speckAO.reset();
     } else if (this.speckAO) {
@@ -1907,6 +1927,7 @@ export class Viewer {
       }
       this.sym_model_bags = [];
       this.sym_bond_objects = [];
+      this.update_speck_ao();
       this.update_nav_menus();
       this.hud('symmetry mates hidden');
       this.request_render();
@@ -1988,6 +2009,7 @@ export class Viewer {
     this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') +
              ' shown: ' + shown_symops.join(', '));
     images.delete();
+    this.update_speck_ao();
     this.request_render();
   }
 
@@ -4555,6 +4577,8 @@ export class Viewer {
                                               this.speckAO.maxSamples));
         if (pct < 100) {
           this.hud('calculating AO: ' + pct + '%');
+        } else {
+          this.hud();
         }
       }
     } else {
@@ -4622,6 +4646,7 @@ export class Viewer {
     this.model_bags.push(model_bag);
     this.auto_adjust_map_radius();
     this.set_model_objects(model_bag);
+    this.update_speck_ao();
     this.update_nav_menus();
     this.request_render();
   }

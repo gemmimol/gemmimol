@@ -1041,17 +1041,17 @@ export function makeWheels(atom_arr: Atom[], color_arr: Color[], size: number) {
 
 // Van der Waals radii (in Angstroms) for space-filling rendering.
 const VDW_RADII: Record<string, number> = {
-  H: 1.20, D: 1.20, He: 1.40,
-  C: 1.70, N: 1.55, O: 1.52, F: 1.47, Ne: 1.54,
-  Si: 2.10, P: 1.80, S: 1.80, Cl: 1.75, Ar: 1.88,
-  Se: 1.90, Br: 1.85, Kr: 2.02, I: 1.98, Xe: 2.16,
-  Na: 2.27, Mg: 1.73, K: 2.75, Ca: 2.31, Fe: 1.63,
-  Zn: 1.39, Cu: 1.40, Mn: 1.39, Co: 1.26, Ni: 1.24,
+  H: 1.20, D: 1.20, HE: 1.40,
+  C: 1.70, N: 1.55, O: 1.52, F: 1.47, NE: 1.54,
+  SI: 2.10, P: 1.80, S: 1.80, CL: 1.75, AR: 1.88,
+  SE: 1.90, BR: 1.85, KR: 2.02, I: 1.98, XE: 2.16,
+  NA: 2.27, MG: 1.73, K: 2.75, CA: 2.31, FE: 1.63,
+  ZN: 1.39, CU: 1.40, MN: 1.39, CO: 1.26, NI: 1.24,
 };
 const VDW_DEFAULT = 1.50;
 
 function getVdwRadius(element: string): number {
-  return VDW_RADII[element] ?? VDW_DEFAULT;
+  return VDW_RADII[element.toUpperCase()] ?? VDW_DEFAULT;
 }
 
 // For the ball-and-stick rendering we use so-called imposters.
@@ -1121,6 +1121,8 @@ void main() {
                            gl_DepthRange.near + gl_DepthRange.far);
   if (uMode == 1) {
     gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
+  } else if (uMode == 2) {
+    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
   } else {
     float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
     gl_FragColor = vec4(weight * vcolor, 1.0);
@@ -1150,6 +1152,8 @@ void main() {
                            gl_DepthRange.near + gl_DepthRange.far);
   if (uMode == 1) {
     gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
+  } else if (uMode == 2) {
+    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
   } else {
     float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
     gl_FragColor = vec4(weight * vcolor, 1.0);
@@ -1202,6 +1206,8 @@ void main() {
   if (uMode == 1) {
     vec3 normal = normalize(vec3(vcorner[1] * vaxis.xy, central));
     gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+  } else if (uMode == 2) {
+    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
   } else {
     float diffuse = length(cross(vaxis, lightDir)) * central;
     float weight = diffuse * 0.8 + 0.2;

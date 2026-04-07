@@ -106,10 +106,15 @@ uniform vec2 uRes;
 uniform float uAO;
 uniform float uBrightness;
 uniform float uOutlineStrength;
+uniform vec3 uBgColor;
 
 void main() {
   vec2 p = gl_FragCoord.xy/uRes;
   vec4 sceneColor = texture2D(uSceneColor, p);
+  if (sceneColor.a == 0.0) {
+    gl_FragColor = vec4(uBgColor, 1.0);
+    return;
+  }
   if (uOutlineStrength > 0.0) {
     float depth = texture2D(uSceneDepth, p).r;
     vec2 texel = 1.0 / uRes;
@@ -214,10 +219,10 @@ export class SpeckAO {
     this.colorRendered = false;
     this.normalRendered = false;
     this.range = boundingRadius * 2;
-    this.samplesPerFrame = 8;
+    this.samplesPerFrame = 32;
     this.maxSamples = 1024;
 
-    this.aoStrength = 1.0;
+    this.aoStrength = 1.5;
     this.brightness = 1.0;
     this.outlineStrength = 0.0;
 
@@ -228,6 +233,10 @@ export class SpeckAO {
     this._syncSizes();
     this._createRenderTargets();
     this._createPrograms();
+  }
+
+  setBoundingRadius(boundingRadius: number) {
+    this.range = Math.max(2 * boundingRadius, 1);
   }
 
   _syncSizes() {
@@ -300,6 +309,13 @@ export class SpeckAO {
     return this.sampleCount >= this.maxSamples;
   }
 
+  _withoutFog(fn: () => void) {
+    const fog = this.scene.fog;
+    this.scene.fog = null;
+    fn();
+    this.scene.fog = fog;
+  }
+
   // Set camera near/far to tight range around molecule (like speck: near=0, far=range)
   // so depth buffer values span only the molecule, not the entire scene.
   _withTightDepth(fn: () => void) {
@@ -332,16 +348,17 @@ export class SpeckAO {
     }
 
     if (!this.colorRendered) {
-      this._setMaterialMode(0);
-      this._withTightDepth(() => {
+      this._setMaterialMode(2);
+      this._withoutFog(() => this._withTightDepth(() => {
         this.renderer.render(this.scene, this.camera, this.rtColor, true);
-      });
+      }));
+      this._setMaterialMode(0);
       this.colorRendered = true;
     } else if (!this.normalRendered) {
       this._setMaterialMode(1);
-      this._withTightDepth(() => {
+      this._withoutFog(() => this._withTightDepth(() => {
         this.renderer.render(this.scene, this.camera, this.rtNormal, true);
-      });
+      }));
       this._setMaterialMode(0);
       this.normalRendered = true;
     } else {
@@ -372,6 +389,8 @@ export class SpeckAO {
     const origTop = this.camera.top;
     const origBottom = this.camera.bottom;
     const origZoom = this.camera.zoom;
+    const origMatrixAutoUpdate = this.camera.matrixAutoUpdate;
+    const origMatrixWorldNeedsUpdate = this.camera.matrixWorldNeedsUpdate;
 
     // Widen camera and tighten depth to encompass molecule at any rotation
     const half = this.range / 2;
@@ -390,12 +409,16 @@ export class SpeckAO {
     // Rotate the camera
     const rotatedMatrix = new Matrix4();
     rotatedMatrix.multiplyMatrices(origMatrix, rot);
+    this.camera.matrixAutoUpdate = false;
+    this.camera.matrixWorldNeedsUpdate = false;
     this.camera.matrixWorld.copy(rotatedMatrix);
     this.camera.matrixWorldInverse.copy(rotatedMatrix);
     this.camera.matrixWorldInverse.invert();
 
     this._setMaterialMode(0);
-    this.renderer.render(this.scene, this.camera, this.rtRandRot, true);
+    this._withoutFog(() => {
+      this.renderer.render(this.scene, this.camera, this.rtRandRot, true);
+    });
 
     // Restore camera
     this.camera.matrixWorld.copy(origMatrix);
@@ -407,6 +430,8 @@ export class SpeckAO {
     this.camera.zoom = origZoom;
     this.camera.near = origNear;
     this.camera.far = origFar;
+    this.camera.matrixAutoUpdate = origMatrixAutoUpdate;
+    this.camera.matrixWorldNeedsUpdate = origMatrixWorldNeedsUpdate;
     this.camera.updateProjectionMatrix();
 
     // Accumulator pass (raw WebGL)
@@ -482,6 +507,8 @@ export class SpeckAO {
     setUniform(gl, prog, 'uAO', '1f', this.aoStrength);
     setUniform(gl, prog, 'uBrightness', '1f', this.brightness);
     setUniform(gl, prog, 'uOutlineStrength', '1f', this.outlineStrength);
+    const bg = this.renderer.getClearColor();
+    setUniform(gl, prog, 'uBgColor', '3fv', [bg.r, bg.g, bg.b]);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     this._drawQuad(prog);
