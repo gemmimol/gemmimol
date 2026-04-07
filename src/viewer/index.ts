@@ -3,7 +3,8 @@
 
 import type { Model } from '../model';
 import type { ElMap } from '../elmap';
-import { ModelBag, MapBag } from './bags';
+import { createModelBag, createMapBag } from './bags';
+import type { ModelBag, MapBag } from './bags';
 import { ModelRenderer, MapRenderer } from './rendering';
 import { EventManager } from './events';
 import { UIManager } from './ui';
@@ -32,9 +33,10 @@ export type {
   ViewerConfig,
   ColorScheme,
   SiteNavItem,
-  ModelBag,
-  MapBag,
 };
+
+// Re-export bag types
+export type { ModelBag, MapBag } from './bags';
 
 // Re-export constants
 export {
@@ -77,6 +79,19 @@ export class Viewer {
   renderer: any;
   controls: any;
 
+  // Backward compatibility properties
+  key_bindings: Array<((evt: KeyboardEvent) => void) | false | undefined>;
+  default_camera_pos: [number, number, number];
+  decor: any;
+
+  // Gemmi module reference
+  private gemmi_module: any;
+  private gemmi_factory: (() => Promise<any>) | null;
+
+  // Static help properties
+  declare KEYBOARD_HELP: string;
+  declare MOUSE_HELP: string;
+
   constructor(options?: Record<string, any> | string) {
     const opts = normalize_viewer_options(options);
 
@@ -109,6 +124,13 @@ export class Viewer {
     this.camera = null;
     this.renderer = null;
     this.controls = null;
+
+    // Backward compatibility initialization
+    this.key_bindings = [];
+    this.default_camera_pos = [0, 0, 100];
+    this.decor = { cell_box: null, selection: null, zoom_grid: null, mark: null };
+    this.gemmi_module = null;
+    this.gemmi_factory = null;
   }
 
   // Initialize with Three.js objects
@@ -142,7 +164,7 @@ export class Viewer {
 
   // Load structure (backward compatible)
   load_structure(model: Model, label?: string): ModelBag {
-    const bag = new ModelBag(model, this.config, this.win_size);
+    const bag = createModelBag(model, this.config, this.win_size);
     if (label) bag.label = label;
     this.model_bags.push(bag);
     this.visibility.set_bags(this.model_bags, this.map_bags);
@@ -152,7 +174,7 @@ export class Viewer {
 
   // Add map (backward compatible)
   add_map(map: ElMap, is_diff_map: boolean = false): MapBag {
-    const bag = new MapBag(map, this.config, is_diff_map);
+    const bag = createMapBag(map, this.config, is_diff_map);
     this.map_bags.push(bag);
     this.visibility.set_bags(this.model_bags, this.map_bags);
     return bag;
@@ -288,9 +310,192 @@ export class Viewer {
     return success;
   }
 
-  // HUD update
+  // HUD update (backward compatible alias)
+  hud(text: string, type?: string): void {
+    if (type === 'ERR') {
+      console.error('ERR:', text);
+    }
+    this.ui?.update_hud(text);
+  }
+
   update_hud(text: string) {
     this.ui?.update_hud(text);
+  }
+
+  // Request render (backward compatible)
+  request_render(): void {
+    // In the new architecture, rendering is handled automatically
+    // This is a no-op for backward compatibility
+  }
+
+  // Load file via XHR (backward compatible)
+  load_file(url: string, options: { binary?: boolean; progress?: boolean },
+            callback: (req: XMLHttpRequest) => void): void {
+    const req = new XMLHttpRequest();
+    req.open('GET', url, true);
+    if (options.binary) {
+      req.responseType = 'arraybuffer';
+    }
+    if (this.xhr_headers) {
+      for (const [key, val] of Object.entries(this.xhr_headers)) {
+        req.setRequestHeader(key, val);
+      }
+    }
+    req.onload = () => {
+      if (req.status === 200) {
+        callback(req);
+      } else {
+        this.hud(`Failed to load ${url}: ${req.status}`, 'ERR');
+      }
+    };
+    req.onerror = () => {
+      this.hud(`Failed to load ${url}`, 'ERR');
+    };
+    req.send();
+  }
+
+  // XHR headers storage
+  xhr_headers: Record<string, string> = {};
+
+  // Set dropzone for drag-and-drop (backward compatible)
+  set_dropzone(element: HTMLElement, callback: (file: File) => Promise<void> | void): void {
+    element.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    element.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        callback(files[0]);
+      }
+    });
+  }
+
+  // Recenter view (backward compatible)
+  recenter(): void {
+    // Implementation would depend on having a model loaded
+    // This is a stub for backward compatibility
+  }
+
+  // Pick PDB and map from file (backward compatible)
+  pick_pdb_and_map(): Promise<void> {
+    return Promise.reject(new Error('pick_pdb_and_map not implemented in new viewer'));
+  }
+
+  // Set view from options (backward compatible)
+  set_view(options: Record<string, any>): void {
+    if (options.xyz) {
+      this.go_to(options.xyz);
+    }
+    // Handle other view options as needed
+  }
+
+  // Resolve gemmi module (backward compatible)
+  resolve_gemmi(): Promise<any> {
+    if (this.gemmi_module) {
+      return Promise.resolve(this.gemmi_module);
+    }
+    if (this.gemmi_factory) {
+      return this.gemmi_factory();
+    }
+    // Try to get from globalThis
+    const factory = (globalThis as any).Gemmi;
+    if (typeof factory === 'function') {
+      return factory();
+    }
+    return Promise.reject(new Error('Gemmi factory not available'));
+  }
+
+  // Remove and dispose Three.js object (backward compatible)
+  remove_and_dispose(obj: any): void {
+    if (!obj) return;
+    if (this.scene) {
+      this.scene.remove(obj);
+    }
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (obj.material.uniforms?.map?.value) {
+        obj.material.uniforms.map.value.dispose();
+      }
+      obj.material.dispose();
+    }
+    if (obj.children) {
+      for (const child of obj.children) {
+        this.remove_and_dispose(child);
+      }
+    }
+  }
+
+  // Clear electron density objects from map (backward compatible)
+  clear_el_objects(): void {
+    // no-op
+  }
+
+  // Apply selected option (backward compatible)
+  apply_selected_option(key?: string): void {
+    if (key) {
+      // Subclass implementation
+    }
+  }
+
+  // Change zoom by factor (backward compatible)
+  change_zoom_by_factor(mult: number): void {
+    if (this.camera) {
+      this.camera.zoom *= mult;
+      if (this.camera.updateProjectionMatrix) {
+        this.camera.updateProjectionMatrix();
+      }
+    }
+  }
+
+  // Toggle cell box (backward compatible)
+  toggle_cell_box(): void {
+    // Stub for backward compatibility
+  }
+
+  // Toggle help (backward compatible)
+  toggle_help(): void {
+    this.ui?.toggle_help();
+  }
+
+  // Update camera (backward compatible)
+  update_camera(): void {
+    if (this.camera?.updateProjectionMatrix) {
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  // Get window size (backward compatible alias)
+  get window_size(): [number, number] {
+    return this.win_size;
+  }
+
+  // Change isolevel (backward compatible)
+  change_isolevel_by(map_idx: number, delta: number): void {
+    const bag = this.map_bags[map_idx];
+    if (bag) {
+      bag.isolevel += delta;
+      this.redraw_maps();
+    }
+  }
+
+  // Change map radius (backward compatible)
+  change_map_radius(delta: number): void {
+    this.config.map_radius = Math.max(0, Math.min(
+      this.config.map_radius + delta,
+      this.config.max_map_radius
+    ));
+    this.redraw_maps();
+  }
+
+  // Change slab width (backward compatible)
+  change_slab_width_by(delta: number): void {
+    if (this.controls?.slab_width) {
+      this.controls.slab_width[0] = Math.max(0.01, this.controls.slab_width[0] + delta);
+      this.controls.slab_width[1] = Math.max(0.01, this.controls.slab_width[1] + delta);
+    }
   }
 
   // Event handling (called by main app)

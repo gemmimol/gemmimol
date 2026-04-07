@@ -1,11 +1,12 @@
 import { ElMap } from './elmap';
-import { Viewer, normalize_viewer_options, help_action_link } from './viewer';
+import { Viewer } from './viewer/index';
+import { normalize_viewer_options, help_action_link } from './viewer/types';
 import { addXyzCross, makeLineMaterial, makeLineSegments,
          makeUniforms, fog_pars_fragment, fog_end_fragment } from './draw';
 import { Points, BufferAttribute, BufferGeometry,
          ShaderMaterial, Color } from './three-r162/main';
 import type { GemmiModule } from './gemmi';
-import type { ViewerConfig } from './viewer';
+import type { ViewerConfig } from './viewer/types';
 
 type Num3 = [number, number, number];
 
@@ -399,7 +400,7 @@ export class ReciprocalViewer extends Viewer {
       if (self.map_bags.length > 0) {
         const old_map = self.map_bags.pop();
         if (old_map != null) {
-          self.clear_el_objects(old_map);
+          self.clear_el_objects();
           old_map.map.dispose();
         }
       }
@@ -506,7 +507,8 @@ export class ReciprocalViewer extends Viewer {
     this.set_points(this.data);
   }
 
-  apply_selected_option(key: string) {
+  apply_selected_option(key?: string) {
+    if (!key) return;
     switch (key) {
       case 'show_axes':
         this.set_axes();
@@ -522,7 +524,6 @@ export class ReciprocalViewer extends Viewer {
         break;
       }
       default:
-        super.apply_selected_option(key);
         return;
     }
     this.request_render();

@@ -12,6 +12,6 @@
     "src/model.ts",
     "src/mtz.ts",
     "src/reciprocal.ts",
-    "src/viewer.ts"
+    "src/viewer/index.ts"
   ]
 }

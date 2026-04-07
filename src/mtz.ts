@@ -1,5 +1,5 @@
 import { ElMap } from './elmap';
-import type { Viewer } from './viewer';
+import type { Viewer } from './viewer/index';
 import type { GemmiModule, Mtz as WasmMtz, MtzMap as WasmMtzMap } from './gemmi';
 
 function log_timing(t0: number, text: string) {
@@ -102,7 +102,7 @@ function set_pdb_and_mtz_dropzone(gemmi: GemmiModule, viewer: Viewer,
         reader.readAsArrayBuffer(file);
       });
     } else {
-      return viewer.pick_pdb_and_map(file);
+      return viewer.pick_pdb_and_map();
     }
   });
 }

@@ -27,17 +27,7 @@ type CifLoop = {
   rows: string[][],
 };
 
-function tokenize_cif_row(line: string) {
-  const tokens = line.match(/'(?:[^']*)'|"(?:[^"]*)"|\S+/g);
-  if (tokens == null) return [];
-  return tokens.map((token) => {
-    if ((token.startsWith('\'') && token.endsWith('\'')) ||
-        (token.startsWith('"') && token.endsWith('"'))) {
-      return token.slice(1, -1);
-    }
-    return token;
-  });
-}
+import { tokenize_cif_row } from './cif';
 
 function extract_cif_loops(text: string, first_tag: string): CifLoop[] {
   const lines = text.split(/\r?\n/);

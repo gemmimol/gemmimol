@@ -32,7 +32,7 @@ export * from './draw';
 export * from './controls';
 
 // Viewer
-export * from './viewer';
+export * from './viewer/index';
 
 // ReciprocalViewer - small extra code that shows reciprocal lattice
 export * from './reciprocal';

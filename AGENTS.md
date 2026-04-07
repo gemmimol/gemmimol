@@ -8,6 +8,8 @@ see also. ARCHITECTURE.md
 usually copying code from /home/wojdyr/fresh/three.js/build/three.module.js
 to src/three-*
 is preffered to writing own functions
+don't care for theAPI compatibility the only api that matters is what's used in this repo
+
 
 avoid editing generated files like gemmimol.js, instead edit files in src/ and rebuild js
 i'm testing it running server from ../gemmimol.github.io/

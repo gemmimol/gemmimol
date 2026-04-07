@@ -3,8 +3,15 @@ import type { ElMap } from '../elmap';
 import type { Atom, Model } from '../model';
 import type { ViewerConfig, Num3, GemmiSelectionContext } from './types';
 import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
-         makeSticks, makeBalls, makeWheels, addXyzCross } from '../draw';
+         makeChickenWire, makeSticks, makeBalls, makeWheels, addXyzCross } from '../draw';
 import { color_by, scale_by_height } from './utils';
+
+
+// Re-export types for backward compatibility
+export type { ViewerConfig, GemmiSelectionContext };
+
+// Type for Num2 (window size)
+export type Num2 = [number, number];
 
 // Unified container for both models and maps - eliminates 80% duplicate code
 export class SceneBag<T = Model | ElMap> {
@@ -16,6 +23,7 @@ export class SceneBag<T = Model | ElMap> {
   objects: Object3D[];
   block_ctr: Vector3;
   symop: string;
+  win_size: Num2;
   
   // Model-specific (undefined for maps)
   model?: Model;
@@ -29,10 +37,10 @@ export class SceneBag<T = Model | ElMap> {
   types?: string[];
   is_diff_map?: boolean;
   el_objects?: Object3D[];
+  name?: string;
 
   // Internal
   private conf: ViewerConfig;
-  private win_size: Num2;
   private static ctor_counter = 0;
 
   constructor(data: T, config: ViewerConfig, win_size: Num2, is_map = false, is_diff_map = false) {
@@ -49,6 +57,7 @@ export class SceneBag<T = Model | ElMap> {
     if (is_map) {
       this.map = data as ElMap;
       this.label = '';
+      this.name = '';
       this.isolevel = is_diff_map ? 3.0 : config.default_isolevel;
       this.types = is_diff_map ? ['map_pos', 'map_neg'] : ['map_den'];
       this.is_diff_map = is_diff_map;
@@ -130,7 +139,7 @@ export class SceneBag<T = Model | ElMap> {
           if (!hydrogens && other.is_hydrogen()) continue;
           if (bond_filter && !bond_filter(atom, other)) continue;
           const bond_type = atom.bond_types[j];
-          if (bond_type === 6) {
+          if (bond_type === 6) { // Metal
             const mid = ball_size == null ? atom.midpoint(other) : this.bond_half_end(atom, other, ball_size * 0.3);
             metal_vertex_arr.push(atom.xyz, mid);
             metal_color_arr.push(color, color);
@@ -231,15 +240,15 @@ export class SceneBag<T = Model | ElMap> {
         if (!hydrogens && other.is_hydrogen()) continue;
         if (bond_filter && !bond_filter(atom, other)) continue;
         const bond_type = atom.bond_types[j];
-        if (bond_type === 6) {
+        if (bond_type === 6) { // Metal
           const mid = this.bond_half_end(atom, other, radius * 0.5);
           metal_vertex_arr.push(atom.xyz, mid);
           metal_color_arr.push(color, color);
           metal_bond_type_arr.push(bond_type, bond_type);
-        } else if (bond_type === 2) {
+        } else if (bond_type === 2) { // Double
           this.add_offset_stick(vertex_arr, color_arr, bond_type_arr, atom, other, color, bond_type, radius * 0.75, radius);
           this.add_offset_stick(vertex_arr, color_arr, bond_type_arr, atom, other, color, bond_type, -radius * 0.75, radius);
-        } else if (bond_type === 3) {
+        } else if (bond_type === 3) { // Triple
           const mid = this.bond_half_end(atom, other, radius);
           vertex_arr.push(atom.xyz, mid);
           color_arr.push(color, color);
@@ -336,12 +345,12 @@ export class SceneBag<T = Model | ElMap> {
     this.atom_array = visible_atoms;
   }
 
-  private calculate_tangents(seg: Atom[], res_map: Record<string, any>): number[][] {
-    const tangents: number[][] = [];
-    let last = [0, 0, 0];
+  private calculate_tangents(seg: Atom[], res_map: Record<string, any>): Num3[] {
+    const tangents: Num3[] = [];
+    let last: Num3 = [0, 0, 0];
     for (const atom of seg) {
       const residue = res_map[atom.resid()];
-      const tang = this.model!.calculate_tangent_vector(residue);
+      const tang = this.model!.calculate_tangent_vector(residue) as Num3;
       if (tang[0]*last[0] + tang[1]*last[1] + tang[2]*last[2] < 0) {
         tang[0] = -tang[0]; tang[1] = -tang[1]; tang[2] = -tang[2];
       }
@@ -388,8 +397,53 @@ export class SceneBag<T = Model | ElMap> {
   update_win_size(win_size: Num2) {
     this.win_size = win_size;
   }
+
+  // --- Map-specific methods ---
+  
+  redraw_map(scene: any, config: ViewerConfig) {
+    if (!this.map || !this.visible) return;
+    
+    // Clear old objects
+    for (const obj of this.el_objects || []) {
+      scene.remove(obj);
+      if ((obj as any).geometry) (obj as any).geometry.dispose();
+      if ((obj as any).material) (obj as any).material.dispose();
+    }
+    this.el_objects = [];
+    
+    if (config.map_radius <= 0) return;
+    
+    // Prepare isosurface block
+    const center: Num3 = [this.block_ctr.x, this.block_ctr.y, this.block_ctr.z];
+    this.map.prepare_isosurface(config.map_radius, center, false);
+    
+    // Generate isosurfaces
+    for (const mtype of this.types || ['map_den']) {
+      const isolevel = (mtype === 'map_neg' ? -1 : 1) * (this.isolevel || 1.5);
+      try {
+        const iso = this.map.isomesh_in_block(isolevel, 'marching cubes');
+        if (!iso) continue;
+        
+        const color = config.colors?.[mtype as keyof typeof config.colors] || new Color(0x808080);
+        const obj = makeChickenWire(iso, { color, linewidth: config.map_line });
+        this.el_objects.push(obj);
+        scene.add(obj);
+      } catch {
+        // Skip failed isosurfaces
+      }
+    }
+  }
 }
 
 // Backward-compatible type aliases
 export type ModelBag = SceneBag<Model>;
 export type MapBag = SceneBag<ElMap>;
+
+// Legacy factory functions for backward compatibility
+export function createModelBag(model: Model, config: ViewerConfig, win_size: Num2): ModelBag {
+  return SceneBag.forModel(model, config, win_size);
+}
+
+export function createMapBag(map: ElMap, config: ViewerConfig, is_diff_map: boolean): MapBag {
+  return SceneBag.forMap(map, config, is_diff_map);
+}
