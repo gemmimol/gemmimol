@@ -85,6 +85,7 @@
               'H shows help',
               'HTML');
       };
+      history.replaceState(null, '', '?id=' + pdbid);
       if (use_pdbe) load_from_pdbe(pdbid, callback);
       else V.load_from_rcsb(pdbid, callback);
     }

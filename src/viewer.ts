@@ -81,6 +81,7 @@ export type ViewerConfig = {
   hydrogens: boolean,
   ball_size: number,
   stick_radius: number,
+  ao: boolean,
   stay?: boolean;
 };
 
@@ -184,8 +185,7 @@ const INIT_HUD_TEXT = 'This is GemmiMol not Coot.';
 const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
                      'index', 'chain', 'secondary structure'];
 const MAINCHAIN_STYLES = ['sticks', 'lines', 'backbone', 'cartoon',
-                          'ribbon', 'ball&stick', 'space-filling',
-                          'space-filling+AO'];
+                          'ribbon', 'ball&stick', 'space-filling'];
 const SIDECHAIN_STYLES = ['sticks', 'lines', 'ball&stick', 'invisible'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
@@ -953,6 +953,7 @@ export class Viewer {
       hydrogens: false,
       ball_size: 0.4,
       stick_radius: 0.08,
+      ao: false,
     };
 
     // options of the constructor overwrite default values of the config
@@ -1698,7 +1699,7 @@ export class Viewer {
   }
 
   update_speck_ao() {
-    const needsAO = this.model_bags.some(
+    const needsAO = this.config.ao || this.model_bags.some(
       (bag) => bag.conf.mainchain_style === 'space-filling+AO');
     if (needsAO && this.renderer) {
       const boundingRadius = this.space_filling_bounding_radius();
@@ -4080,6 +4081,12 @@ export class Viewer {
 
   set_common_key_bindings() {
     const kb = new Array(256);
+    // a
+    kb[65] = function (this: Viewer) {
+      this.config.ao = !this.config.ao;
+      this.update_speck_ao();
+      this.hud('AO ' + (this.config.ao ? 'on' : 'off'));
+    };
     // b
     kb[66] = function (this: Viewer, evt: KeyboardEvent) {
       const schemes = Object.keys(this.ColorSchemes);
@@ -4577,8 +4584,9 @@ export class Viewer {
                                               this.speckAO.maxSamples));
         if (pct < 100) {
           this.hud('calculating AO: ' + pct + '%');
-        } else {
-          this.hud();
+        } else if (this.hud_el && this.hud_el.textContent &&
+                   this.hud_el.textContent.startsWith('calculating AO')) {
+          this.hud_el.textContent = '';
         }
       }
     } else {
@@ -5144,6 +5152,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   help_action_link('C = coloring', {keyCode: 67}),
   help_action_link('B = bg color', {keyCode: 66}),
   help_action_link('E = toggle fog', {keyCode: 69}),
+  help_action_link('A = toggle AO', {keyCode: 65}),
   help_action_link('Q = label font', {keyCode: 81}),
   help_action_link('+ = sigma level up', {keyCode: 187}),
   help_action_link('- = sigma level down', {keyCode: 189}),

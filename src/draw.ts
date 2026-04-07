@@ -66,17 +66,27 @@ void main() {
 const unicolor_frag = `
 ${fog_pars_fragment}
 uniform vec3 vcolor;
+uniform int uMode;
 void main() {
-  gl_FragColor = vec4(vcolor, 1.0);
-${fog_end_fragment}
+  if (uMode == 1) {
+    gl_FragColor = vec4(0.5, 0.5, 0.5, 1.0);
+  } else {
+    gl_FragColor = vec4(vcolor, 1.0);
+    ${fog_end_fragment}
+  }
 }`;
 
 const varcolor_frag = `
 ${fog_pars_fragment}
 varying vec3 vcolor;
+uniform int uMode;
 void main() {
-  gl_FragColor = vec4(vcolor, 1.0);
-${fog_end_fragment}
+  if (uMode == 1) {
+    gl_FragColor = vec4(0.5, 0.5, 0.5, 1.0);
+  } else {
+    gl_FragColor = vec4(vcolor, 1.0);
+    ${fog_end_fragment}
+  }
 }`;
 
 function makeLines(pos: Float32Array, color: Color, linewidth: number) {
@@ -326,6 +336,7 @@ export function makeUniforms(params: Record<string, any>) {
     fogNear: { value: null },  // will be updated in setProgram()
     fogFar: { value: null },
     fogColor: { value: null },
+    uMode: { value: 0 },
   };
   for (const [p, v] of Object.entries(params)) {
     uniforms[p] = { value: v };
@@ -392,12 +403,17 @@ void main() {
 const cartoon_frag = `
 ${fog_pars_fragment}
 uniform vec3 lightDir;
+uniform int uMode;
 varying vec3 vcolor;
 varying vec3 vnormal;
 void main() {
-  float weight = abs(dot(normalize(vnormal), normalize(lightDir))) * 0.6 + 0.4;
-  gl_FragColor = vec4(weight * vcolor, 1.0);
-${fog_end_fragment}
+  if (uMode == 1) {
+    gl_FragColor = vec4(normalize(vnormal) * 0.5 + 0.5, 1.0);
+  } else {
+    float weight = abs(dot(normalize(vnormal), normalize(lightDir))) * 0.6 + 0.4;
+    gl_FragColor = vec4(weight * vcolor, 1.0);
+    ${fog_end_fragment}
+  }
 }`;
 
 export function makeCartoon(vertices: Atom[],
@@ -582,7 +598,7 @@ export function makeCartoon(vertices: Atom[],
   geometry.setAttribute('normal', new BufferAttribute(used_norm, 3));
   geometry.setIndex(make_quad_index_buffer(quad_id));
   const material = new ShaderMaterial({
-    uniforms: makeUniforms({lightDir: light_dir}),
+    uniforms: makeUniforms({lightDir: light_dir, uMode: 0}),
     vertexShader: cartoon_vert,
     fragmentShader: cartoon_frag,
     fog: true,
@@ -858,21 +874,26 @@ ${fog_pars_fragment}
 uniform vec3 vcolor;
 uniform vec3 lightDir;
 uniform float opacity;
+uniform int uMode;
 varying vec3 vnormal;
 varying vec3 vview;
 void main() {
   vec3 normal = normalize(vnormal);
   if (!gl_FrontFacing) normal = -normal;
-  vec3 view_dir = normalize(vview);
-  vec3 light_dir = normalize(lightDir);
-  float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
-  vec3 halfway = normalize(light_dir + view_dir);
-  float specular = pow(clamp(dot(normal, halfway), 0.0, 1.0), 80.0);
-  float fresnel = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 3.0);
-  vec3 color = vcolor * (0.22 + 0.78 * diffuse);
-  color += vec3(1.0) * (0.16 * specular + 0.08 * fresnel);
-  gl_FragColor = vec4(color, opacity);
-${fog_end_fragment}
+  if (uMode == 1) {
+    gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+  } else {
+    vec3 view_dir = normalize(vview);
+    vec3 light_dir = normalize(lightDir);
+    float diffuse = clamp(dot(normal, light_dir), 0.0, 1.0);
+    vec3 halfway = normalize(light_dir + view_dir);
+    float specular = pow(clamp(dot(normal, halfway), 0.0, 1.0), 80.0);
+    float fresnel = pow(1.0 - clamp(dot(normal, view_dir), 0.0, 1.0), 3.0);
+    vec3 color = vcolor * (0.22 + 0.78 * diffuse);
+    color += vec3(1.0) * (0.16 * specular + 0.08 * fresnel);
+    gl_FragColor = vec4(color, opacity);
+    ${fog_end_fragment}
+  }
 }`;
 
 export function makeSmoothSurface(data: IsosurfaceData,
@@ -890,6 +911,7 @@ export function makeSmoothSurface(data: IsosurfaceData,
       vcolor: options.color,
       lightDir: light_dir,
       opacity: options.opacity ?? 0.24,
+      uMode: 0,
     }),
     vertexShader: surface_vert,
     fragmentShader: surface_frag,
@@ -917,8 +939,13 @@ void main() {
 
 const grid_frag = `
 varying vec4 vcolor;
+uniform int uMode;
 void main() {
-  gl_FragColor = vcolor;
+  if (uMode == 1) {
+    gl_FragColor = vec4(0.5, 0.5, 0.5, 1.0);
+  } else {
+    gl_FragColor = vcolor;
+  }
 }`;
 
 export function makeGrid(): LineSegments {
@@ -1412,9 +1439,14 @@ const label_frag = `
 ${fog_pars_fragment}
 varying vec2 vUv;
 uniform sampler2D map;
+uniform int uMode;
 void main() {
-  gl_FragColor = texture2D(map, vUv);
-${fog_end_fragment}
+  if (uMode == 1) {
+    gl_FragColor = vec4(0.5, 0.5, 0.5, 1.0);
+  } else {
+    gl_FragColor = texture2D(map, vUv);
+    ${fog_end_fragment}
+  }
 }`;
 
 export class Label {

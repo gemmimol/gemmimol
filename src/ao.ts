@@ -222,9 +222,9 @@ export class SpeckAO {
     this.samplesPerFrame = 32;
     this.maxSamples = 1024;
 
-    this.aoStrength = 1.5;
+    this.aoStrength = 4.0;
     this.brightness = 1.0;
-    this.outlineStrength = 0.0;
+    this.outlineStrength = 0.3;
 
     this.progAccum = null;
     this.progCompose = null;
@@ -332,11 +332,11 @@ export class SpeckAO {
   }
 
   _setMaterialMode(mode: number) {
-    for (const obj of this.scene.children) {
+    this.scene.traverse((obj: any) => {
       if (obj.material && obj.material.uniforms && obj.material.uniforms.uMode) {
         obj.material.uniforms.uMode.value = mode;
       }
-    }
+    });
   }
 
   render() {
@@ -348,11 +348,10 @@ export class SpeckAO {
     }
 
     if (!this.colorRendered) {
-      this._setMaterialMode(2);
+      this._setMaterialMode(0);
       this._withoutFog(() => this._withTightDepth(() => {
         this.renderer.render(this.scene, this.camera, this.rtColor, true);
       }));
-      this._setMaterialMode(0);
       this.colorRendered = true;
     } else if (!this.normalRendered) {
       this._setMaterialMode(1);
