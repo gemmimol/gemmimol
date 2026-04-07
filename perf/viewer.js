@@ -16,24 +16,10 @@ var setup = Promise.all([util.load_gemmi(), util.load_models_from_gemmi('1mru.pd
     var models = result[1];
     emap.from_ccp4(cmap_buf, true, gemmi);
     let model = models[0];
-    viewer.add_model(model);
+    viewer.load_structure(model);
 
-    util.bench('add trace', function () {
-      viewer.config.render_style = 'trace';
-      viewer.set_model_objects(viewer.model_bags[0]);
-      viewer.clear_model_objects(viewer.model_bags[0]);
-    });
-
-    util.bench('add bonds', function () {
-      viewer.config.render_style = 'lines';
-      viewer.set_model_objects(viewer.model_bags[0]);
-      viewer.clear_model_objects(viewer.model_bags[0]);
-    });
-
-    util.bench('add ribbon', function () {
-      viewer.config.render_style = 'ribbon';
-      viewer.set_model_objects(viewer.model_bags[0]);
-      viewer.clear_model_objects(viewer.model_bags[0]);
+    util.bench('redraw model', function () {
+      viewer.redraw_model(viewer.model_bags[0]);
     });
 
     util.bench('add_map+clear', function () {

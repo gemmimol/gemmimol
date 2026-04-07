@@ -3,7 +3,7 @@
  *
  *      elmap.ts <-.
  *                  \
- *                model.ts <- viewer.ts
+ *                model.ts <- viewer/
  *     three-r162/ <---------------' / /
  *       ^  ^----- draw.ts <--------' /
  *       '------ controls.ts <-------'
@@ -31,8 +31,11 @@ export * from './draw';
 // mouse/touchscreen controls
 export * from './controls';
 
-// Viewer
+// NEW MODULAR VIEWER
 export * from './viewer/index';
+
+// Legacy Viewer (for backward compatibility)
+export { Viewer as LegacyViewer } from './viewer';
 
 // ReciprocalViewer - small extra code that shows reciprocal lattice
 export * from './reciprocal';

@@ -1,75 +1,80 @@
-
-var util = require('../perf/util');
-var GM = require('../gemmimol');
-var path = require('path');
-var TextEncoder = require('node:util').TextEncoder;
+import * as util from '../perf/util';
+import * as GM from '../gemmimol';
+import * as path from 'path';
+import { TextEncoder } from 'node:util';
 
 describe('Model', () => {
   'use strict';
-  var model;
+  let model: any;
+
   beforeAll(function () {
-    return util.load_models_from_gemmi('1YJP.pdb').then(function (models) {
+    return util.load_models_from_gemmi('1YJP.pdb').then(function (models: any[]) {
       model = models[0];
     });
   });
+
   it('atoms', () => {
-    for (var i = 0; i < model.atoms.length; i++) {
-      var atom = model.atoms[i];
+    for (let i = 0; i < model.atoms.length; i++) {
+      const atom = model.atoms[i];
       expect(atom.i_seq).toEqual(i);
     }
   });
+
   it('bonds', () => {
-    var atoms = model.atoms;
-    for (var i = 0; i < atoms.length; i++) {
-      var atom = atoms[i];
+    const atoms = model.atoms;
+    for (let i = 0; i < atoms.length; i++) {
+      const atom = atoms[i];
       expect(atom.bonds.length).toEqual(atom.bond_types.length);
-      for (var j = 0; j < atom.bonds.length; j++) {
-        var other = atom.bonds[j];
+      for (let j = 0; j < atom.bonds.length; j++) {
+        const other = atom.bonds[j];
         expect(other).not.toEqual(i);
         expect(atoms[other].bonds.includes(i)).toEqual(true);
       }
     }
   });
+
   it('next_residue', () => {
-    var a1 = model.next_residue();  // first residue
+    const a1 = model.next_residue();  // first residue
     expect(a1.seqid).toEqual("1");
     expect(a1.name).toEqual('CA');
-    var atom_label = a1.long_label();
+    const atom_label = a1.long_label();
     expect(atom_label.indexOf('CA /1')).toEqual(0);
-    var next_res_atom = model.next_residue(a1);
+    const next_res_atom = model.next_residue(a1);
     expect(next_res_atom.seqid).toEqual("2");
     expect(next_res_atom.name).toEqual('CA');
     expect(model.next_residue(next_res_atom, true)).toEqual(a1);
-    var last_res_atom = model.next_residue(a1, true);
+    const last_res_atom = model.next_residue(a1, true);
     expect(model.next_residue(last_res_atom)).toEqual(a1);
   });
+
   it('get_nearest_atom', () => {
-    var a1 = model.next_residue();  // first residue
-    var atms = [a1, model.next_residue(a1), model.next_residue(a1, true)];
-    for (var i = 0; i < atms.length; i++) {
-      var a = atms[i];
-      var nearest = model.get_nearest_atom(a.xyz[0], a.xyz[1]+0.4, a.xyz[2]);
+    const a1 = model.next_residue();  // first residue
+    const atms = [a1, model.next_residue(a1), model.next_residue(a1, true)];
+    for (let i = 0; i < atms.length; i++) {
+      const a = atms[i];
+      const nearest = model.get_nearest_atom(a.xyz[0], a.xyz[1] + 0.4, a.xyz[2]);
       expect(a).toEqual(nearest);
     }
   });
+
   it('secondary structure annotations', () => {
-    for (var i = 0; i < model.atoms.length; i++) {
-      var atom = model.atoms[i];
+    for (let i = 0; i < model.atoms.length; i++) {
+      const atom = model.atoms[i];
       expect(typeof atom.ss).toEqual('string');
       expect(typeof atom.strand_sense).toEqual('string');
     }
   });
 
   it('loads bonds from cif with embedded or fetched monomer data', () => {
-    var cif_path = path.resolve(__dirname, '5i55.cif');
-    var requested = null;
-    return util.load_gemmi().then(function (gemmi) {
+    const cif_path = path.resolve(__dirname, '5i55.cif');
+    let requested: string[] | null = null;
+    return util.load_gemmi().then(function (gemmi: any) {
       return GM.modelsFromGemmi(gemmi, util.open_as_array_buffer(cif_path), cif_path,
-                                function (resnames) {
+                                function (resnames: string[]) {
                                   requested = resnames.slice();
                                   return Promise.resolve([]);
                                 });
-    }).then(function (result) {
+    }).then(function (result: any) {
       expect(result.bonding.source).toEqual('gemmi');
       expect(result.bonding.bond_count).toBeGreaterThan(0);
       if (requested !== null) {
@@ -82,7 +87,7 @@ describe('Model', () => {
   });
 
   it('loads bonds from later repeated monomer loops in mmcif', () => {
-    var cif_text = [
+    const cif_text = [
       'data_test',
       '_cell.length_a 10',
       '_cell.length_b 10',
@@ -175,50 +180,50 @@ describe('Model', () => {
       '#',
       '',
     ].join('\n');
-    return util.load_gemmi().then(function (gemmi) {
+    return util.load_gemmi().then(function (gemmi: any) {
       return GM.modelsFromGemmi(gemmi, new TextEncoder().encode(cif_text).buffer, 'test.cif');
-    }).then(function (result) {
+    }).then(function (result: any) {
       expect(result.bonding.monomers_loaded).toBeGreaterThan(0);
-      expect(result.models[0].atoms.map(function (atom) { return atom.bonds.length; }))
+      expect(result.models[0].atoms.map(function (atom: any) { return atom.bonds.length; }))
         .toEqual([1, 2, 2, 1]);
       result.structure.delete();
     });
   });
 
   it('loads bonds from companion monomer cif fetcher for custom ligands', () => {
-    var pdb_text = [
+    const pdb_text = [
       'HETATM    1  C1  ZZZ A   1       0.000   0.000   0.000  1.00 10.00           C',
       'HETATM    2  C2  ZZZ A   1       1.500   0.000   0.000  1.00 10.00           C',
       'HETATM    3  O1  ZZZ A   1       2.700   0.000   0.000  1.00 10.00           O',
       'END',
       '',
     ].join('\n');
-    return util.load_gemmi().then(function (gemmi) {
+    return util.load_gemmi().then(function (gemmi: any) {
       return GM.modelsFromGemmi(
         gemmi,
         new TextEncoder().encode(pdb_text).buffer,
         'test.pdb',
         function () { return Promise.resolve([]); }
       );
-    }).then(function (result) {
+    }).then(function (result: any) {
       expect(result.bonding.monomers_requested).toEqual(1);
       expect(result.bonding.monomers_loaded).toEqual(0);
       expect(result.bonding.unresolved_monomers).toEqual(['ZZZ']);
-      expect(result.models[0].atoms.map(function (atom) { return atom.bonds.length; }))
+      expect(result.models[0].atoms.map(function (atom: any) { return atom.bonds.length; }))
         .toEqual([0, 0, 0]);
       result.structure.delete();
     });
   });
 
   it('clears unresolved monomers when companion monomer cif is provided', () => {
-    var pdb_text = [
+    const pdb_text = [
       'HETATM    1  C1  ZZZ A   1       0.000   0.000   0.000  1.00 10.00           C',
       'HETATM    2  C2  ZZZ A   1       1.500   0.000   0.000  1.00 10.00           C',
       'HETATM    3  O1  ZZZ A   1       2.700   0.000   0.000  1.00 10.00           O',
       'END',
       '',
     ].join('\n');
-    var monomer_cif = [
+    const monomer_cif = [
       'data_ZZZ',
       '_chem_comp.id ZZZ',
       '_chem_comp.group non-polymer',
@@ -242,20 +247,20 @@ describe('Model', () => {
       '#',
       '',
     ].join('\n');
-    return util.load_gemmi().then(function (gemmi) {
+    return util.load_gemmi().then(function (gemmi: any) {
       return GM.modelsFromGemmi(
         gemmi,
         new TextEncoder().encode(pdb_text).buffer,
         'test.pdb',
-        function (resnames) {
+        function (resnames: string[]) {
           return Promise.resolve(resnames.indexOf('ZZZ') !== -1 ? [monomer_cif] : []);
         }
       );
-    }).then(function (result) {
+    }).then(function (result: any) {
       expect(result.bonding.monomers_requested).toEqual(1);
       expect(result.bonding.monomers_loaded).toEqual(1);
       expect(result.bonding.unresolved_monomers).toEqual([]);
-      expect(result.models[0].atoms.map(function (atom) { return atom.bonds.length; }))
+      expect(result.models[0].atoms.map(function (atom: any) { return atom.bonds.length; }))
         .toEqual([1, 2, 1]);
       result.structure.delete();
     });

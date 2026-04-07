@@ -1,17 +1,15 @@
 {
   "compilerOptions": {
     "noEmit": true,
-    "strict": false
+    "strict": false,
+    "types": ["jest", "node"],
+    "lib": ["es2020", "dom"]
   },
-  "files": [
-    "src/all.ts",
-    "src/controls.ts",
-    "src/draw.ts",
-    "src/elmap.ts",
-    "src/gemmi.d.ts",
-    "src/model.ts",
-    "src/mtz.ts",
-    "src/reciprocal.ts",
-    "src/viewer/index.ts"
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
   ]
 }

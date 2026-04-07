@@ -27,6 +27,7 @@ import {
   normalize_viewer_options,
   DEFAULT_CONFIG,
 } from './types';
+import type { EditResult } from './editing';
 
 // Re-export types for consumers
 export type {
@@ -92,6 +93,14 @@ export class Viewer {
   declare KEYBOARD_HELP: string;
   declare MOUSE_HELP: string;
 
+  // Public properties for subclasses
+  target: any;
+  blob_hits: any[];
+  blob_map_bag: any;
+  blob_objects: any[];
+  blob_focus_index: number;
+  blob_negate: boolean;
+
   constructor(options?: Record<string, any> | string) {
     const opts = normalize_viewer_options(options);
 
@@ -131,6 +140,14 @@ export class Viewer {
     this.decor = { cell_box: null, selection: null, zoom_grid: null, mark: null };
     this.gemmi_module = null;
     this.gemmi_factory = null;
+
+    // Initialize subclass properties
+    this.target = null;
+    this.blob_hits = [];
+    this.blob_map_bag = null;
+    this.blob_objects = [];
+    this.blob_focus_index = -1;
+    this.blob_negate = false;
   }
 
   // Initialize with Three.js objects
@@ -259,55 +276,55 @@ export class Viewer {
     this.editor.set_templates(templates);
   }
 
-  delete_selected(): boolean {
+  delete_selected(): EditResult {
     if (!this.selected) {
       this.update_hud('Nothing selected');
-      return false;
+      return { success: false, message: 'Nothing selected' };
     }
     const { bag, atom } = this.selected;
-    const success = this.editor.delete_residue(bag, atom.chain, atom.seqid);
-    if (success) {
+    const result = this.editor.delete_residue(bag, atom.chain, atom.seqid);
+    if (result.success) {
       this.redraw_model(bag);
       this.selected = null;
       this.update_hud('Deleted');
     }
-    return success;
+    return result;
   }
 
-  delete_residue(bag: ModelBag, chain: string, resno: number): boolean {
-    const success = this.editor.delete_residue(bag, chain, resno);
-    if (success) this.redraw_model(bag);
-    return success;
+  delete_residue(bag: ModelBag, chain: string, resno: number): EditResult {
+    const result = this.editor.delete_residue(bag, chain, resno);
+    if (result.success) this.redraw_model(bag);
+    return result;
   }
 
-  mutate_residue_atom(atom: { chain: string; seqid: number }, new_resname: string): boolean {
-    if (!this.selected) return false;
+  mutate_residue_atom(atom: { chain: string; seqid: number }, new_resname: string): EditResult {
+    if (!this.selected) return { success: false, message: 'Nothing selected' };
     const bag = this.selected.bag;
-    const success = this.editor.mutate_residue(bag, atom.chain, atom.seqid, new_resname);
-    if (success) {
+    const result = this.editor.mutate_residue(bag, atom.chain, atom.seqid, new_resname);
+    if (result.success) {
       this.redraw_model(bag);
       this.update_hud(`Mutated to ${new_resname}`);
     }
-    return success;
+    return result;
   }
 
-  mutate_residue(bag: ModelBag, chain: string, resno: number, new_resname: string): boolean {
-    const success = this.editor.mutate_residue(bag, chain, resno, new_resname);
-    if (success) this.redraw_model(bag);
-    return success;
+  mutate_residue(bag: ModelBag, chain: string, resno: number, new_resname: string): EditResult {
+    const result = this.editor.mutate_residue(bag, chain, resno, new_resname);
+    if (result.success) this.redraw_model(bag);
+    return result;
   }
 
-  trim_chain(bag: ModelBag, chain: string, n_keep: number, c_keep: number): boolean {
-    const success = this.editor.trim_residues(bag, chain, n_keep, c_keep);
-    if (success) this.redraw_model(bag);
-    return success;
+  trim_chain(bag: ModelBag, chain: string, n_keep: number, c_keep: number): EditResult {
+    const result = this.editor.trim_residues(bag, chain, n_keep, c_keep);
+    if (result.success) this.redraw_model(bag);
+    return result;
   }
 
   place_residue(bag: ModelBag, resname: string, position: number[],
-                chain: string, resno: number): boolean {
-    const success = this.editor.place_residue(bag, resname, position, chain, resno);
-    if (success) this.redraw_model(bag);
-    return success;
+                chain: string, resno: number): EditResult {
+    const result = this.editor.place_residue(bag, resname, position, chain, resno);
+    if (result.success) this.redraw_model(bag);
+    return result;
   }
 
   // HUD update (backward compatible alias)
@@ -325,7 +342,6 @@ export class Viewer {
   // Request render (backward compatible)
   request_render(): void {
     // In the new architecture, rendering is handled automatically
-    // This is a no-op for backward compatibility
   }
 
   // Load file via XHR (backward compatible)
@@ -376,7 +392,6 @@ export class Viewer {
   // Recenter view (backward compatible)
   recenter(): void {
     // Implementation would depend on having a model loaded
-    // This is a stub for backward compatibility
   }
 
   // Pick PDB and map from file (backward compatible)
@@ -389,7 +404,6 @@ export class Viewer {
     if (options.xyz) {
       this.go_to(options.xyz);
     }
-    // Handle other view options as needed
   }
 
   // Resolve gemmi module (backward compatible)
@@ -400,7 +414,6 @@ export class Viewer {
     if (this.gemmi_factory) {
       return this.gemmi_factory();
     }
-    // Try to get from globalThis
     const factory = (globalThis as any).Gemmi;
     if (typeof factory === 'function') {
       return factory();
@@ -430,7 +443,7 @@ export class Viewer {
 
   // Clear electron density objects from map (backward compatible)
   clear_el_objects(): void {
-    // no-op
+    // Handled by MapRenderer in new architecture
   }
 
   // Apply selected option (backward compatible)
@@ -634,6 +647,10 @@ export class Viewer {
     this.navigation.set_models([]);
   }
 }
+
+// Static help properties
+(Viewer as any).prototype.KEYBOARD_HELP = 'Keyboard shortcuts not yet implemented.';
+(Viewer as any).prototype.MOUSE_HELP = 'Mouse controls: left=rotate, middle=zoom, right=pan';
 
 // Default export
 export default Viewer;
