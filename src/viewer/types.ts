@@ -67,6 +67,28 @@ export type ViewerConfig = {
   stay?: boolean;
 };
 
+// Default configuration - centralized here
+export const DEFAULT_CONFIG: ViewerConfig = {
+  bond_line: 4,
+  map_line: 2,
+  map_radius: 10,
+  max_map_radius: 40,
+  default_isolevel: 1.5,
+  center_cube_size: 0.15,
+  map_style: 'marching cubes',
+  mainchain_style: 'cartoon',
+  sidechain_style: 'invisible',
+  ligand_style: 'ball&stick',
+  water_style: 'invisible',
+  color_prop: 'element',
+  label_font: 'bold 14px',
+  color_scheme: 'coot dark',
+  hydrogens: false,
+  ball_size: 0.5,
+  stick_radius: 0.2,
+  ao: false,
+};
+
 export const ColorSchemes: Record<string, ColorScheme> = {
   // the default scheme that generally mimicks Coot
   'coot dark': {
@@ -209,6 +231,10 @@ export function map_style_method(style: string) {
 export function map_style_is_surface(style: string) {
   return style === 'smooth surface';
 }
+
+// Residue template types for editing
+export type { ResidueTemplate } from '../residue-templates';
+export type ResidueTemplates = Record<string, import('../residue-templates').ResidueTemplate>;
 
 export function rainbow_value(v: number, vmin: number, vmax: number) {
   if (vmin >= vmax) return new Color(0xe0e0e0);

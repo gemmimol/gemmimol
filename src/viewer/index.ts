@@ -6,15 +6,14 @@ import type { Model } from '../model';
 import type { ElMap } from '../elmap';
 import { ModelBag, MapBag } from './bags';
 import { ModelRenderer, MapRenderer } from './rendering';
-import { Navigator } from './navigation';
-import { ModelEditor } from './editing';
 import { EventManager } from './events';
 import { UIManager } from './ui';
-import { ModelController } from './controller';
 import {
   type ViewerConfig,
   type ColorScheme,
   type SiteNavItem,
+  type ConnectionNavItem,
+  type ResidueTemplates,
   ColorSchemes,
   COLOR_PROPS,
   MAINCHAIN_STYLES,
@@ -24,6 +23,7 @@ import {
   MAP_STYLES,
   LABEL_FONTS,
   normalize_viewer_options,
+  DEFAULT_CONFIG,
 } from './types';
 // utils imported when needed
 
@@ -48,27 +48,7 @@ export {
   LABEL_FONTS,
 };
 
-// Default configuration
-export const DEFAULT_CONFIG: ViewerConfig = {
-  bond_line: 4,
-  map_line: 2,
-  map_radius: 10,
-  max_map_radius: 40,
-  default_isolevel: 1.5,
-  center_cube_size: 0.15,
-  map_style: 'marching cubes',
-  mainchain_style: 'cartoon',
-  sidechain_style: 'invisible',
-  ligand_style: 'ball&stick',
-  water_style: 'invisible',
-  color_prop: 'element',
-  label_font: 'bold 14px',
-  color_scheme: 'coot dark',
-  hydrogens: false,
-  ball_size: 0.5,
-  stick_radius: 0.2,
-  ao: false,
-};
+
 
 /**
  * Main Viewer class - facade that coordinates all subsystems
@@ -87,11 +67,16 @@ export class Viewer {
   // Subsystems
   model_renderer: ModelRenderer;
   map_renderer: MapRenderer;
-  navigator: Navigator;
-  editor: ModelEditor;
   events: EventManager;
   ui: UIManager | null;
-  controller: ModelController;
+
+  // Editing
+  templates: ResidueTemplates;
+
+  // Navigation state
+  sites: SiteNavItem[];
+  connections: ConnectionNavItem[];
+  current_site: number;
 
   // Three.js references (set by caller)
   scene: any;
@@ -113,16 +98,21 @@ export class Viewer {
     // Initialize subsystems
     this.model_renderer = new ModelRenderer(this.config);
     this.map_renderer = new MapRenderer(this.config);
-    this.navigator = new Navigator();
     this.editor = new ModelEditor();
+
+    // Navigation state
+    this.sites = [];
+    this.connections = [];
+    this.current_site = -1;
     this.events = new EventManager();
     this.ui = null;
-    this.controller = new ModelController();
 
     // Setup event callbacks
-    this.events.on_redraw = () => this.redraw_all();
-    this.events.on_center = (pos) => this.go_to(pos);
-    this.events.on_update_hud = (text) => this.update_hud(text);
+    this.events.callbacks = {
+      on_redraw: () => this.redraw_all(),
+      on_center: (pos) => this.go_to(pos),
+      on_update_hud: (text) => this.update_hud(text),
+    };
 
     // Three.js references (will be set by init)
     this.scene = null;
@@ -141,7 +131,7 @@ export class Viewer {
     this.ui.create_hud();
 
     // Setup default event handlers
-    this.events.setup_default_handlers(this.navigator);
+    this.events.setup_default_handlers(this);
 
     // Update window size
     this.win_size = [container.clientWidth, container.clientHeight];
@@ -164,7 +154,7 @@ export class Viewer {
     const bag = new ModelBag(model, this.config, this.win_size);
     if (label) bag.label = label;
     this.model_bags.push(bag);
-    this.navigator.set_models(this.model_bags);
+    this.update_sites();
     return bag;
   }
 
@@ -252,14 +242,18 @@ export class Viewer {
     this.redraw_all();
   }
 
-  // Editing operations
+  // Editing operations (merged from ModelEditor)
+  set_templates(templates: ResidueTemplates) {
+    this.templates = templates;
+  }
+
   delete_selected(): boolean {
     if (!this.selected) {
       this.update_hud('Nothing selected');
       return false;
     }
     const { bag, atom } = this.selected;
-    const success = this.editor.delete_residue(bag, atom.chain, atom.seqid);
+    const success = this.delete_residue(bag, atom.chain, atom.seqid);
     if (success) {
       this.redraw_model(bag);
       this.selected = null;
@@ -268,18 +262,143 @@ export class Viewer {
     return success;
   }
 
-  mutate_residue(new_resname: string): boolean {
-    if (!this.selected) {
-      this.update_hud('Nothing selected');
-      return false;
+  delete_residue(bag: ModelBag, chain: string, resno: number): boolean {
+    const model = bag.model;
+    const atoms_to_remove: number[] = [];
+
+    for (let i = 0; i < model.atoms.length; i++) {
+      const atom = model.atoms[i];
+      if (atom.chain === chain && (atom as any).seqid === resno) {
+        atoms_to_remove.push(i);
+      }
     }
-    const { bag, atom } = this.selected;
-    const success = this.editor.mutate_residue(bag, atom.chain, atom.seqid, new_resname);
+
+    if (atoms_to_remove.length === 0) return false;
+
+    for (let i = atoms_to_remove.length - 1; i >= 0; i--) {
+      model.atoms.splice(atoms_to_remove[i], 1);
+    }
+
+    this.rebuild_bonds(model);
+    return true;
+  }
+
+  mutate_residue_atom(atom: { chain: string; seqid: number }, new_resname: string): boolean {
+    if (!this.selected) return false;
+    const bag = this.selected.bag;
+    const success = this.mutate_residue(bag, atom.chain, atom.seqid, new_resname);
     if (success) {
       this.redraw_model(bag);
       this.update_hud(`Mutated to ${new_resname}`);
     }
     return success;
+  }
+
+  mutate_residue(bag: ModelBag, chain: string, resno: number, new_resname: string): boolean {
+    const model = bag.model;
+    const old_atoms = model.atoms.filter(
+      (a: any) => a.chain === chain && a.seqid === resno
+    );
+
+    if (old_atoms.length === 0) return false;
+
+    const template = this.templates[new_resname];
+    if (!template) {
+      console.warn(`Unknown residue: ${new_resname}`);
+      return false;
+    }
+
+    const ca_atom = old_atoms.find((a: any) => a.name === 'CA');
+    if (!ca_atom) return false;
+
+    const [cx, cy, cz] = ca_atom.xyz;
+    const backbone_names = ['N', 'CA', 'C', 'O', 'OXT'];
+    const atoms_to_remove = model.atoms.filter(
+      (a: any) => a.chain === chain && a.seqid === resno && !backbone_names.includes(a.name)
+    );
+
+    for (const atom of atoms_to_remove) {
+      const idx = model.atoms.indexOf(atom);
+      if (idx >= 0) model.atoms.splice(idx, 1);
+    }
+
+    for (const ta of template.atoms) {
+      if (backbone_names.includes(ta.name)) continue;
+      model.atoms.push({
+        name: ta.name,
+        element: ta.element,
+        xyz: [cx + ta.xyz[0], cy + ta.xyz[1], cz + ta.xyz[2]],
+        chain,
+        seqid: resno,
+        resname: new_resname,
+        b: 30.0,
+        occ: 1.0,
+        is_ligand: false,
+      } as any);
+    }
+
+    for (const atom of model.atoms) {
+      if (atom.chain === chain && (atom as any).seqid === resno) {
+        atom.resname = new_resname;
+      }
+    }
+
+    this.rebuild_bonds(model);
+    return true;
+  }
+
+  trim_chain(bag: ModelBag, chain: string, n_keep: number, c_keep: number): boolean {
+    const model = bag.model;
+    const chain_atoms = model.atoms.filter((a: any) => a.chain === chain);
+    if (chain_atoms.length === 0) return false;
+
+    const resnos = [...new Set(chain_atoms.map((a: any) => a.seqid))].sort((a, b) => a - b);
+    if (resnos.length <= n_keep + c_keep) return false;
+
+    const keep_set = new Set([...resnos.slice(0, n_keep), ...resnos.slice(-c_keep)]);
+
+    for (let i = model.atoms.length - 1; i >= 0; i--) {
+      const atom = model.atoms[i];
+      if (atom.chain === chain && !keep_set.has((atom as any).seqid)) {
+        model.atoms.splice(i, 1);
+      }
+    }
+
+    this.rebuild_bonds(model);
+    return true;
+  }
+
+  place_residue(bag: ModelBag, resname: string, position: number[],
+                chain: string, resno: number): boolean {
+    const template = this.templates[resname];
+    if (!template) {
+      console.warn(`Unknown residue: ${resname}`);
+      return false;
+    }
+
+    const [cx, cy, cz] = position;
+    for (const ta of template.atoms) {
+      bag.model.atoms.push({
+        name: ta.name,
+        element: ta.element,
+        xyz: [cx + ta.xyz[0], cy + ta.xyz[1], cz + ta.xyz[2]],
+        chain,
+        seqid: resno,
+        resname,
+        b: 40.0,
+        occ: 1.0,
+        is_ligand: false,
+      } as any);
+    }
+
+    this.rebuild_bonds(bag.model);
+    return true;
+  }
+
+  private rebuild_bonds(model: any) {
+    if (model.recalculate_bonds) {
+      model.recalculate_bonds();
+    }
   }
 
   // HUD update
@@ -317,6 +436,190 @@ export class Viewer {
     for (const bag of this.model_bags) {
       bag.win_size = [width, height];
     }
+  }
+
+  // Model/Map visibility control (merged from ModelController)
+  show_all_models(visible: boolean = true) {
+    for (const bag of this.model_bags) bag.visible = visible;
+    this.redraw_all();
+  }
+
+  show_all_maps(visible: boolean = true) {
+    for (const bag of this.map_bags) bag.visible = visible;
+    this.redraw_maps();
+  }
+
+  toggle_model(index: number): boolean {
+    const bag = this.model_bags[index];
+    if (!bag) return false;
+    bag.visible = !bag.visible;
+    this.redraw_all();
+    return bag.visible;
+  }
+
+  toggle_map(index: number): boolean {
+    const bag = this.map_bags[index];
+    if (!bag) return false;
+    bag.visible = !bag.visible;
+    this.redraw_maps();
+    return bag.visible;
+  }
+
+  remove_model(index: number): boolean {
+    if (index < 0 || index >= this.model_bags.length) return false;
+    this.model_bags.splice(index, 1);
+    this.update_sites();
+    this.redraw_all();
+    return true;
+  }
+
+  remove_map(index: number): boolean {
+    if (index < 0 || index >= this.map_bags.length) return false;
+    this.map_bags.splice(index, 1);
+    this.redraw_maps();
+    return true;
+  }
+
+  get_visible_models(): ModelBag[] {
+    return this.model_bags.filter(b => b.visible);
+  }
+
+  get_visible_maps(): MapBag[] {
+    return this.map_bags.filter(b => b.visible);
+  }
+
+  set_hue_shift(index: number, shift: number): boolean {
+    const bag = this.model_bags[index];
+    if (!bag) return false;
+    bag.hue_shift = shift;
+    this.redraw_all();
+    return true;
+  }
+
+  set_color_override(index: number, fn: ((atom: any) => any) | null): boolean {
+    const bag = this.model_bags[index];
+    if (!bag) return false;
+    bag.color_override = fn;
+    this.redraw_all();
+    return true;
+  }
+
+  has_symmetry(): boolean {
+    return this.model_bags.some(b => b.model && (b.model as any).cell);
+  }
+
+  serialize(): object {
+    return {
+      models: this.model_bags.map(b => ({
+        label: b.label,
+        visible: b.visible,
+        hue_shift: b.hue_shift,
+      })),
+      maps: this.map_bags.map(b => ({
+        name: b.name,
+        visible: b.visible,
+        isolevel: b.isolevel,
+      })),
+    };
+  }
+
+  // Navigation methods (merged from Navigator)
+  private update_sites() {
+    this.sites = [];
+    this.connections = [];
+    this.current_site = -1;
+
+    for (let idx = 0; idx < this.model_bags.length; idx++) {
+      const bag = this.model_bags[idx];
+      this.extract_sites_from_model(bag, idx);
+    }
+  }
+
+  private extract_sites_from_model(bag: ModelBag, model_idx: number) {
+    const model = bag.model;
+
+    // Extract ligand binding sites
+    for (const ligand of (model as any).ligands || []) {
+      const atoms = ligand.atoms || [];
+      if (atoms.length === 0) continue;
+
+      const atom_indices = atoms.map((a: any) => a.i_seq);
+      this.sites.push({
+        label: `Ligand ${ligand.name || 'UNK'} (${ligand.chain || '?'})`,
+        index: model_idx,
+        atom_indices,
+      });
+    }
+
+    // Extract metal sites
+    for (const atom of model.atoms) {
+      if (atom.is_metal) {
+        this.sites.push({
+          label: `Metal ${atom.element} ${atom.resname || ''}`,
+          index: model_idx,
+          atom_indices: [atom.i_seq],
+        });
+      }
+    }
+  }
+
+  next_site(): SiteNavItem | null {
+    if (this.sites.length === 0) return null;
+    this.current_site = (this.current_site + 1) % this.sites.length;
+    return this.sites[this.current_site];
+  }
+
+  prev_site(): SiteNavItem | null {
+    if (this.sites.length === 0) return null;
+    this.current_site = this.current_site <= 0 ? this.sites.length - 1 : this.current_site - 1;
+    return this.sites[this.current_site];
+  }
+
+  get_center_for_site(site: SiteNavItem): number[] | null {
+    const bag = this.model_bags[site.index];
+    if (!bag) return null;
+
+    let cx = 0, cy = 0, cz = 0, count = 0;
+    for (const idx of site.atom_indices) {
+      const atom = bag.model.atoms[idx];
+      if (atom) {
+        cx += atom.xyz[0];
+        cy += atom.xyz[1];
+        cz += atom.xyz[2];
+        count++;
+      }
+    }
+
+    if (count === 0) return null;
+    return [cx / count, cy / count, cz / count];
+  }
+
+  // Parse GEMMI CID (Chain/Residue/Atom selection)
+  parse_cid(cid: string): { chain?: string; resno?: number; atom?: string } | null {
+    const parts = cid.split('/').filter(p => p.length > 0);
+    if (parts.length === 0) return null;
+
+    const result: { chain?: string; resno?: number; atom?: string } = {};
+    if (parts[0] && parts[0] !== '*') result.chain = parts[0];
+    if (parts[1] && parts[1] !== '*') result.resno = parseInt(parts[1], 10);
+    if (parts[2] && parts[2] !== '*') result.atom = parts[2];
+
+    return result;
+  }
+
+  find_atom_by_cid(cid: string): { bag: ModelBag; atom: any } | null {
+    const parsed = this.parse_cid(cid);
+    if (!parsed) return null;
+
+    for (const bag of this.model_bags) {
+      for (const atom of bag.model.atoms) {
+        if (parsed.chain && atom.chain !== parsed.chain) continue;
+        if (parsed.resno !== undefined && (atom as any).seqid !== parsed.resno) continue;
+        if (parsed.atom && atom.name !== parsed.atom) continue;
+        return { bag, atom };
+      }
+    }
+    return null;
   }
 
   // Cleanup
