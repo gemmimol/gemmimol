@@ -232,9 +232,17 @@ export function map_style_is_surface(style: string) {
   return style === 'smooth surface';
 }
 
+// Default colors
+export const DEFAULT_ATOM_COLOR = 0x808080;
+export const DEFAULT_LIGAND_COLOR = 0x00dd00;
+
 // Residue template types for editing
-export type { ResidueTemplate } from '../residue-templates';
-export type ResidueTemplates = Record<string, import('../residue-templates').ResidueTemplate>;
+export interface ResidueTemplate {
+  name: string;
+  element: string;
+  xyz: [number, number, number];
+}
+export type ResidueTemplates = Record<string, { atoms: ResidueTemplate[] }>;
 
 export function rainbow_value(v: number, vmin: number, vmax: number) {
   if (vmin >= vmax) return new Color(0xe0e0e0);

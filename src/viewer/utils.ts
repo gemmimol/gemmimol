@@ -1,5 +1,6 @@
 import { Color } from '../three-r162/main';
 import type { Atom } from '../model';
+import { DEFAULT_ATOM_COLOR } from './types';
 import type { Num2, ColorScheme } from './types';
 
 export function scale_by_height(value: number, win_size: Num2): number {
@@ -10,7 +11,7 @@ type ColorStrategy = (atoms: Atom[], scheme: Partial<ColorScheme>, hue_shift: nu
 
 const color_strategies: Record<string, ColorStrategy> = {
   element: (atoms, scheme) => atoms.map(a => 
-    new Color((scheme as any)[a.element] || scheme.def || 0x808080)),
+    new Color((scheme as any)[a.element] || scheme.def || DEFAULT_ATOM_COLOR)),
 
   chain: (atoms, _, hue_shift, temp) => {
     const cache: Record<string, Color> = {};
@@ -24,7 +25,7 @@ const color_strategies: Record<string, ColorStrategy> = {
   },
 
   polymer: (atoms, scheme) => atoms.map(a => 
-    new Color(a.is_ligand ? (scheme.def || 0x808080) : 0x00dd00)),
+    new Color(a.is_ligand ? (scheme.def || DEFAULT_ATOM_COLOR) : 0x00dd00)),
 
   bfactor: (atoms, _, __, temp) => atoms.map(a => {
     const t = Math.min(1, Math.max(0, (a.b - 20) / 80));
@@ -55,9 +56,7 @@ export function color_by(prop: string, atoms: Atom[], colors?: ColorScheme,
 }
 
 export function number_as_f_string(x: number): string {
-  let s = x.toFixed(4);
-  s = s.replace(/\.?0+$/, '');
-  return s;
+  return parseFloat(x.toFixed(4)).toString();
 }
 
 export function tokenize_cif_row(line: string): string[] {
