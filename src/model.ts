@@ -22,116 +22,10 @@ export const BondType = {
 } as const;
 export type BondTypeValue = typeof BondType[keyof typeof BondType];
 
-type CifLoop = {
-  tags: string[],
-  rows: string[][],
-};
-
-import { tokenize_cif_row } from './cif';
-
-function extract_cif_loops(text: string, first_tag: string): CifLoop[] {
-  const lines = text.split(/\r?\n/);
-  const loops = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() !== 'loop_') continue;
-    const tags = [];
-    let j = i + 1;
-    while (j < lines.length && lines[j].startsWith('_')) {
-      tags.push(lines[j].trim());
-      j++;
-    }
-    if (tags[0] !== first_tag) continue;
-    const values = [];
-    for (; j < lines.length; j++) {
-      const trimmed = lines[j].trim();
-      if (trimmed === '' || trimmed === '#') continue;
-      if (trimmed === 'loop_' || trimmed.startsWith('_')) break;
-      values.push(...tokenize_cif_row(lines[j]));
-    }
-    if (tags.length === 0 || values.length < tags.length) continue;
-    const rows = [];
-    for (let k = 0; k + tags.length <= values.length; k += tags.length) {
-      rows.push(values.slice(k, k + tags.length));
-    }
-    loops.push({tags: tags, rows: rows});
-  }
-  return loops;
-}
-
-function extract_embedded_monomer_cifs(text: string, missing_names: string[]) {
-  if (missing_names.length === 0) return [];
-  const atom_loops = extract_cif_loops(text, '_chem_comp_atom.comp_id');
-  if (atom_loops.length === 0) return [];
-  const bond_loops = extract_cif_loops(text, '_chem_comp_bond.comp_id');
-  const wanted = new Set(missing_names.map((name) => name.toUpperCase()));
-  const atom_rows = new Map<string, string[][]>();
-  const atom_tags = new Map<string, string[]>();
-  const bond_rows = new Map<string, string[][]>();
-  const bond_tags = new Map<string, string[]>();
-
-  for (const atom_loop of atom_loops) {
-    for (const row of atom_loop.rows) {
-      const comp_id = (row[0] || '').toUpperCase();
-      if (!wanted.has(comp_id)) continue;
-      if (!atom_tags.has(comp_id)) atom_tags.set(comp_id, atom_loop.tags);
-      const rows = atom_rows.get(comp_id);
-      if (rows) rows.push(row);
-      else atom_rows.set(comp_id, [row]);
-    }
-  }
-  for (const bond_loop of bond_loops) {
-    for (const row of bond_loop.rows) {
-      const comp_id = (row[0] || '').toUpperCase();
-      if (!wanted.has(comp_id)) continue;
-      if (!bond_tags.has(comp_id)) bond_tags.set(comp_id, bond_loop.tags);
-      const rows = bond_rows.get(comp_id);
-      if (rows) rows.push(row);
-      else bond_rows.set(comp_id, [row]);
-    }
-  }
-
-  const monomers = [];
-  for (const comp_id of Array.from(wanted)) {
-    const comp_atom_rows = atom_rows.get(comp_id);
-    if (comp_atom_rows == null || comp_atom_rows.length === 0) continue;
-    const comp_atom_tags = atom_tags.get(comp_id);
-    if (comp_atom_tags == null) continue;
-    const lines = [
-      'data_' + comp_id,
-      '#',
-      '_chem_comp.id ' + comp_id,
-      '#',
-      'loop_',
-      ...comp_atom_tags,
-      ...comp_atom_rows.map((row) => row.join(' ')),
-      '#',
-    ];
-    const comp_bond_rows = bond_rows.get(comp_id);
-    const comp_bond_tags = bond_tags.get(comp_id);
-    if (comp_bond_tags != null && comp_bond_rows != null && comp_bond_rows.length !== 0) {
-      lines.push(
-        'loop_',
-        ...comp_bond_tags,
-        ...comp_bond_rows.map((row) => row.join(' ')),
-        '#'
-      );
-    }
-    monomers.push({name: comp_id, cif: lines.join('\n') + '\n'});
-  }
-  return monomers;
-}
-
-function monomer_names_in_cif(text: string) {
-  const names = new Set<string>();
-  for (const loop of extract_cif_loops(text, '_chem_comp_atom.comp_id')) {
-    for (const row of loop.rows) {
-      const comp_id = (row[0] || '').toUpperCase();
-      if (comp_id !== '' && comp_id !== '.' && comp_id !== '?') {
-        names.add(comp_id);
-      }
-    }
-  }
-  return names;
+function split_monomer_names(csv: string) {
+  return Array.from(new Set(csv.split(',')
+    .map((name) => name.toUpperCase())
+    .filter(Boolean)));
 }
 
 function getGemmiBondData(gemmi: GemmiModule, st: Structure,
@@ -152,10 +46,12 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
   const bond_info = new gemmi.BondInfo();
   const resnames = gemmi.get_missing_monomer_names(st).split(',').filter(Boolean);
   const monomers_requested = Array.from(new Set(resnames)).length;
-  const embedded_monomers = structure_text ?
-    extract_embedded_monomer_cifs(structure_text, resnames) :
-    [];
-  const embedded_names = new Set(embedded_monomers.map((entry) => entry.name));
+  const embedded_cif = (structure_text && resnames.length !== 0) ?
+    gemmi.extract_monomer_cifs(structure_text, resnames.join(',')) :
+    '';
+  const embedded_names = new Set(split_monomer_names(
+    embedded_cif ? gemmi.get_monomer_names_in_cif(embedded_cif) : ''
+  ));
   const fetch_names = (getMonomerCifs && resnames.length !== 0) ?
     resnames.filter((name) => !embedded_names.has(name.toUpperCase())) :
     [];
@@ -165,13 +61,13 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
   return load_monomers.then(function (cif_texts) {
     const loaded_names = new Set<string>(embedded_names);
     let loaded_monomers = 0;
-    for (const entry of embedded_monomers) {
-      bond_info.add_monomer_cif(entry.cif);
-      loaded_monomers++;
+    if (embedded_cif !== '') {
+      bond_info.add_monomer_cif(embedded_cif);
+      loaded_monomers += embedded_names.size;
     }
     for (const cif_text of cif_texts) {
       bond_info.add_monomer_cif(cif_text);
-      for (const name of monomer_names_in_cif(cif_text)) {
+      for (const name of split_monomer_names(gemmi.get_monomer_names_in_cif(cif_text))) {
         loaded_names.add(name);
       }
       loaded_monomers++;

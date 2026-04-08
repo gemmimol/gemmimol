@@ -408,8 +408,10 @@ interface EmbindModule {
   readDsn6Map(_0: EmbindString): Dsn6Map;
   read_structure(_0: EmbindString, _1: EmbindString, _2?: EmbindString): Structure;
   get_nearby_sym_ops(_0: Structure, _1: Position, _2: number): NearestImageVector;
-  get_residue_names(_0: Structure): string[];
+  get_residue_names(_0: Structure): string;
   get_missing_monomer_names(_0: Structure): string;
+  get_monomer_names_in_cif(_0: EmbindString): string;
+  extract_monomer_cifs(_0: EmbindString, _1: EmbindString): string;
   make_pdb_string(_0: Structure): string;
   make_mmcif_string(_0: Structure): string;
   _read_structure(_0: EmbindString, _1: EmbindString, _2: EmbindString): Structure;
