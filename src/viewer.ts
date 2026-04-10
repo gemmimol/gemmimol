@@ -5127,7 +5127,8 @@ export class Viewer {
 Viewer.prototype.MOUSE_HELP = [
   '<b>mouse:</b>',
   'Left = rotate',
-  'Middle or Ctrl+Left = pan',
+  'Middle = select and center on atom',
+  'Middle+drag or Ctrl+Left = pan',
   'Right = zoom',
   'Ctrl+Right = clipping',
   'Ctrl+Shift+Right = roll',
