@@ -60,9 +60,19 @@ describe('Viewer', () => {
     viewer.recenter();
   });
 
-  it('uses invisible as the default water style', () => {
+  it('uses sphere as the default water style', () => {
     const viewer2 = new GM.Viewer('viewer');
-    expect(viewer2.config.water_style).toEqual('invisible');
+    expect(viewer2.config.water_style).toEqual('sphere');
+  });
+
+  it('keeps the legacy default stick object split', () => {
+    const viewer2 = new GM.Viewer();
+    const bag = viewer2.load_structure(model);
+    viewer2.model_renderer.redraw_model(bag);
+    expect(bag.objects.length).toEqual(4);
+    expect(object_type_count(bag, 'um_stick')).toEqual(3);
+    expect(object_type_count(bag, 'um_sphere')).toEqual(1);
+    expect(bag.atom_array.length).toEqual(model.atoms.length);
   });
 
   it('lets help links trigger viewer actions', () => {

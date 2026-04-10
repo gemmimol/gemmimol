@@ -13,6 +13,12 @@ export type ResidueTemplate = {
   atoms: ResidueTemplateAtom[];
 };
 
+export type ResidueTemplateBond = {
+  atom_id_1: string;
+  atom_id_2: string;
+  type: string;
+};
+
 export const AMINO_ACID_NAMES = ["ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS","ILE","LEU","LYS","MET","PHE","PRO","SER","THR","TRP","TYR","VAL"] as const;
 
 export const AMINO_ACID_TEMPLATES: Record<string, ResidueTemplate> = {
@@ -852,4 +858,63 @@ export function nucleotideTemplate(resname: string) {
 
 export function aminoAcidTemplate(resname: string) {
   return AMINO_ACID_TEMPLATES[resname.toUpperCase()] || null;
+}
+
+function residueTemplate(resname: string) {
+  return aminoAcidTemplate(resname) || nucleotideTemplate(resname);
+}
+
+function cif_tokens(line: string) {
+  const matches = line.match(/'(?:[^']*)'|"(?:[^"]*)"|\S+/g) || [];
+  return matches.map((token) => {
+    if ((token.startsWith('"') && token.endsWith('"')) ||
+        (token.startsWith('\'') && token.endsWith('\''))) {
+      return token.slice(1, -1);
+    }
+    return token;
+  });
+}
+
+function parse_template_bonds(cif: string): ResidueTemplateBond[] {
+  const lines = cif.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== 'loop_') continue;
+    const tags: string[] = [];
+    let j = i + 1;
+    while (j < lines.length && lines[j].startsWith('_')) {
+      tags.push(lines[j].trim());
+      j++;
+    }
+    const idx1 = tags.indexOf('_chem_comp_bond.atom_id_1');
+    const idx2 = tags.indexOf('_chem_comp_bond.atom_id_2');
+    const idx_type = tags.indexOf('_chem_comp_bond.type');
+    if (idx1 === -1 || idx2 === -1 || idx_type === -1) continue;
+    const rows: ResidueTemplateBond[] = [];
+    for (; j < lines.length; j++) {
+      const line = lines[j].trim();
+      if (line === '' || line === '#') continue;
+      if (line === 'loop_' || line.startsWith('_')) break;
+      const tokens = cif_tokens(lines[j]);
+      if (tokens.length < tags.length) continue;
+      rows.push({
+        atom_id_1: tokens[idx1],
+        atom_id_2: tokens[idx2],
+        type: tokens[idx_type],
+      });
+    }
+    return rows;
+  }
+  return [];
+}
+
+const TEMPLATE_BOND_CACHE: Record<string, ResidueTemplateBond[] | undefined> = {};
+
+export function residueTemplateBonds(resname: string): ResidueTemplateBond[] {
+  const upper = resname.toUpperCase();
+  const cached = TEMPLATE_BOND_CACHE[upper];
+  if (cached != null) return cached;
+  const template = residueTemplate(upper);
+  const bonds = template ? parse_template_bonds(template.cif) : [];
+  TEMPLATE_BOND_CACHE[upper] = bonds;
+  return bonds;
 }

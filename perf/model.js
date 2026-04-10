@@ -15,8 +15,8 @@ var setup = Promise.all([util.load_gemmi(), util.load_models_from_gemmi('1mru.pd
       st.delete();
     });
 
-    util.bench('only calculate_connectivity', function () {
-      model.calculate_connectivity();
+    util.bench('only calculate_cubicles', function () {
+      model.calculate_cubicles();
     });
   });
 

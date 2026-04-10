@@ -1164,7 +1164,6 @@ ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
 uniform float radius;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -1177,15 +1176,9 @@ void main() {
   vec4 projPos = projectionMatrix * vec4(vpos + radius * xyz, 1.0);
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
-    gl_FragColor = vec4(weight * vcolor, 1.0);
-    ${fog_end_fragment}
-  }
+  float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
+  gl_FragColor = vec4(weight * vcolor, 1.0);
+  ${fog_end_fragment}
 }
 `;
 
@@ -1218,7 +1211,6 @@ uniform float radius;
 uniform float shineStrength;
 uniform float shinePower;
 uniform vec3 shineColor;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -1230,19 +1222,12 @@ void main() {
   vec4 projPos = projectionMatrix * pos;
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    vec3 normal = normalize(vec3(vcorner[1] * vaxis.xy, central));
-    gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float diffuse = length(cross(vaxis, lightDir)) * central;
-    float weight = diffuse * 0.8 + 0.2;
-    float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
-    vec3 shaded = min(weight, 1.0) * vcolor;
-    gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
-    ${fog_end_fragment}
-  }
+  float diffuse = length(cross(vaxis, lightDir)) * central;
+  float weight = diffuse * 0.8 + 0.2;
+  float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
+  vec3 shaded = min(weight, 1.0) * vcolor;
+  gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
+  ${fog_end_fragment}
 }`;
 
 type StickOptions = {
@@ -1295,6 +1280,7 @@ function makeSticks(vertex_arr: Num3[], color_arr: Color[], radius: number,
   geometry.setAttribute('axis', new BufferAttribute(axis, 3));
   geometry.setAttribute('corner', new BufferAttribute(corner, 2));
   const color = double_color(color_arr);
+  if (color_arr.length > 0) { const c0 = color_arr[0]; console.log('makeSticks c0:', c0.r.toFixed(3), c0.g.toFixed(3), c0.b.toFixed(3), 'n:', color_arr.length, 'r:', radius); }
   geometry.setAttribute('color', new BufferAttribute(color, 3));
   geometry.setIndex(make_quad_index_buffer(len/2));
 

@@ -7,23 +7,15 @@
   <meta name="theme-color" content="#333333">
   <link rel="stylesheet" href="gemmimol.css">
 
-  <script src="gemmimol.js?v=symm-colors-1"></script>
-  <script src="vendor/wasm/gemmi.js"></script>
+  <script src="gemmimol.js?v=20260408-hotfix-1"></script>
+  <script src="vendor/wasm/gemmi.js?v=20260408-hotfix-1"></script>
 
 </head>
 <body style="background-color: black">
   <div id="viewer"></div>
-  <div id="gm-overlay">
-    <header id="hud" onmousedown="event.stopPropagation();"
-                     ondblclick="event.stopPropagation();"
-             >This is reciprocal GM. <a href="#"
-                         onclick="V.toggle_help(); return false;"
-                         >H shows help.</a></header>
-  </div>
-  <footer id="help"></footer>
-  <div id="inset"></div>
   <script>
-    V = new GM.ReciprocalViewer({viewer: "viewer", hud: "hud", help: "help"});
+    V = new GM.ReciprocalViewer("viewer");
+    V.init_default();
     var rlp = /[?&#]rlp(=([^&#]*)|&|#|$)/.exec(window.location.href);
     if (rlp && rlp[2])
       V.load_data(decodeURIComponent(rlp[2].replace(/\+/g, " ")));

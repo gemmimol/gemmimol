@@ -22,9 +22,6 @@
 
 </head>
 <body>
-  <p>message from #1: <span id="hud1">n/a</span></p>
-  <p>message from #2: <span id="hud2">n/a</span></p>
-  <p>message from #3: <span id="hud3">n/a</span></p>
   <!-- Note: for now the canvas that will be created must have the same
     size as the parent div. I.e. <b> below must not take any space
     (with position:absolute it's ok) -->
@@ -33,19 +30,24 @@
   <div id="viewer3"><b>#3</b></div>
   <footer id="info"></footer>
   <script>
-    V1 = new GM.Viewer({viewer:"viewer1", hud:"hud1", focusable:true});
+    V1 = new GM.Viewer("viewer1");
+    V1.init_default();
     V1.load_pdb("../data/1mru.pdb");
     V1.load_ccp4_maps("../data/1mru.map", "../data/1mru_diff.map");
-    V2 = new GM.Viewer({viewer:"viewer2", hud:"hud2", focusable:true});
+    V2 = new GM.Viewer("viewer2");
+    V2.init_default();
     V2.config.mainchain_style = "ribbon";
     V2.config.sidechain_style = "invisible";
-    V2.config.color_aim = "index";
+    V2.config.color_prop = "index";
     V2.load_pdb("../data/1mru.pdb");
-    V3 = new GM.Viewer({viewer:"viewer3", hud:"hud3", focusable:true});
-    V3.set_colors(1);
+    V3 = new GM.Viewer("viewer3");
+    V3.init_default();
+    V3.config.color_scheme = "solarized light";
+    V3.config.colors = GM.ColorSchemes[V3.config.color_scheme];
     V3.load_pdb("../data/1mru.pdb");
-    document.getElementById("viewer1").focus();
-    GM.Viewer.toggle_help(document.getElementById("info"));
+    V1.renderer.domElement.focus();
+    document.getElementById("info").textContent =
+      "Each viewer now initializes explicitly with init_default().";
   </script>
 </body>
 </html>

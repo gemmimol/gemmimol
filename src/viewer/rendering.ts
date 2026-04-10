@@ -1,8 +1,8 @@
 import { Object3D, Vector3, Color, Scene } from '../three-r162/main';
 import type { ModelBag, MapBag, Num2 } from './bags';
 import type { ViewerConfig } from './types';
-import { makeChickenWire, makeSmoothSurface, makeBalls, makeWheels, 
-         makeLineMaterial, makeLineSegments, makeCube, makeRgbBox, Label, addXyzCross, makeGrid } from '../draw';
+import { makeChickenWire, makeSmoothSurface, makeBalls, makeWheels,
+         makeCube, makeRgbBox, Label, makeGrid } from '../draw';
 import { map_style_method, map_style_is_surface } from './types';
 import type { Atom } from '../model';
 
@@ -13,17 +13,30 @@ export class ModelRenderer {
     this.config = config;
   }
 
-  redraw_model(mb: ModelBag, scene?: Scene): Object3D {
-    const group = new Object3D();
+  private add_rendered_atoms(target: Atom[], seen: Set<number>, atoms: Atom[]) {
+    for (const atom of atoms) {
+      if (!seen.has(atom.i_seq)) {
+        seen.add(atom.i_seq);
+        target.push(atom);
+      }
+    }
+  }
+
+  private is_atom_visible_in_current_style(atom: Atom, conf: ViewerConfig) {
+    if (atom.is_water()) return conf.water_style !== 'invisible';
+    if (atom.is_ligand) return true;
+    return atom.is_backbone() || conf.sidechain_style !== 'invisible';
+  }
+
+  redraw_model(mb: ModelBag): void {
     mb.objects = [];
     mb.atom_array = [];
 
-    if (!mb.visible || !mb.model) return group;
+    if (!mb.visible || !mb.model) return;
 
     const mc_style = this.config.mainchain_style;
     const sc_style = this.config.sidechain_style;
     const lig_style = this.config.ligand_style;
-    const water_style = this.config.water_style;
 
     // Space-filling is a global style - all atoms as VdW spheres
     if (mc_style === 'space-filling' || mc_style === 'space-filling+AO') {
@@ -38,23 +51,33 @@ export class ModelRenderer {
       }
       mb.atom_array = visible_atoms;
     } else {
-      // Main chain visualization
+      const rendered_atoms: Atom[] = [];
+      const seen_atoms = new Set<number>();
+      const finish_pass = () => {
+        this.add_rendered_atoms(rendered_atoms, seen_atoms, mb.atom_array || []);
+        mb.atom_array = [];
+      };
+      const partner_visible = (_atom: Atom, other: Atom) =>
+        this.is_atom_visible_in_current_style(other, this.config);
+      let ligand_balls: number | null = null;
+      const ligand_sticks = (lig_style === 'sticks');
+      if (lig_style === 'ball&stick') {
+        ligand_balls = this.config.ball_size;
+      }
+
       const mainchain_filter = (atom: Atom) => atom.is_backbone();
       const sidechain_filter = (atom: Atom) => !atom.is_backbone();
-      
-      // Determine if we need wheel caps
       const wheel_caps = (mc_style === 'lines' && sc_style === 'lines' && lig_style === 'lines');
 
-      // Main chain rendering
       switch (mc_style) {
         case 'lines':
-          mb.add_bonds(true, false, undefined, mainchain_filter, undefined, wheel_caps);
+          mb.add_bonds(true, false, undefined, mainchain_filter, partner_visible, wheel_caps);
           break;
         case 'sticks':
-          mb.add_sticks(true, false, this.config.stick_radius, mainchain_filter);
+          mb.add_sticks(true, false, this.config.stick_radius, mainchain_filter, partner_visible);
           break;
         case 'ball&stick':
-          mb.add_bonds(true, false, this.config.ball_size, mainchain_filter);
+          mb.add_bonds(true, false, this.config.ball_size, mainchain_filter, partner_visible);
           break;
         case 'backbone':
           mb.add_trace();
@@ -66,75 +89,33 @@ export class ModelRenderer {
           mb.add_cartoon(8);
           break;
       }
+      finish_pass();
 
-      // Side chain rendering
       switch (sc_style) {
         case 'lines':
-          mb.add_bonds(true, false, undefined, sidechain_filter, undefined, wheel_caps);
+          mb.add_bonds(true, false, undefined, sidechain_filter, partner_visible, wheel_caps);
           break;
         case 'sticks':
-          mb.add_sticks(true, false, this.config.stick_radius, sidechain_filter);
+          mb.add_sticks(true, false, this.config.stick_radius, sidechain_filter, partner_visible);
           break;
         case 'ball&stick':
-          mb.add_bonds(true, false, this.config.ball_size, sidechain_filter);
+          mb.add_bonds(true, false, this.config.ball_size, sidechain_filter, partner_visible);
           break;
         case 'invisible':
-          // Don't render side chains
           break;
       }
+      finish_pass();
 
-      // Ligand rendering
-      const ligand_filter = (atom: Atom) => atom.is_ligand === true && !atom.is_water();
-      switch (lig_style) {
-        case 'lines':
-          mb.add_bonds(false, true, undefined, ligand_filter, undefined, wheel_caps);
-          break;
-        case 'sticks':
-          mb.add_sticks(false, true, this.config.stick_radius, ligand_filter);
-          break;
-        case 'ball&stick':
-          mb.add_bonds(false, true, this.config.ball_size, ligand_filter);
-          break;
+      if (ligand_sticks) {
+        mb.add_sticks(false, true, this.config.stick_radius);
+      } else {
+        mb.add_bonds(false, true, ligand_balls == null ? undefined : ligand_balls,
+                     undefined, undefined, wheel_caps);
       }
-
-      // Water rendering
-      const water_filter = (atom: Atom) => atom.is_water();
-      if (water_style !== 'invisible') {
-        const waters = mb.model.atoms.filter(water_filter);
-        const water_colors = mb.atom_colors(waters);
-        
-        if (water_style === 'sphere') {
-          const water_balls = makeBalls(waters, water_colors, this.config.ball_size);
-          mb.objects.push(water_balls);
-        } else if (water_style === 'cross') {
-          const vertex_arr: Num3[] = [];
-          const color_arr: Color[] = [];
-          for (let i = 0; i < waters.length; i++) {
-            addXyzCross(vertex_arr, waters[i].xyz, 0.7);
-            for (let n = 0; n < 6; n++) color_arr.push(water_colors[i]);
-          }
-          if (vertex_arr.length > 0) {
-            const material = makeLineMaterial({ 
-              linewidth: this.config.bond_line, 
-              win_size: mb.win_size 
-            });
-            const obj = makeLineSegments(material, vertex_arr, color_arr);
-            mb.objects.push(obj);
-          }
-        }
-        waters.forEach(w => mb.atom_array?.push(w));
-      }
+      finish_pass();
+      mb.atom_array = rendered_atoms;
     }
 
-    for (const obj of mb.objects) {
-      group.add(obj);
-    }
-
-    if (scene) {
-      scene.add(group);
-    }
-
-    return group;
   }
 
   /**
@@ -184,9 +165,8 @@ export class MapRenderer {
       const map_pos = map_bag.block_ctr;
       const radius = this.config.map_radius;
       const dist_sq = camera_pos.distanceToSquared(map_pos);
-      const radius_sq = radius * radius;
 
-      if (dist_sq > radius_sq * 0.5) { // Reload when moved 70% of radius
+      if (dist_sq > radius / 100) {
         this.load_block(map_bag, camera_pos, scene);
       }
     }
@@ -224,7 +204,7 @@ export class MapRenderer {
     // Prepare the isosurface block
     try {
       const center_array: [number, number, number] = [center.x, center.y, center.z];
-      map.prepare_isosurface(this.config.map_radius, center_array, true);
+      map.prepare_isosurface(this.config.map_radius, center_array, is_surface);
 
       // Generate isosurfaces for each type (positive/negative for diff maps)
       for (const map_type of map_bag.types || ['map_den']) {

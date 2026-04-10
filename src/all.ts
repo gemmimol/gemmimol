@@ -31,11 +31,8 @@ export * from './draw';
 // mouse/touchscreen controls
 export * from './controls';
 
-// NEW MODULAR VIEWER
+// Viewer
 export * from './viewer/index';
-
-// Legacy Viewer (for backward compatibility)
-export { Viewer as LegacyViewer } from './viewer';
 
 // ReciprocalViewer - small extra code that shows reciprocal lattice
 export * from './reciprocal';

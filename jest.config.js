@@ -2,13 +2,7 @@
 module.exports = {
   testMatch: ['<rootDir>/test/*.ts'],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': ['ts-jest', {useESM: false}],
   },
   moduleFileExtensions: ['ts', 'js'],
-  extensionsToTreatAsEsm: ['.ts'],
-  globals: {
-    'ts-jest': {
-      useESM: false,
-    },
-  },
 };

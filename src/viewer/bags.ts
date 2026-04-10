@@ -6,8 +6,6 @@ import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
          makeChickenWire, makeSticks, makeBalls, makeWheels, addXyzCross } from '../draw';
 import { color_by, scale_by_height } from './utils';
 
-
-// Re-export types for backward compatibility
 export type { ViewerConfig, GemmiSelectionContext };
 
 // Type for Num2 (window size)
@@ -439,7 +437,6 @@ export class SceneBag<T = Model | ElMap> {
 export type ModelBag = SceneBag<Model>;
 export type MapBag = SceneBag<ElMap>;
 
-// Legacy factory functions for backward compatibility
 export function createModelBag(model: Model, config: ViewerConfig, win_size: Num2): ModelBag {
   return SceneBag.forModel(model, config, win_size);
 }

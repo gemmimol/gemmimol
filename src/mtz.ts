@@ -102,7 +102,9 @@ function set_pdb_and_mtz_dropzone(gemmi: GemmiModule, viewer: Viewer,
         reader.readAsArrayBuffer(file);
       });
     } else {
-      return viewer.pick_pdb_and_map();
+      return viewer.load_structure_file(file, gemmi).then(function () {
+        viewer.recenter();
+      });
     }
   });
 }

@@ -9,25 +9,19 @@
   <link rel="stylesheet" href="/gemmimol.css">
   -DEV-->
 
-  <script src="gemmimol.js?v=symm-colors-1"></script> <!--DEV--><!--
-  <script src="/gemmimol.js?v=symm-colors-1"></script>
+  <script src="gemmimol.js?v=20260408-hotfix-1"></script> <!--DEV--><!--
+  <script src="/gemmimol.js?v=20260408-hotfix-1"></script>
   -DEV-->
-  <script src="vendor/wasm/gemmi.js"></script> <!--DEV--><!--
-  <script src="/vendor/wasm/gemmi.js"></script>
+  <script src="vendor/wasm/gemmi.js?v=20260408-hotfix-1"></script> <!--DEV--><!--
+  <script src="/vendor/wasm/gemmi.js?v=20260408-hotfix-1"></script>
   -DEV-->
 
 </head>
 <body style="background-color: black">
   <div id="viewer"></div>
-  <div id="gm-overlay">
-    <header id="hud" onmousedown="event.stopPropagation();"
-                     ondblclick="event.stopPropagation();"
-                     onkeydown="event.stopPropagation();"></header>
-  </div>
-  <footer id="help"></footer>
-  <div id="inset"></div>
   <script>
-    V = new GM.Viewer({viewer: "viewer", hud: "hud", help: "help"});
+    V = new GM.Viewer("viewer");
+    V.init_default();
     G = null;
     function load_optional_mtz(url, callback) {
       V.load_file(url, {binary: true, progress: true}, function (req) {
@@ -98,7 +92,6 @@
     }
     function setup(Module) {
       G = Module;
-      //V.set_pdb_and_map_dropzone(V.renderer.domElement);
       GM.set_pdb_and_mtz_dropzone(G, V, V.renderer.domElement);
       var id_match = window.location.href.match(/[?&]id=([^&#]+)/);
       if (id_match) {

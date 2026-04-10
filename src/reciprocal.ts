@@ -221,10 +221,11 @@ export class ReciprocalViewer extends Viewer {
   declare ColorSchemes: typeof ColorSchemes;
 
   constructor(options: Record<string, any> | string = {}) {
-    options = normalize_viewer_options(options);
-    options.color_scheme = 'solarized dark';
-    super(options);
+    const opts = normalize_viewer_options(options);
+    opts.color_scheme = 'solarized dark';
+    super(opts);
     this.default_camera_pos = [100, 0, 0];
+    this.camera.position.fromArray(this.default_camera_pos);
     this.axes = null;
     this.points = null;
     this.max_dist = -1;
@@ -234,11 +235,6 @@ export class ReciprocalViewer extends Viewer {
     this.config.show_axes = SHOW_AXES[0];
     this.config.spot_shape = SPOT_SHAPES[0];
     this.config.center_cube_size = 0.001;
-    this.set_reciprocal_key_bindings();
-    if (typeof document !== 'undefined') {
-      this.set_dropzone(this.renderer.domElement,
-                        this.file_drop_callback.bind(this));
-    }
     this.point_material = new ShaderMaterial({
       uniforms: makeUniforms({
         size: 3,
@@ -254,90 +250,131 @@ export class ReciprocalViewer extends Viewer {
     });
   }
 
-  set_reciprocal_key_bindings() {
-    const kb = this.key_bindings;
-    // a
-    kb[65] = function (evt) {
-      this.select_next('axes', 'show_axes', SHOW_AXES, evt.shiftKey);
-      this.set_axes();
-    };
-    // d
-    kb[68] = function () { this.change_slab_width_by(-0.01); };
-    // f
-    kb[70] = function (evt) {
-      if (evt.shiftKey) {
-        this.toggle_full_screen();
-      } else {
-        this.change_slab_width_by(0.01);
-      }
-    };
-    // p
-    kb[80] = function () { this.permalink(); };
-    // s
-    kb[83] = function (evt) {
-      this.select_next('spot shape', 'spot_shape', SPOT_SHAPES, evt.shiftKey);
-      if (this.config.spot_shape === 'wheel') {
-        this.point_material.fragmentShader = round_point_frag;
-      } else {
-        this.point_material.fragmentShader = square_point_frag;
-      }
-      this.point_material.needsUpdate = true;
-    };
-    // u
-    kb[85] = function () {
+  init(scene: any, camera: any, renderer: any, controls: any, container: HTMLElement) {
+    super.init(scene, camera, renderer, controls, container);
+    this.register_shortcuts();
+    this.set_dropzone(renderer.domElement,
+                      this.file_drop_callback.bind(this));
+  }
+
+  private cycle_option(key: 'show_only' | 'show_axes' | 'spot_shape',
+                       options: string[], backwards: boolean=false) {
+    const len = options.length;
+    const old_idx = options.indexOf(this.config[key]);
+    const next_idx = (old_idx + (backwards ? len - 1 : 1)) % len;
+    this.config[key] = options[next_idx];
+    this.apply_selected_option(key);
+  }
+
+  private register_shortcuts() {
+    this.events.on('a', () => {
+      this.cycle_option('show_axes', SHOW_AXES);
+      return true;
+    });
+    this.events.on_shift('A', () => {
+      this.cycle_option('show_axes', SHOW_AXES, true);
+      return true;
+    });
+    this.events.on('d', () => {
+      this.change_slab_width_by(-0.01);
+      return true;
+    });
+    this.events.on('f', () => {
+      this.change_slab_width_by(0.01);
+      return true;
+    });
+    this.events.on_shift('F', () => {
+      this.toggle_full_screen();
+      return true;
+    });
+    this.events.on('p', () => {
+      this.permalink();
+      return true;
+    });
+    this.events.on('s', () => {
+      this.cycle_option('spot_shape', SPOT_SHAPES);
+      return true;
+    });
+    this.events.on_shift('S', () => {
+      this.cycle_option('spot_shape', SPOT_SHAPES, true);
+      return true;
+    });
+    this.events.on('u', () => {
       if (this.map_bags.length === 0) {
         this.hud('Reciprocal-space density map not loaded.');
-        return;
+        return true;
       }
-      this.hud('toggled map box');
       this.toggle_cell_box();
-    };
-    // v
-    kb[86] = function (evt) {
-      this.select_next('show', 'show_only', SPOT_SEL, evt.shiftKey);
-      const idx = SPOT_SEL.indexOf(this.config.show_only);
-      this.point_material.uniforms.show_only.value = idx - 2;
-    };
-    // x
-    kb[88] = function (evt) {
-      if (evt.shiftKey) {
-        this.change_map_line(0.1);
-      } else {
-        this.change_point_size(0.5);
-      }
-    };
-    // z
-    kb[90] = function (evt) {
-      if (evt.shiftKey) {
-        this.change_map_line(-0.1);
-      } else {
-        this.change_point_size(-0.5);
-      }
-    };
-    // comma
-    kb[188] = function (evt) { if (evt.shiftKey) this.shift_clip(0.1); };
-    // period
-    kb[190] = function (evt) { if (evt.shiftKey) this.shift_clip(-0.1); };
-    // <-
-    kb[37] = function () { this.change_dmin(0.05); };
-    // ->
-    kb[39] = function () { this.change_dmin(-0.05); };
-    // up arrow
-    kb[38] = function () { this.change_dmax(0.025); };
-    // down arrow
-    kb[40] = function () { this.change_dmax(-0.025); };
-    // add, equals/firefox, equal sign
-    kb[107] = kb[61] = kb[187] = function () {
+      return true;
+    });
+    this.events.on('v', () => {
+      this.cycle_option('show_only', SPOT_SEL);
+      return true;
+    });
+    this.events.on_shift('V', () => {
+      this.cycle_option('show_only', SPOT_SEL, true);
+      return true;
+    });
+    this.events.on('x', () => {
+      this.change_point_size(0.5);
+      return true;
+    });
+    this.events.on_shift('X', () => {
+      this.change_map_line(0.1);
+      return true;
+    });
+    this.events.on('z', () => {
+      this.change_point_size(-0.5);
+      return true;
+    });
+    this.events.on_shift('Z', () => {
+      this.change_map_line(-0.1);
+      return true;
+    });
+    this.events.on_shift('<', () => {
+      this.shift_clip(0.1);
+      return true;
+    });
+    this.events.on_shift('>', () => {
+      this.shift_clip(-0.1);
+      return true;
+    });
+    this.events.on('arrowleft', () => {
+      this.change_dmin(0.05);
+      return true;
+    });
+    this.events.on('arrowright', () => {
+      this.change_dmin(-0.05);
+      return true;
+    });
+    this.events.on('arrowup', () => {
+      this.change_dmax(0.025);
+      return true;
+    });
+    this.events.on('arrowdown', () => {
+      this.change_dmax(-0.025);
+      return true;
+    });
+    this.events.on('+', () => {
       this.change_isolevel_by(0, 0.01);
-    };
-    // subtract, minus/firefox, dash
-    kb[109] = kb[173] = kb[189] = function () {
+      return true;
+    });
+    this.events.on('=', () => {
+      this.change_isolevel_by(0, 0.01);
+      return true;
+    });
+    this.events.on('-', () => {
       this.change_isolevel_by(0, -0.01);
-    };
-    // [
-    kb[219] = function () { this.change_map_radius(-0.001); };
-    // ]
-    kb[221] = function () { this.change_map_radius(0.001); };
+      return true;
+    });
+    this.events.on('[', () => {
+      this.change_map_radius(-0.001);
+      return true;
+    });
+    this.events.on(']', () => {
+      this.change_map_radius(0.001);
+      return true;
+    });
   }
 
   file_drop_callback(file: File) {
@@ -483,6 +520,7 @@ export class ReciprocalViewer extends Viewer {
     const size = this.point_material.uniforms.size;
     size.value = Math.max(size.value + delta, 0.5);
     this.hud('point size: ' + size.value.toFixed(1));
+    this.request_render();
   }
 
   change_dmin(delta: number) {
@@ -492,6 +530,7 @@ export class ReciprocalViewer extends Viewer {
     this.point_material.uniforms.r2_max.value = 1 / (this.d_min * this.d_min);
     const low_res = dmax !== null ? dmax.toFixed(2) : '∞';
     this.hud('res. limit: ' + low_res + ' - ' + this.d_min.toFixed(2) + 'Å');
+    this.request_render();
   }
 
   change_dmax(delta: number) {
@@ -501,6 +540,7 @@ export class ReciprocalViewer extends Viewer {
     this.point_material.uniforms.r2_min.value = v * v;
     const low_res = v > 0 ? (1 / v).toFixed(2) : '∞';
     this.hud('res. limit: ' + low_res + ' - ' + this.d_min.toFixed(2) + 'Å');
+    this.request_render();
   }
 
   redraw_models() {
@@ -533,7 +573,7 @@ export class ReciprocalViewer extends Viewer {
     if (this.map_bags.length === 0) return null;
     // here the map is ReciprocalSpaceMap not ElMap
     const a = this.map_bags[0].map.box_size;
-    return function (xyz: Num3) {
+    return function (xyz: Num3): Num3 {
       return [(xyz[0]-0.5) * a[0], (xyz[1]-0.5) * a[1], (xyz[2]-0.5) * a[2]];
     };
   }

@@ -19,51 +19,74 @@ export class EventManager {
     this.callbacks = {};
   }
 
-  setup_default_handlers(viewer: { next_site(): any; prev_site(): any; get_center_for_site(site: any): number[] | null; }) {
-    // Navigation
-    this.on('n', () => {
-      const site = viewer.next_site();
-      if (site) {
-        const center = viewer.get_center_for_site(site);
-        if (center) this.callbacks.on_center?.(center);
-      }
+  setup_default_handlers(viewer: any) {
+    this.on('b', () => { viewer.cycle_color_scheme?.(); return true; });
+    this.on('c', () => { viewer.cycle_color_prop?.(); return true; });
+    this.on('d', () => { viewer.change_slab_width_by?.(-0.1); return true; });
+    this.on('e', () => { viewer.toggle_fog?.(); return true; });
+    this.on('f', () => { viewer.change_slab_width_by?.(0.1); return true; });
+    this.on('g', () => { viewer.toggle_histogram?.(); return true; });
+    this.on('h', () => { viewer.toggle_help?.(); return true; });
+    this.on('i', (evt: KeyboardEvent) => {
+      viewer.hud?.('toggled spinning');
+      viewer.controls?.toggle_auto?.(evt.shiftKey);
+      viewer.request_render?.();
+      return true;
+    });
+    this.on('k', () => {
+      viewer.hud?.('toggled rocking');
+      viewer.controls?.toggle_auto?.(0.0);
+      viewer.request_render?.();
+      return true;
+    });
+    this.on('l', () => { viewer.cycle_ligand_style?.(); return true; });
+    this.on('m', () => { viewer.cycle_mainchain_style?.(); return true; });
+    this.on('p', () => { viewer.go_to_nearest_Ca?.(); return true; });
+    this.on('q', () => { viewer.cycle_label_font?.(); return true; });
+    this.on('r', () => {
+      viewer.hud?.('recentered');
+      viewer.recenter?.();
+      return true;
+    });
+    this.on('s', () => { viewer.cycle_sidechain_style?.(); return true; });
+    this.on('t', () => { viewer.cycle_water_style?.(); return true; });
+    this.on('u', () => {
+      viewer.hud?.('toggled unit cell box');
+      viewer.toggle_cell_box?.();
+      return true;
+    });
+    this.on('v', () => { viewer.toggle_inactive_models?.(); return true; });
+    this.on('w', () => { viewer.cycle_map_style?.(); return true; });
+    this.on('y', () => { viewer.toggle_hydrogens?.(); return true; });
+    this.on('[', () => { viewer.change_map_radius?.(-2); return true; });
+    this.on(']', () => { viewer.change_map_radius?.(2); return true; });
+    this.on('+', (evt: KeyboardEvent) => { viewer.change_isolevel_by?.(evt.shiftKey ? 1 : 0, 0.1); return true; });
+    this.on('=', (evt: KeyboardEvent) => { viewer.change_isolevel_by?.(evt.shiftKey ? 1 : 0, 0.1); return true; });
+    this.on('-', (evt: KeyboardEvent) => { viewer.change_isolevel_by?.(evt.shiftKey ? 1 : 0, -0.1); return true; });
+    this.on('\\', () => { viewer.toggle_symmetry?.(); return true; });
+    this.on(' ', (evt: KeyboardEvent) => { viewer.center_next_residue?.(evt.shiftKey); return true; });
+    this.on('home', (evt: KeyboardEvent) => {
+      if (evt.shiftKey) viewer.change_map_line?.(0.1);
+      else viewer.change_stick_radius?.(0.01);
+      return true;
+    });
+    this.on('end', (evt: KeyboardEvent) => {
+      if (evt.shiftKey) viewer.change_map_line?.(-0.1);
+      else viewer.change_stick_radius?.(-0.01);
       return true;
     });
 
-    this.on('p', () => {
-      const site = viewer.prev_site();
-      if (site) {
-        const center = viewer.get_center_for_site(site);
-        if (center) this.callbacks.on_center?.(center);
-      }
+    this.on_shift('F', () => { viewer.toggle_full_screen?.(); return true; });
+    this.on_shift('P', () => { viewer.permalink?.(); return true; });
+    this.on_shift('R', () => {
+      viewer.hud?.('redraw!');
+      viewer.redraw_all?.();
       return true;
     });
+    this.on_shift('<', () => { viewer.shift_clip?.(1); return true; });
+    this.on_shift('>', () => { viewer.shift_clip?.(-1); return true; });
 
-    // Keys that just trigger redraw
-    const redraw_keys = ['b', 'c', 'r', 'l', 'q', 'w', 'h', 'i', ' '];
-    for (const key of redraw_keys) {
-      this.on(key, () => {
-        this.callbacks.on_redraw?.();
-        return true;
-      });
-    }
-
-    // Deletion
-    this.on('d', () => {
-      this.callbacks.on_update_hud?.('Delete: select atoms first');
-      return true;
-    });
-
-    // Undo/Redo
-    this.on_ctrl('z', () => {
-      this.callbacks.on_update_hud?.('Undo not implemented');
-      return true;
-    });
-
-    this.on_ctrl('y', () => {
-      this.callbacks.on_update_hud?.('Redo not implemented');
-      return true;
-    });
+    this.on_ctrl('g', () => { viewer.open_cid_dialog?.(); return true; });
   }
 
   // Helper to register handlers

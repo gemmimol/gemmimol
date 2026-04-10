@@ -7,20 +7,15 @@
   <meta name="theme-color" content="#333333">
   <link rel="stylesheet" href="gemmimol.css">
 
-  <script src="gemmimol.js?v=symm-colors-1"></script>
-  <script src="vendor/wasm/gemmi.js"></script>
+  <script src="gemmimol.js?v=20260408-hotfix-1"></script>
+  <script src="vendor/wasm/gemmi.js?v=20260408-hotfix-1"></script>
 
 </head>
 <body style="background-color: black">
   <div id="viewer"></div>
-  <div id="gm-overlay">
-    <header id="hud" onmousedown="event.stopPropagation();"
-                     ondblclick="event.stopPropagation();"></header>
-  </div>
-  <footer id="help"></footer>
-  <div id="inset"></div>
   <script>
-    V = new GM.Viewer({viewer: "viewer", hud: "hud", help: "help"});
+    V = new GM.Viewer("viewer");
+    V.init_default();
     V.hud("loading 1mru with Gemmi...");
 
     function bondingSummary(info) {
@@ -37,7 +32,6 @@
       const info = V.last_bonding_info;
       if (info && info.source === "gemmi") return;
       const text = bondingSummary(info);
-      V.initial_hud_html = text;
       V.hud(text, "HTML");
     }
 
