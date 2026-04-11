@@ -1050,7 +1050,7 @@ const VDW_RADII: Record<string, number> = {
 };
 const VDW_DEFAULT = 1.50;
 
-function getVdwRadius(element: string): number {
+export function getVdwRadius(element: string): number {
   return VDW_RADII[element.toUpperCase()] ?? VDW_DEFAULT;
 }
 

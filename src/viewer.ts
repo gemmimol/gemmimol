@@ -2,7 +2,7 @@ import { OrthographicCamera, Scene, Color, Vector3,
          Ray, WebGLRenderer, Fog } from './three-r162/main';
 import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
          makeChickenWire, makeSmoothSurface, makeGrid, makeSticks, makeBalls,
-         makeWheels, makeCube, makeSpaceFilling,
+         makeWheels, makeCube, makeSpaceFilling, getVdwRadius,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
 import { ElMap } from './elmap';
@@ -1269,7 +1269,9 @@ export class Viewer {
       // search directly atom array ignoring matrixWorld
       const vec = new Vector3();
       // required picking precision: 0.35A at zoom 50, 0.27A @z30, 0.44 @z80
-      const precision2 = 0.35 * 0.35 * 0.02 * camera.zoom;
+      const default_prec2 = 0.35 * 0.35 * 0.02 * camera.zoom;
+      const space_filling = bag.conf.mainchain_style.startsWith('space-filling');
+      const sphere_scale = space_filling ? this.config.sphere_scale / 100 : 0;
       for (const atom of bag.atom_array) {
         vec.set(atom.xyz[0] - ray.origin.x,
                 atom.xyz[1] - ray.origin.y,
@@ -1277,6 +1279,8 @@ export class Viewer {
         const distance = vec.dot(ray.direction);
         if (distance < 0 || distance < near || distance > far) continue;
         const diff2 = vec.addScaledVector(ray.direction, -distance).lengthSq();
+        const r = space_filling ? getVdwRadius(atom.element) * sphere_scale : 0;
+        const precision2 = Math.max(default_prec2, r * r);
         if (diff2 > precision2) continue;
         if (pick == null || distance < pick.distance) {
           pick = {bag, atom, distance};
