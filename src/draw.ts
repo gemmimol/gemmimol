@@ -1105,7 +1105,6 @@ const sphere_var_frag = `
 ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -1119,15 +1118,9 @@ void main() {
   vec4 projPos = projectionMatrix * vec4(vpos + vRadius * xyz, 1.0);
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
-    gl_FragColor = vec4(weight * vcolor, 1.0);
-    ${fog_end_fragment}
-  }
+  float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
+  gl_FragColor = vec4(weight * vcolor, 1.0);
+  ${fog_end_fragment}
 }
 `;
 
@@ -1137,7 +1130,6 @@ ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
 uniform float radius;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -1150,15 +1142,9 @@ void main() {
   vec4 projPos = projectionMatrix * vec4(vpos + radius * xyz, 1.0);
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
-    gl_FragColor = vec4(weight * vcolor, 1.0);
-    ${fog_end_fragment}
-  }
+  float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
+  gl_FragColor = vec4(weight * vcolor, 1.0);
+  ${fog_end_fragment}
 }
 `;
 
@@ -1191,7 +1177,6 @@ uniform float radius;
 uniform float shineStrength;
 uniform float shinePower;
 uniform vec3 shineColor;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -1203,19 +1188,12 @@ void main() {
   vec4 projPos = projectionMatrix * pos;
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    vec3 normal = normalize(vec3(vcorner[1] * vaxis.xy, central));
-    gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float diffuse = length(cross(vaxis, lightDir)) * central;
-    float weight = diffuse * 0.8 + 0.2;
-    float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
-    vec3 shaded = min(weight, 1.0) * vcolor;
-    gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
-    ${fog_end_fragment}
-  }
+  float diffuse = length(cross(vaxis, lightDir)) * central;
+  float weight = diffuse * 0.8 + 0.2;
+  float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
+  vec3 shaded = min(weight, 1.0) * vcolor;
+  gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
+  ${fog_end_fragment}
 }`;
 
 type StickOptions = {
@@ -1233,7 +1211,6 @@ function makeSticks(vertex_arr: Num3[], color_arr: Color[], radius: number,
     shineStrength: options.shineStrength || 0.0,
     shinePower: options.shinePower || 8.0,
     shineColor: options.shineColor || new Color(0xffffff),
-    uMode: 0,
   });
   const material = new ShaderMaterial({
     uniforms: uniforms,
@@ -1322,7 +1299,6 @@ function makeBalls(atom_arr: Atom[], color_arr: Color[], radius: number) {
     uniforms: makeUniforms({
       radius: radius,
       lightDir: light_dir,
-      uMode: 0,
     }),
     vertexShader: sphere_vert,
     fragmentShader: sphere_frag,
@@ -1335,7 +1311,7 @@ function makeBalls(atom_arr: Atom[], color_arr: Color[], radius: number) {
 }
 
 export
-function makeSpaceFilling(atom_arr: Atom[], color_arr: Color[]) {
+function makeSpaceFilling(atom_arr: Atom[], color_arr: Color[], scale: number) {
   const N = atom_arr.length;
   const geometry = new BufferGeometry();
 
@@ -1343,7 +1319,7 @@ function makeSpaceFilling(atom_arr: Atom[], color_arr: Color[]) {
   const radii = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) {
     const xyz = atom_arr[i].xyz;
-    const r = getVdwRadius(atom_arr[i].element);
+    const r = getVdwRadius(atom_arr[i].element) * scale;
     for (let j = 0; j < 4; j++) {
       for (let k = 0; k < 3; k++) {
         pos[3 * (4*i + j) + k] = xyz[k];
@@ -1383,7 +1359,6 @@ function makeSpaceFilling(atom_arr: Atom[], color_arr: Color[]) {
   const material = new ShaderMaterial({
     uniforms: makeUniforms({
       lightDir: light_dir,
-      uMode: 0,
     }),
     vertexShader: sphere_var_vert,
     fragmentShader: sphere_var_frag,

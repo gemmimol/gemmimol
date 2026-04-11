@@ -260,7 +260,7 @@ function plan_protein_mutation(residue_atoms: Atom[], target: string): MutationP
   };
 }
 
-function plan_nucleotide_mutation(residue_atoms: Atom[], source_kind: 'rna' | 'dna',
+function plan_nucleotide_mutation(residue_atoms: Atom[],
                                   target_label: string): MutationPlan {
   const target = nucleotide_target_resname(residue_atoms[0].resname, target_label);
   const template_atoms = heavy_nucleotide_template_atoms(target);
@@ -395,7 +395,7 @@ export function plan_residue_mutation(residue_atoms: Atom[], target_resname: str
     if (target_resname === SUGAR_TO_DNA || target_resname === SUGAR_TO_RNA) {
       return plan_sugar_switch(residue_atoms, kind);
     }
-    return plan_nucleotide_mutation(residue_atoms, kind, target_resname);
+    return plan_nucleotide_mutation(residue_atoms, target_resname);
   }
   throw Error('Mutation is supported only for standard amino-acid and nucleic-acid residues.');
 }

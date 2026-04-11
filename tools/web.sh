@@ -21,9 +21,12 @@ cat >"$outdir/index.md" <<EOF
 layout: default
 ---
 
-$(sed '/^\[!\[/d; s,https://gemmimol.github.io/,,' README.md)
+$(sed '/^\[!\[/d; s,https://gemmimol.github.io/,,' README.md | \
+    sed 's,(integration.md),(integration.html),g')
 
 current version:<br>GemmiMol ${gemmimol_version} (${gemmimol_git_describe})<br>Gemmi ${gemmi_git_describe}
+
+Integration notes: [integration](integration.html)
 EOF
 
 cp src/*.ts "$outdir/src/"
@@ -32,7 +35,7 @@ for path in benchmark/benchmark.js lodash/lodash.min.js platform/platform.js; do
     diff -q "$npath" "$outdir/$npath" || cp "$npath" "$outdir/$npath"
 done
 
-cp gemmimol.js gemmimol.css LICENSE perf.html 3kw8.htm 3kw8_mc_restraints.mmcif "$outdir/"
+cp gemmimol.js gemmimol.css LICENSE integration.md perf.html 3kw8.htm 3kw8_mc_restraints.mmcif "$outdir/"
 cp "$outdir/3kw8.htm" "$outdir/3kw8.html"
 #cp gemmimol.js.map gemmimol.min.js $outdir/
 cp vendor/wasm/gemmi.wasm vendor/wasm/gemmi.js "$outdir/vendor/wasm/"
@@ -50,6 +53,11 @@ sed -e 's/1mru/dimple_thaum/g' \
     <"$outdir/1mru.html" >"$outdir/dimple_thaum.html"
 
 cd "$outdir"
+if command -v jekyll >/dev/null 2>&1; then
+    jekyll build --source "$outdir" --destination "$outdir/_site" >/dev/null
+    cp "$outdir/_site/index.html" "$outdir/"
+    cp "$outdir/_site/integration.html" "$outdir/"
+fi
 echo "=== $(pwd) ==="
 git status -s
 echo

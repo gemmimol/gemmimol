@@ -2458,7 +2458,7 @@ function WebGLRenderer( parameters ) {
     _infoRender.faces = 0;
     _infoRender.points = 0;
 
-    this.setRenderTarget( renderTarget || null );
+    this.setRenderTarget( );
 
     state.buffers.color.setClear( _clearColor.r, _clearColor.g, _clearColor.b, _clearAlpha, _premultipliedAlpha );
 
@@ -2710,107 +2710,12 @@ function WebGLRenderer( parameters ) {
     }
   }
 
-  this.setRenderTarget = function ( target ) {
-    if ( target && target.isWebGLRenderTarget ) {
-      target._init( _gl );
-      _gl.bindFramebuffer( _gl.FRAMEBUFFER, target._framebuffer );
-      _currentRenderTarget = target;
-      state.viewport( new Vector4( 0, 0, target.width, target.height ) );
-    } else {
-      _gl.bindFramebuffer( _gl.FRAMEBUFFER, null );
-      _currentRenderTarget = null;
-      _currentViewport.copy( _viewport ).multiplyScalar( _pixelRatio );
-      state.viewport( _currentViewport );
-    }
+  this.setRenderTarget = function ( ) {
+    _currentRenderTarget = null;
+    _currentViewport.copy( _viewport ).multiplyScalar( _pixelRatio );
+    state.viewport( _currentViewport );
   };
 }
-
-// WebGLRenderTarget — minimal render-to-texture support
-class WebGLRenderTarget {
-  isWebGLRenderTarget: boolean;
-  width: number;
-  height: number;
-  depthBuffer: boolean;
-  _framebuffer: WebGLFramebuffer | null;
-  _colorTexture: WebGLTexture | null;
-  _depthTexture: WebGLTexture | null;
-  _initialized: boolean;
-  // texture index for binding in shaders (set externally)
-  colorTextureIndex: number;
-  depthTextureIndex: number;
-
-  constructor( width: number, height: number, options: { depth?: boolean } = {} ) {
-    this.isWebGLRenderTarget = true;
-    this.width = width;
-    this.height = height;
-    this.depthBuffer = options.depth !== false;
-    this._framebuffer = null;
-    this._colorTexture = null;
-    this._depthTexture = null;
-    this._initialized = false;
-    this.colorTextureIndex = 0;
-    this.depthTextureIndex = 0;
-  }
-
-  _init( gl: WebGLRenderingContext ) {
-    if ( this._initialized ) return;
-    this._initialized = true;
-
-    this._colorTexture = gl.createTexture();
-    gl.bindTexture( gl.TEXTURE_2D, this._colorTexture );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
-    gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height,
-      0, gl.RGBA, gl.UNSIGNED_BYTE, null );
-
-    if ( this.depthBuffer ) {
-      this._depthTexture = gl.createTexture();
-      gl.bindTexture( gl.TEXTURE_2D, this._depthTexture );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
-      gl.texImage2D( gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, this.width, this.height,
-        0, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, null );
-    }
-
-    this._framebuffer = gl.createFramebuffer();
-    gl.bindFramebuffer( gl.FRAMEBUFFER, this._framebuffer );
-    gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D, this._colorTexture, 0 );
-    if ( this.depthBuffer && this._depthTexture ) {
-      gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-        gl.TEXTURE_2D, this._depthTexture, 0 );
-    }
-    gl.bindFramebuffer( gl.FRAMEBUFFER, null );
-    gl.bindTexture( gl.TEXTURE_2D, null );
-  }
-
-  // Bind color texture to a texture unit for reading in a shader
-  bindColorTexture( gl: WebGLRenderingContext, unit: number ) {
-    this.colorTextureIndex = unit;
-    gl.activeTexture( gl.TEXTURE0 + unit );
-    gl.bindTexture( gl.TEXTURE_2D, this._colorTexture );
-  }
-
-  // Bind depth texture to a texture unit for reading in a shader
-  bindDepthTexture( gl: WebGLRenderingContext, unit: number ) {
-    this.depthTextureIndex = unit;
-    gl.activeTexture( gl.TEXTURE0 + unit );
-    gl.bindTexture( gl.TEXTURE_2D, this._depthTexture );
-  }
-
-  dispose( gl: WebGLRenderingContext ) {
-    if ( this._framebuffer ) gl.deleteFramebuffer( this._framebuffer );
-    if ( this._colorTexture ) gl.deleteTexture( this._colorTexture );
-    if ( this._depthTexture ) gl.deleteTexture( this._depthTexture );
-    this._initialized = false;
-  }
-}
-
-
 // scenes/Fog.js
 class Fog {
   constructor(color, near = 1, far = 1000) {
@@ -2885,5 +2790,4 @@ export {
   Quaternion,
   Color,
   Texture,
-  WebGLRenderTarget,
 };

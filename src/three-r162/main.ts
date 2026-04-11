@@ -20,7 +20,6 @@ export type Vector3 = any;
 export type Quaternion = any;
 export type Color = any;
 export type Texture = any;
-export type WebGLRenderTarget = any;
 
 export const WebGLRenderer: any = impl.WebGLRenderer;
 export const Fog: any = impl.Fog;
@@ -40,4 +39,3 @@ export const Vector3: any = impl.Vector3;
 export const Quaternion: any = impl.Quaternion;
 export const Color: any = impl.Color;
 export const Texture: any = impl.Texture;
-export const WebGLRenderTarget: any = impl.WebGLRenderTarget;

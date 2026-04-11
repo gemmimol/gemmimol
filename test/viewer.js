@@ -101,6 +101,39 @@ const CONNECTIONS_PDB = [
   '',
 ].join('\n');
 
+const CUSTOM_LIGAND_PDB = [
+  'HETATM    1  C1  ZZZ A   1       0.000   0.000   0.000  1.00 10.00           C',
+  'HETATM    2  C2  ZZZ A   1       1.500   0.000   0.000  1.00 10.00           C',
+  'HETATM    3  O1  ZZZ A   1       2.700   0.000   0.000  1.00 10.00           O',
+  'END',
+  '',
+].join('\n');
+
+const CUSTOM_LIGAND_MONOMER_CIF = [
+  'data_ZZZ',
+  '_chem_comp.id ZZZ',
+  '_chem_comp.group non-polymer',
+  'loop_',
+  '_chem_comp_atom.comp_id',
+  '_chem_comp_atom.atom_id',
+  '_chem_comp_atom.type_symbol',
+  '_chem_comp_atom.type_energy',
+  '_chem_comp_atom.charge',
+  'ZZZ C1 C CH3 0',
+  'ZZZ C2 C CH2 0',
+  'ZZZ O1 O O 0',
+  'loop_',
+  '_chem_comp_bond.comp_id',
+  '_chem_comp_bond.atom_id_1',
+  '_chem_comp_bond.atom_id_2',
+  '_chem_comp_bond.type',
+  '_chem_comp_bond.aromatic',
+  'ZZZ C1 C2 single n',
+  'ZZZ C2 O1 single n',
+  '#',
+  '',
+].join('\n');
+
 class MockFileReader {
   constructor() {
     this.result = null;
@@ -972,6 +1005,51 @@ describe('Viewer', () => {
         expect(viewer2.model_bags[0].model.atoms.map(function (atom) { return atom.bonds.length; }))
           .toEqual([1, 2, 1]);
       });
+    });
+  });
+
+  it('uses constructor monomer_fetcher for missing ligand dictionaries', () => {
+    var seen = [];
+    var viewer2 = new GM.Viewer({
+      viewer: 'viewer',
+      monomer_fetcher: function (resname) {
+        seen.push(resname);
+        return Promise.resolve(resname === 'ZZZ' ? CUSTOM_LIGAND_MONOMER_CIF : null);
+      },
+    });
+    return util.load_gemmi().then(function (gemmi) {
+      return viewer2.load_coordinate_buffer(text_to_array_buffer(CUSTOM_LIGAND_PDB), 'test.pdb', gemmi);
+    }).then(function () {
+      expect(seen).toEqual(['ZZZ']);
+      expect(viewer2.last_bonding_info.unresolved_monomers).toEqual([]);
+      expect(viewer2.model_bags[0].model.atoms.map(function (atom) { return atom.bonds.length; }))
+        .toEqual([1, 2, 1]);
+    });
+  });
+
+  it('uses constructor monomer_url_template for missing ligand dictionaries', () => {
+    var savedFetch = global.fetch;
+    var seen = [];
+    global.fetch = function (url) {
+      seen.push(url);
+      return Promise.resolve({
+        ok: true,
+        text: function () { return Promise.resolve(CUSTOM_LIGAND_MONOMER_CIF); },
+      });
+    };
+    var viewer2 = new GM.Viewer({
+      viewer: 'viewer',
+      monomer_url_template: '/api/monomers/{name}.cif',
+    });
+    return util.load_gemmi().then(function (gemmi) {
+      return viewer2.load_coordinate_buffer(text_to_array_buffer(CUSTOM_LIGAND_PDB), 'test.pdb', gemmi);
+    }).then(function () {
+      expect(seen).toEqual(['/api/monomers/ZZZ.cif']);
+      expect(viewer2.last_bonding_info.unresolved_monomers).toEqual([]);
+      expect(viewer2.model_bags[0].model.atoms.map(function (atom) { return atom.bonds.length; }))
+        .toEqual([1, 2, 1]);
+    }).finally(function () {
+      global.fetch = savedFetch;
     });
   });
 });

@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.5";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.4-3-g6c182e2-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-1-g57286b9-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-145-g097e7656";
 
 
@@ -4587,7 +4587,7 @@ function WebGLRenderer$1( parameters ) {
     _infoRender.faces = 0;
     _infoRender.points = 0;
 
-    this.setRenderTarget( renderTarget || null );
+    this.setRenderTarget( );
 
     state.buffers.color.setClear( _clearColor.r, _clearColor.g, _clearColor.b, _clearAlpha, _premultipliedAlpha );
 
@@ -4839,107 +4839,12 @@ function WebGLRenderer$1( parameters ) {
     }
   }
 
-  this.setRenderTarget = function ( target ) {
-    if ( target && target.isWebGLRenderTarget ) {
-      target._init( _gl );
-      _gl.bindFramebuffer( _gl.FRAMEBUFFER, target._framebuffer );
-      _currentRenderTarget = target;
-      state.viewport( new Vector4( 0, 0, target.width, target.height ) );
-    } else {
-      _gl.bindFramebuffer( _gl.FRAMEBUFFER, null );
-      _currentRenderTarget = null;
-      _currentViewport.copy( _viewport ).multiplyScalar( _pixelRatio );
-      state.viewport( _currentViewport );
-    }
+  this.setRenderTarget = function ( ) {
+    _currentRenderTarget = null;
+    _currentViewport.copy( _viewport ).multiplyScalar( _pixelRatio );
+    state.viewport( _currentViewport );
   };
 }
-
-// WebGLRenderTarget — minimal render-to-texture support
-let WebGLRenderTarget$1 = class WebGLRenderTarget {
-  
-  
-  
-  
-  
-  
-  
-  
-  // texture index for binding in shaders (set externally)
-  
-  
-
-  constructor( width, height, options = {} ) {
-    this.isWebGLRenderTarget = true;
-    this.width = width;
-    this.height = height;
-    this.depthBuffer = options.depth !== false;
-    this._framebuffer = null;
-    this._colorTexture = null;
-    this._depthTexture = null;
-    this._initialized = false;
-    this.colorTextureIndex = 0;
-    this.depthTextureIndex = 0;
-  }
-
-  _init( gl ) {
-    if ( this._initialized ) return;
-    this._initialized = true;
-
-    this._colorTexture = gl.createTexture();
-    gl.bindTexture( gl.TEXTURE_2D, this._colorTexture );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-    gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
-    gl.texImage2D( gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height,
-      0, gl.RGBA, gl.UNSIGNED_BYTE, null );
-
-    if ( this.depthBuffer ) {
-      this._depthTexture = gl.createTexture();
-      gl.bindTexture( gl.TEXTURE_2D, this._depthTexture );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE );
-      gl.texParameteri( gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE );
-      gl.texImage2D( gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, this.width, this.height,
-        0, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, null );
-    }
-
-    this._framebuffer = gl.createFramebuffer();
-    gl.bindFramebuffer( gl.FRAMEBUFFER, this._framebuffer );
-    gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D, this._colorTexture, 0 );
-    if ( this.depthBuffer && this._depthTexture ) {
-      gl.framebufferTexture2D( gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,
-        gl.TEXTURE_2D, this._depthTexture, 0 );
-    }
-    gl.bindFramebuffer( gl.FRAMEBUFFER, null );
-    gl.bindTexture( gl.TEXTURE_2D, null );
-  }
-
-  // Bind color texture to a texture unit for reading in a shader
-  bindColorTexture( gl, unit ) {
-    this.colorTextureIndex = unit;
-    gl.activeTexture( gl.TEXTURE0 + unit );
-    gl.bindTexture( gl.TEXTURE_2D, this._colorTexture );
-  }
-
-  // Bind depth texture to a texture unit for reading in a shader
-  bindDepthTexture( gl, unit ) {
-    this.depthTextureIndex = unit;
-    gl.activeTexture( gl.TEXTURE0 + unit );
-    gl.bindTexture( gl.TEXTURE_2D, this._depthTexture );
-  }
-
-  dispose( gl ) {
-    if ( this._framebuffer ) gl.deleteFramebuffer( this._framebuffer );
-    if ( this._colorTexture ) gl.deleteTexture( this._colorTexture );
-    if ( this._depthTexture ) gl.deleteTexture( this._depthTexture );
-    this._initialized = false;
-  }
-};
-
-
 // scenes/Fog.js
 let Fog$1 = class Fog {
   constructor(color, near = 1, far = 1000) {
@@ -5014,14 +4919,12 @@ Scene: Scene$1,
 ShaderMaterial: ShaderMaterial$1,
 Texture: Texture$1,
 Vector3: Vector3$1,
-WebGLRenderTarget: WebGLRenderTarget$1,
 WebGLRenderer: WebGLRenderer$1
 });
 
 const impl = Impl ;
 
  
-
 
 
 
@@ -5058,7 +4961,6 @@ const Vector3 = impl.Vector3;
 const Quaternion = impl.Quaternion;
 const Color = impl.Color;
 const Texture = impl.Texture;
-const WebGLRenderTarget = impl.WebGLRenderTarget;
 
 /* eslint-disable */
 // @ts-nocheck
@@ -6336,7 +6238,6 @@ const sphere_var_frag = `
 ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -6350,15 +6251,9 @@ void main() {
   vec4 projPos = projectionMatrix * vec4(vpos + vRadius * xyz, 1.0);
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
-    gl_FragColor = vec4(weight * vcolor, 1.0);
-    ${fog_end_fragment}
-  }
+  float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
+  gl_FragColor = vec4(weight * vcolor, 1.0);
+  ${fog_end_fragment}
 }
 `;
 
@@ -6368,7 +6263,6 @@ ${fog_pars_fragment}
 uniform mat4 projectionMatrix;
 uniform vec3 lightDir;
 uniform float radius;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -6381,15 +6275,9 @@ void main() {
   vec4 projPos = projectionMatrix * vec4(vpos + radius * xyz, 1.0);
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    gl_FragColor = vec4(xyz * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
-    gl_FragColor = vec4(weight * vcolor, 1.0);
-    ${fog_end_fragment}
-  }
+  float weight = clamp(dot(xyz, lightDir), 0.0, 1.0) * 0.8 + 0.2;
+  gl_FragColor = vec4(weight * vcolor, 1.0);
+  ${fog_end_fragment}
 }
 `;
 
@@ -6422,7 +6310,6 @@ uniform float radius;
 uniform float shineStrength;
 uniform float shinePower;
 uniform vec3 shineColor;
-uniform int uMode;
 varying vec3 vcolor;
 varying vec2 vcorner;
 varying vec3 vpos;
@@ -6434,19 +6321,12 @@ void main() {
   vec4 projPos = projectionMatrix * pos;
   gl_FragDepthEXT = 0.5 * ((gl_DepthRange.diff * (projPos.z / projPos.w)) +
                            gl_DepthRange.near + gl_DepthRange.far);
-  if (uMode == 1) {
-    vec3 normal = normalize(vec3(vcorner[1] * vaxis.xy, central));
-    gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
-  } else if (uMode == 2) {
-    gl_FragColor = vec4(mix(vcolor, vec3(1.0), 0.5), 1.0);
-  } else {
-    float diffuse = length(cross(vaxis, lightDir)) * central;
-    float weight = diffuse * 0.8 + 0.2;
-    float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
-    vec3 shaded = min(weight, 1.0) * vcolor;
-    gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
-    ${fog_end_fragment}
-  }
+  float diffuse = length(cross(vaxis, lightDir)) * central;
+  float weight = diffuse * 0.8 + 0.2;
+  float specular = shineStrength * pow(clamp(diffuse, 0.0, 1.0), shinePower) * central;
+  vec3 shaded = min(weight, 1.0) * vcolor;
+  gl_FragColor = vec4(min(shaded + specular * shineColor, 1.0), 1.0);
+  ${fog_end_fragment}
 }`;
 
 
@@ -6463,7 +6343,6 @@ function makeSticks(vertex_arr, color_arr, radius,
     shineStrength: options.shineStrength || 0.0,
     shinePower: options.shinePower || 8.0,
     shineColor: options.shineColor || new Color(0xffffff),
-    uMode: 0,
   });
   const material = new ShaderMaterial({
     uniforms: uniforms,
@@ -6551,7 +6430,6 @@ function makeBalls(atom_arr, color_arr, radius) {
     uniforms: makeUniforms({
       radius: radius,
       lightDir: light_dir,
-      uMode: 0,
     }),
     vertexShader: sphere_vert,
     fragmentShader: sphere_frag,
@@ -6563,7 +6441,7 @@ function makeBalls(atom_arr, color_arr, radius) {
   return obj;
 }
 
-function makeSpaceFilling(atom_arr, color_arr) {
+function makeSpaceFilling(atom_arr, color_arr, scale) {
   const N = atom_arr.length;
   const geometry = new BufferGeometry();
 
@@ -6571,7 +6449,7 @@ function makeSpaceFilling(atom_arr, color_arr) {
   const radii = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) {
     const xyz = atom_arr[i].xyz;
-    const r = getVdwRadius(atom_arr[i].element);
+    const r = getVdwRadius(atom_arr[i].element) * scale;
     for (let j = 0; j < 4; j++) {
       for (let k = 0; k < 3; k++) {
         pos[3 * (4*i + j) + k] = xyz[k];
@@ -6611,7 +6489,6 @@ function makeSpaceFilling(atom_arr, color_arr) {
   const material = new ShaderMaterial({
     uniforms: makeUniforms({
       lightDir: light_dir,
-      uMode: 0,
     }),
     vertexShader: sphere_var_vert,
     fragmentShader: sphere_var_frag,
@@ -6991,538 +6868,6 @@ class Controls {
         this._go_func = null;
       }
     };
-  }
-}
-
-// Speck-style ambient occlusion for molecular rendering.
-// Based on https://github.com/costrouc/speck — multi-view AO technique.
-// Post-processing passes use raw WebGL (not three.js) because three.js's
-// uniform system doesn't support manually-bound GL textures.
-
-
-// Compile a raw WebGL shader program
-function compileProgram(gl,
-                        vertSrc, fragSrc) {
-  function compile(src, type) {
-    const s = gl.createShader(type);
-    gl.shaderSource(s, src);
-    gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-      console.error(gl.getShaderInfoLog(s));
-      throw new Error('Shader compile failed');
-    }
-    return s;
-  }
-  const prog = gl.createProgram();
-  gl.attachShader(prog, compile(vertSrc, gl.VERTEX_SHADER));
-  gl.attachShader(prog, compile(fragSrc, gl.FRAGMENT_SHADER));
-  gl.bindAttribLocation(prog, 0, 'aPosition');
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    console.error(gl.getProgramInfoLog(prog));
-    throw new Error('Program link failed');
-  }
-  return prog;
-}
-
-// Full-screen quad vertex shader (raw, no three.js prefix)
-const fsQuadVert = `
-precision highp float;
-attribute vec3 aPosition;
-void main() {
-  gl_Position = vec4(aPosition, 1.0);
-}
-`;
-
-const accumulator_frag = `
-precision highp float;
-uniform sampler2D uSceneDepth;
-uniform sampler2D uSceneNormal;
-uniform sampler2D uRandRotDepth;
-uniform sampler2D uAccumulator;
-uniform mat4 uRot;
-uniform mat4 uInvRot;
-uniform vec2 uSceneBottomLeft;
-uniform vec2 uSceneTopRight;
-uniform vec2 uRotBottomLeft;
-uniform vec2 uRotTopRight;
-uniform float uDepth;
-uniform vec2 uRes;
-uniform int uSampleCount;
-
-void main() {
-  vec2 sceneUV = gl_FragCoord.xy / uRes;
-  vec4 acc = texture2D(uAccumulator, sceneUV);
-  float dScene = texture2D(uSceneDepth, sceneUV).r;
-  if (dScene >= 0.999) {
-    gl_FragColor = acc;
-    return;
-  }
-
-  vec3 r = vec3(uSceneBottomLeft + sceneUV * (uSceneTopRight - uSceneBottomLeft), 0.0);
-  r.z = -(dScene - 0.5) * uDepth;
-  r = vec3(uRot * vec4(r, 1));
-  float depth = -r.z/uDepth + 0.5;
-
-  vec2 p = (r.xy - uRotBottomLeft)/(uRotTopRight - uRotBottomLeft);
-  if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0) {
-    gl_FragColor = acc;
-    return;
-  }
-  float dRandRot = texture2D(uRandRotDepth, p).r;
-  float ao = step(dRandRot, depth * 0.99);
-
-  vec3 normal = texture2D(uSceneNormal, sceneUV).rgb * 2.0 - 1.0;
-  vec3 dir = vec3(uInvRot * vec4(0, 0, 1, 0));
-  float mag = dot(dir, normal);
-  ao *= step(0.0, mag);
-
-  if (uSampleCount < 256) {
-    acc.r += ao/255.0;
-  } else if (uSampleCount < 512) {
-    acc.g += ao/255.0;
-  } else if (uSampleCount < 768) {
-    acc.b += ao/255.0;
-  } else {
-    acc.a += ao/255.0;
-  }
-  gl_FragColor = acc;
-}
-`;
-
-const ao_compose_frag = `
-precision highp float;
-${fog_pars_fragment}
-uniform sampler2D uSceneColor;
-uniform sampler2D uSceneDepth;
-uniform sampler2D uAccumulatorOut;
-uniform vec2 uRes;
-uniform float uAO;
-uniform float uBrightness;
-uniform float uOutlineStrength;
-uniform vec3 uBgColor;
-
-void main() {
-  vec2 p = gl_FragCoord.xy/uRes;
-  vec4 sceneColor = texture2D(uSceneColor, p);
-  if (sceneColor.a == 0.0) {
-    gl_FragColor = vec4(uBgColor, 1.0);
-    return;
-  }
-  if (uOutlineStrength > 0.0) {
-    float depth = texture2D(uSceneDepth, p).r;
-    vec2 texel = 1.0 / uRes;
-    float d0 = abs(texture2D(uSceneDepth, p + vec2(-texel.x,  0)).r - depth);
-    float d1 = abs(texture2D(uSceneDepth, p + vec2( texel.x,  0)).r - depth);
-    float d2 = abs(texture2D(uSceneDepth, p + vec2( 0, -texel.y)).r - depth);
-    float d3 = abs(texture2D(uSceneDepth, p + vec2( 0,  texel.y)).r - depth);
-    float d = max(max(d0, d1), max(d2, d3));
-    sceneColor.rgb *= pow(1.0 - d, uOutlineStrength * 32.0);
-    sceneColor.a = max(step(0.003, d), sceneColor.a);
-  }
-  vec4 dAccum = texture2D(uAccumulatorOut, p);
-  float shade = max(0.0, 1.0 - (dAccum.r + dAccum.g + dAccum.b + dAccum.a) * 0.25 * uAO);
-  shade = pow(shade, 2.0);
-  gl_FragColor = vec4(uBrightness * sceneColor.rgb * shade, sceneColor.a);
-}
-`;
-
-
-// Helper: get orthographic rect from camera
-function getCameraRect(camera) {
-  const hw = (camera.right - camera.left) / (2.0 * camera.zoom);
-  const hh = (camera.top - camera.bottom) / (2.0 * camera.zoom);
-  return {
-    left: -hw, right: hw, bottom: -hh, top: hh,
-  };
-}
-
-// Helper: random rotation matrix
-function randomRotation() {
-  let m = new Matrix4();
-  for (let i = 0; i < 3; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const x = Math.random() - 0.5;
-    const y = Math.random() - 0.5;
-    const z = Math.random() - 0.5;
-    const len = Math.sqrt(x * x + y * y + z * z) || 1;
-    const ax = x / len, ay = y / len, az = z / len;
-    const c = Math.cos(angle), s = Math.sin(angle), t = 1 - c;
-    const r = new Matrix4();
-    r.set(
-      t*ax*ax+c, t*ax*ay-s*az, t*ax*az+s*ay, 0,
-      t*ax*ay+s*az, t*ay*ay+c, t*ay*az-s*ax, 0,
-      t*ax*az-s*ay, t*ay*az+s*ax, t*az*az+c, 0,
-      0, 0, 0, 1
-    );
-    const tmp = new Matrix4();
-    tmp.multiplyMatrices(m, r);
-    m = tmp;
-  }
-  return m;
-}
-
-// Helper: set a uniform on a raw GL program by name
-function setUniform(gl, prog,
-                    name, type, ...args) {
-  const loc = gl.getUniformLocation(prog, name);
-  if (loc === null) return;
-  (gl )['uniform' + type](loc, ...args);
-}
-
-
-class SpeckAO {
-  
-  
-  
-  
-
-  
-  
-  
-  
-  
-
-  
-  
-  
-
-  
-  
-  
-  
-  
-  
-  
-  
-
-  
-  
-
-  
-  
-  
-
-  constructor(renderer, scene, camera, boundingRadius) {
-    this.renderer = renderer;
-    this.scene = scene;
-    this.camera = camera;
-    this.gl = renderer.getContext();
-
-    this.sampleCount = 0;
-    this.colorRendered = false;
-    this.normalRendered = false;
-    this.range = boundingRadius * 2;
-    this.samplesPerFrame = 32;
-    this.maxSamples = 1024;
-
-    this.aoStrength = 1.5;
-    this.brightness = 1.0;
-    this.outlineStrength = 0.0;
-
-    this.progAccum = null;
-    this.progCompose = null;
-    this.quadVBO = null;
-
-    this._syncSizes();
-    this._createRenderTargets();
-    this._createPrograms();
-  }
-
-  setBoundingRadius(boundingRadius) {
-    this.range = Math.max(2 * boundingRadius, 1);
-  }
-
-  _syncSizes() {
-    const canvas = this.renderer.domElement;
-    this.sceneWidth = Math.max(1, canvas.width);
-    this.sceneHeight = Math.max(1, canvas.height);
-    this.aoWidth = Math.max(64, Math.floor(this.sceneWidth / 4));
-    this.aoHeight = Math.max(64, Math.floor(this.sceneHeight / 4));
-  }
-
-  _recreateRenderTargets() {
-    if (this.rtColor) this.rtColor.dispose(this.gl);
-    if (this.rtNormal) this.rtNormal.dispose(this.gl);
-    if (this.rtRandRot) this.rtRandRot.dispose(this.gl);
-    if (this.rtAccumulator) this.rtAccumulator.dispose(this.gl);
-    if (this.rtAccumulatorOut) this.rtAccumulatorOut.dispose(this.gl);
-    this._createRenderTargets();
-    this.reset();
-  }
-
-  _createRenderTargets() {
-    this.rtColor = new WebGLRenderTarget(this.sceneWidth, this.sceneHeight, { depth: true });
-    this.rtNormal = new WebGLRenderTarget(this.sceneWidth, this.sceneHeight, { depth: true });
-    this.rtRandRot = new WebGLRenderTarget(this.aoWidth, this.aoHeight, { depth: true });
-    this.rtAccumulator = new WebGLRenderTarget(this.sceneWidth, this.sceneHeight, { depth: false });
-    this.rtAccumulatorOut = new WebGLRenderTarget(this.sceneWidth, this.sceneHeight, { depth: false });
-  }
-
-  _createPrograms() {
-    const gl = this.gl;
-    this.progAccum = compileProgram(gl, fsQuadVert, accumulator_frag);
-    this.progCompose = compileProgram(gl, fsQuadVert, ao_compose_frag);
-
-    // Full-screen quad VBO
-    this.quadVBO = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVBO);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-      -1, -1, 0, 1, -1, 0, 1, 1, 0,
-      -1, -1, 0, 1, 1, 0, -1, 1, 0,
-    ]), gl.STATIC_DRAW);
-  }
-
-  _drawQuad(prog) {
-    const gl = this.gl;
-    gl.useProgram(prog);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVBO);
-    const loc = gl.getAttribLocation(prog, 'aPosition');
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    gl.disableVertexAttribArray(loc);
-  }
-
-  reset() {
-    this.sampleCount = 0;
-    this.colorRendered = false;
-    this.normalRendered = false;
-    const gl = this.gl;
-    this.rtAccumulator._init(gl);
-    this.rtAccumulatorOut._init(gl);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtAccumulator._framebuffer);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtAccumulatorOut._framebuffer);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-  }
-
-  isDone() {
-    return this.sampleCount >= this.maxSamples;
-  }
-
-  _withoutFog(fn) {
-    const fog = this.scene.fog;
-    this.scene.fog = null;
-    fn();
-    this.scene.fog = fog;
-  }
-
-  // Set camera near/far to tight range around molecule (like speck: near=0, far=range)
-  // so depth buffer values span only the molecule, not the entire scene.
-  _withTightDepth(fn) {
-    const origNear = this.camera.near;
-    const origFar = this.camera.far;
-    const dxyz = (origNear + origFar) / 2; // distance to molecule center
-    this.camera.near = dxyz - this.range / 2;
-    this.camera.far = dxyz + this.range / 2;
-    this.camera.updateProjectionMatrix();
-    fn();
-    this.camera.near = origNear;
-    this.camera.far = origFar;
-    this.camera.updateProjectionMatrix();
-  }
-
-  _setMaterialMode(mode) {
-    for (const obj of this.scene.children) {
-      if (obj.material && obj.material.uniforms && obj.material.uniforms.uMode) {
-        obj.material.uniforms.uMode.value = mode;
-      }
-    }
-  }
-
-  render() {
-    const prevWidth = this.sceneWidth;
-    const prevHeight = this.sceneHeight;
-    this._syncSizes();
-    if (this.sceneWidth !== prevWidth || this.sceneHeight !== prevHeight) {
-      this._recreateRenderTargets();
-    }
-
-    if (!this.colorRendered) {
-      this._setMaterialMode(2);
-      this._withoutFog(() => this._withTightDepth(() => {
-        this.renderer.render(this.scene, this.camera, this.rtColor, true);
-      }));
-      this._setMaterialMode(0);
-      this.colorRendered = true;
-    } else if (!this.normalRendered) {
-      this._setMaterialMode(1);
-      this._withoutFog(() => this._withTightDepth(() => {
-        this.renderer.render(this.scene, this.camera, this.rtNormal, true);
-      }));
-      this._setMaterialMode(0);
-      this.normalRendered = true;
-    } else {
-      for (let i = 0; i < this.samplesPerFrame; i++) {
-        if (this.sampleCount >= this.maxSamples) break;
-        this._sample();
-        this.sampleCount++;
-      }
-    }
-
-    this._compose();
-  }
-
-  _sample() {
-    const gl = this.gl;
-    const rot = randomRotation();
-    const invRot = new Matrix4();
-    invRot.copy(rot);
-    invRot.invert();
-
-    // Save original camera state
-    const origMatrix = new Matrix4();
-    origMatrix.copy(this.camera.matrixWorld);
-    const origMatrixInverse = new Matrix4();
-    origMatrixInverse.copy(this.camera.matrixWorldInverse);
-    const origLeft = this.camera.left;
-    const origRight = this.camera.right;
-    const origTop = this.camera.top;
-    const origBottom = this.camera.bottom;
-    const origZoom = this.camera.zoom;
-    const origMatrixAutoUpdate = this.camera.matrixAutoUpdate;
-    const origMatrixWorldNeedsUpdate = this.camera.matrixWorldNeedsUpdate;
-
-    // Widen camera and tighten depth to encompass molecule at any rotation
-    const half = this.range / 2;
-    const dxyz = (this.camera.near + this.camera.far) / 2;
-    const origNear = this.camera.near;
-    const origFar = this.camera.far;
-    this.camera.left = -half;
-    this.camera.right = half;
-    this.camera.top = half;
-    this.camera.bottom = -half;
-    this.camera.zoom = 1;
-    this.camera.near = dxyz - half;
-    this.camera.far = dxyz + half;
-    this.camera.updateProjectionMatrix();
-
-    // Rotate the camera
-    const rotatedMatrix = new Matrix4();
-    rotatedMatrix.multiplyMatrices(origMatrix, rot);
-    this.camera.matrixAutoUpdate = false;
-    this.camera.matrixWorldNeedsUpdate = false;
-    this.camera.matrixWorld.copy(rotatedMatrix);
-    this.camera.matrixWorldInverse.copy(rotatedMatrix);
-    this.camera.matrixWorldInverse.invert();
-
-    this._setMaterialMode(0);
-    this._withoutFog(() => {
-      this.renderer.render(this.scene, this.camera, this.rtRandRot, true);
-    });
-
-    // Restore camera
-    this.camera.matrixWorld.copy(origMatrix);
-    this.camera.matrixWorldInverse.copy(origMatrixInverse);
-    this.camera.left = origLeft;
-    this.camera.right = origRight;
-    this.camera.top = origTop;
-    this.camera.bottom = origBottom;
-    this.camera.zoom = origZoom;
-    this.camera.near = origNear;
-    this.camera.far = origFar;
-    this.camera.matrixAutoUpdate = origMatrixAutoUpdate;
-    this.camera.matrixWorldNeedsUpdate = origMatrixWorldNeedsUpdate;
-    this.camera.updateProjectionMatrix();
-
-    // Accumulator pass (raw WebGL)
-    const sceneRect = getCameraRect(this.camera);
-    const rotRect = { left: -half, right: half, bottom: -half, top: half };
-    const prog = this.progAccum;
-
-    this.rtAccumulatorOut._init(gl);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.rtAccumulatorOut._framebuffer);
-    gl.viewport(0, 0, this.sceneWidth, this.sceneHeight);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.disable(gl.DEPTH_TEST);
-
-    gl.useProgram(prog);
-
-    // Bind textures
-    this.rtColor.bindDepthTexture(gl, 0);
-    setUniform(gl, prog, 'uSceneDepth', '1i', 0);
-
-    this.rtNormal.bindColorTexture(gl, 1);
-    setUniform(gl, prog, 'uSceneNormal', '1i', 1);
-
-    this.rtRandRot.bindDepthTexture(gl, 2);
-    setUniform(gl, prog, 'uRandRotDepth', '1i', 2);
-
-    this.rtAccumulator.bindColorTexture(gl, 3);
-    setUniform(gl, prog, 'uAccumulator', '1i', 3);
-
-    setUniform(gl, prog, 'uRot', 'Matrix4fv', false, rot.elements);
-    setUniform(gl, prog, 'uInvRot', 'Matrix4fv', false, invRot.elements);
-    setUniform(gl, prog, 'uSceneBottomLeft', '2fv', [sceneRect.left, sceneRect.bottom]);
-    setUniform(gl, prog, 'uSceneTopRight', '2fv', [sceneRect.right, sceneRect.top]);
-    setUniform(gl, prog, 'uRotBottomLeft', '2fv', [rotRect.left, rotRect.bottom]);
-    setUniform(gl, prog, 'uRotTopRight', '2fv', [rotRect.right, rotRect.top]);
-    setUniform(gl, prog, 'uDepth', '1f', this.range);
-    setUniform(gl, prog, 'uRes', '2fv', [this.sceneWidth, this.sceneHeight]);
-    setUniform(gl, prog, 'uSampleCount', '1i', this.sampleCount);
-
-    this._drawQuad(prog);
-
-    // Ping-pong: swap accumulators (avoids expensive copyTexImage2D)
-    const tmp = this.rtAccumulator;
-    this.rtAccumulator = this.rtAccumulatorOut;
-    this.rtAccumulatorOut = tmp;
-
-    gl.enable(gl.DEPTH_TEST);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    this.renderer.resetGLState();
-  }
-
-  _compose() {
-    const gl = this.gl;
-    const prog = this.progCompose;
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    this.renderer.setRenderTarget(null);  // restore three.js viewport
-    gl.viewport(0, 0, this.sceneWidth, this.sceneHeight);
-    gl.disable(gl.DEPTH_TEST);
-
-    gl.useProgram(prog);
-
-    this.rtColor.bindColorTexture(gl, 0);
-    setUniform(gl, prog, 'uSceneColor', '1i', 0);
-
-    this.rtColor.bindDepthTexture(gl, 1);
-    setUniform(gl, prog, 'uSceneDepth', '1i', 1);
-
-    this.rtAccumulator.bindColorTexture(gl, 2);
-    setUniform(gl, prog, 'uAccumulatorOut', '1i', 2);
-
-    setUniform(gl, prog, 'uRes', '2fv', [this.sceneWidth, this.sceneHeight]);
-    setUniform(gl, prog, 'uAO', '1f', this.aoStrength);
-    setUniform(gl, prog, 'uBrightness', '1f', this.brightness);
-    setUniform(gl, prog, 'uOutlineStrength', '1f', this.outlineStrength);
-    const bg = this.renderer.getClearColor();
-    setUniform(gl, prog, 'uBgColor', '3fv', [bg.r, bg.g, bg.b]);
-
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    this._drawQuad(prog);
-
-    gl.enable(gl.DEPTH_TEST);
-    this.renderer.resetGLState();
-  }
-
-  dispose() {
-    const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    this.renderer.resetGLState();
-    this.rtColor.dispose(gl);
-    this.rtNormal.dispose(gl);
-    this.rtRandRot.dispose(gl);
-    this.rtAccumulator.dispose(gl);
-    this.rtAccumulatorOut.dispose(gl);
-    if (this.progAccum) gl.deleteProgram(this.progAccum);
-    if (this.progCompose) gl.deleteProgram(this.progCompose);
-    if (this.quadVBO) gl.deleteBuffer(this.quadVBO);
   }
 }
 
@@ -8592,7 +7937,7 @@ function plan_protein_mutation(residue_atoms, target) {
   };
 }
 
-function plan_nucleotide_mutation(residue_atoms, source_kind,
+function plan_nucleotide_mutation(residue_atoms,
                                   target_label) {
   const target = nucleotide_target_resname(residue_atoms[0].resname, target_label);
   const template_atoms = heavy_nucleotide_template_atoms(target);
@@ -8727,12 +8072,13 @@ function plan_residue_mutation(residue_atoms, target_resname) {
     if (target_resname === SUGAR_TO_DNA || target_resname === SUGAR_TO_RNA) {
       return plan_sugar_switch(residue_atoms, kind);
     }
-    return plan_nucleotide_mutation(residue_atoms, kind, target_resname);
+    return plan_nucleotide_mutation(residue_atoms, target_resname);
   }
   throw Error('Mutation is supported only for standard amino-acid and nucleic-acid residues.');
 }
 
 function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
+
 
 
 
@@ -8904,13 +8250,14 @@ const INIT_HUD_TEXT = 'This is GemmiMol not Coot.';
 const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
                      'index', 'chain', 'secondary structure'];
 const MAINCHAIN_STYLES = ['sticks', 'lines', 'backbone', 'cartoon',
-                          'ribbon', 'ball&stick', 'space-filling',
-                          'space-filling+AO'];
+                          'ribbon', 'ball&stick', 'space-filling'];
 const SIDECHAIN_STYLES = ['sticks', 'lines', 'ball&stick', 'invisible'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
 const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
+
+
 
 
 
@@ -9566,6 +8913,8 @@ class Viewer {
   
   
   
+  
+  
 
   
   
@@ -9647,6 +8996,10 @@ class Viewer {
     //this.nav = null;
     this.xhr_headers = {};
     this.monomer_cif_cache = {};
+    this.monomer_fetcher = typeof options.monomer_fetcher === 'function' ?
+      options.monomer_fetcher : null;
+    this.monomer_url_template = typeof options.monomer_url_template === 'string' ?
+      options.monomer_url_template : null;
     this.last_bonding_info = null;
     this.sym_model_bags = [];
     this.sym_bond_objects = [];
@@ -9673,6 +9026,7 @@ class Viewer {
       hydrogens: false,
       ball_size: 0.4,
       stick_radius: 0.08,
+      sphere_scale: 100,
     };
 
     // options of the constructor overwrite default values of the config
@@ -9752,6 +9106,7 @@ class Viewer {
     this.queued_mutation_preview = null;
     this.histogram_el = null;
     this.histogram_redraw = null;
+    this.sphere_scale_el = null;
     this.blob_hits = [];
     this.blob_map_bag = null;
     this.blob_negate = false;
@@ -9762,7 +9117,6 @@ class Viewer {
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
-    this.speckAO = null;
     this.map_radius_auto = !('map_radius' in options) && !('max_map_radius' in options);
     if (this.hud_el) {
       if (this.hud_el.innerHTML === '') this.hud_el.innerHTML = INIT_HUD_TEXT;
@@ -10151,33 +9505,6 @@ class Viewer {
     return this.renderer && this.renderer.extensions.get('EXT_frag_depth');
   }
 
-  make_objects_translucent(objects) {
-    for (const obj of objects) {
-      const o = obj ;
-      if (o.material) {
-        this.set_material_opacity(o.material, 0.5);
-      }
-      if (o.children) {
-        for (const child of o.children) {
-          if (child.material) {
-            this.set_material_opacity(child.material, 0.5);
-          }
-        }
-      }
-    }
-  }
-
-  set_material_opacity(material, opacity) {
-    material.transparent = true;
-    if (material.fragmentShader) {
-      material.fragmentShader = material.fragmentShader.replace(
-        /gl_FragColor\s*=\s*vec4\(([^,]+),\s*1\.0\)/g,
-        'gl_FragColor = vec4($1, ' + opacity.toFixed(1) + ')'
-      );
-      material.needsUpdate = true;
-    }
-  }
-
   add_rendered_atoms(target, seen, atoms) {
     for (const atom of atoms) {
       if (!seen.has(atom.i_seq)) {
@@ -10226,7 +9553,8 @@ class Viewer {
       }
       const visible_atoms = model_bag.get_visible_atoms();
       const colors = model_bag.atom_colors(visible_atoms);
-      model_bag.objects.push(makeSpaceFilling(visible_atoms, colors));
+      model_bag.objects.push(makeSpaceFilling(visible_atoms, colors,
+                                              this.config.sphere_scale / 100));
       model_bag.atom_array = visible_atoms;
       this.add_rendered_atoms(rendered_atoms, seen_atoms, visible_atoms);
     } else {
@@ -10372,66 +9700,16 @@ class Viewer {
     this.request_render();
   }
 
-  redraw_model(model_bag, skip_ao_update) {
+  redraw_model(model_bag) {
     this.clear_model_objects(model_bag);
     if (model_bag.visible) {
       this.set_model_objects(model_bag);
     }
-    if (!skip_ao_update) this.update_speck_ao();
   }
 
   redraw_models() {
     for (const model_bag of this.model_bags) {
-      this.redraw_model(model_bag, true);
-    }
-    this.update_speck_ao();
-  }
-
-  space_filling_bounding_radius() {
-    let cx = 0;
-    let cy = 0;
-    let cz = 0;
-    let n = 0;
-    for (const bag of this.model_bags) {
-      for (const atom of bag.atom_array) {
-        cx += atom.xyz[0];
-        cy += atom.xyz[1];
-        cz += atom.xyz[2];
-        n++;
-      }
-    }
-    if (n === 0) return 2;
-    cx /= n;
-    cy /= n;
-    cz /= n;
-    let maxR2 = 0;
-    for (const bag of this.model_bags) {
-      for (const atom of bag.atom_array) {
-        const dx = atom.xyz[0] - cx;
-        const dy = atom.xyz[1] - cy;
-        const dz = atom.xyz[2] - cz;
-        const r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 > maxR2) maxR2 = r2;
-      }
-    }
-    return Math.sqrt(maxR2) + 2; // +2 for VdW radii
-  }
-
-  update_speck_ao() {
-    const needsAO = this.model_bags.some(
-      (bag) => bag.conf.mainchain_style === 'space-filling+AO');
-    if (needsAO && this.renderer) {
-      const boundingRadius = this.space_filling_bounding_radius();
-      if (!this.speckAO) {
-        this.speckAO = new SpeckAO(this.renderer, this.scene, this.camera,
-                                   boundingRadius);
-      } else {
-        this.speckAO.setBoundingRadius(boundingRadius);
-      }
-      this.speckAO.reset();
-    } else if (this.speckAO) {
-      this.speckAO.dispose();
-      this.speckAO = null;
+      this.redraw_model(model_bag);
     }
   }
 
@@ -10647,7 +9925,6 @@ class Viewer {
       }
       this.sym_model_bags = [];
       this.sym_bond_objects = [];
-      this.update_speck_ao();
       this.update_nav_menus();
       this.hud('symmetry mates hidden');
       this.request_render();
@@ -10729,7 +10006,6 @@ class Viewer {
     this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') +
              ' shown: ' + shown_symops.join(', '));
     images.delete();
-    this.update_speck_ao();
     this.request_render();
   }
 
@@ -11586,6 +10862,23 @@ class Viewer {
     select.disabled = (edit == null);
     select.style.display = (editable_bag == null) ? 'none' : '';
     select.value = '';
+    const opts = select.options;
+    if (edit != null) {
+      const a = edit.atom;
+      for (let i = 1; i < opts.length; i++) {
+        const v = opts[i].value;
+        if (v === 'atom') opts[i].textContent = 'atom ' + a.name;
+        else if (v === 'residue') opts[i].textContent = 'residue /' + a.seqid + ' ' + a.resname + '/' + a.chain;
+        else if (v === 'chain') opts[i].textContent = 'chain ' + a.chain;
+      }
+    } else {
+      for (let i = 1; i < opts.length; i++) {
+        const v = opts[i].value;
+        if (v === 'atom') opts[i].textContent = 'atom';
+        else if (v === 'residue') opts[i].textContent = 'residue';
+        else if (v === 'chain') opts[i].textContent = 'chain';
+      }
+    }
   }
 
   mutation_target_from_resname(resname) {
@@ -12730,11 +12023,27 @@ class Viewer {
     this.request_render();
   }
 
+  style_menus_html() {
+    return this.select_menu_html('mainchain as', 'mainchain_style', MAINCHAIN_STYLES) + '<br>' +
+           this.select_menu_html('sidechains as', 'sidechain_style', SIDECHAIN_STYLES) + '<br>' +
+           this.select_menu_html('ligands as', 'ligand_style', LIGAND_STYLES) + '<br>' +
+           this.select_menu_html('waters as', 'water_style', WATER_STYLES);
+  }
+
   set_selected_option(info, key, options, value) {
     if (options.indexOf(value) === -1) return;
     this.config[key] = value;
     this.apply_selected_option(key);
-    this.hud(this.select_menu_html(info, key, options), 'HTML');
+    const is_style = key === 'mainchain_style' || key === 'sidechain_style' ||
+                     key === 'ligand_style' || key === 'water_style';
+    if (is_style) {
+      this.hud(this.style_menus_html(), 'HTML');
+    } else {
+      this.hud(this.select_menu_html(info, key, options), 'HTML');
+    }
+    if (key === 'mainchain_style') {
+      this.show_sphere_scale_slider(value.startsWith('space-filling'));
+    }
   }
 
   on_hud_click(event) {
@@ -12751,6 +12060,47 @@ class Viewer {
         return;
       }
       el = el.parentElement;
+    }
+  }
+
+  show_sphere_scale_slider(show) {
+    if (!this.container) return;
+    if (!show) {
+      if (this.sphere_scale_el) this.sphere_scale_el.style.display = 'none';
+      return;
+    }
+    if (!this.sphere_scale_el) {
+      const div = document.createElement('div');
+      div.style.position = 'absolute';
+      div.style.bottom = '5px';
+      div.style.left = '50%';
+      div.style.transform = 'translateX(-50%)';
+      div.style.color = 'white';
+      div.style.fontSize = '14px';
+      div.style.zIndex = '1';
+      div.style.background = 'rgba(0,0,0,0.5)';
+      div.style.padding = '4px 10px';
+      div.style.borderRadius = '4px';
+      div.innerHTML = 'sphere scale: <input type="range" min="0" max="100" value="' +
+                      this.config.sphere_scale + '" style="vertical-align:middle">' +
+                      ' <span>' + this.config.sphere_scale + '%</span>';
+      const self = this;
+      const input = div.querySelector('input') ;
+      const label = div.querySelector('span') ;
+      input.addEventListener('input', function () {
+        self.config.sphere_scale = parseInt(input.value, 10);
+        label.textContent = self.config.sphere_scale + '%';
+        self.redraw_models();
+        self.request_render();
+      });
+      this.container.appendChild(div);
+      this.sphere_scale_el = div;
+    } else {
+      const input = this.sphere_scale_el.querySelector('input') ;
+      const label = this.sphere_scale_el.querySelector('span') ;
+      input.value = String(this.config.sphere_scale);
+      label.textContent = this.config.sphere_scale + '%';
+      this.sphere_scale_el.style.display = '';
     }
   }
 
@@ -13287,23 +12637,7 @@ class Viewer {
       this.redraw_maps();
       if (tied && !tied.scheduled) tied.redraw_maps();
     }
-    if (this.speckAO) {
-      if (this.controls.is_moving()) {
-        this.speckAO.reset();
-        this.renderer.render(this.scene, this.camera);
-      } else {
-        this.speckAO.render();
-        const pct = Math.min(100, Math.round(100 * this.speckAO.sampleCount /
-                                              this.speckAO.maxSamples));
-        if (pct < 100) {
-          this.hud('calculating AO: ' + pct + '%');
-        } else {
-          this.hud();
-        }
-      }
-    } else {
-      this.renderer.render(this.scene, this.camera);
-    }
+    this.renderer.render(this.scene, this.camera);
     if (tied && !tied.scheduled) tied.renderer.render(tied.scene, tied.camera);
     //if (this.nav) {
     //  this.nav.renderer.render(this.nav.scene, this.camera);
@@ -13311,9 +12645,6 @@ class Viewer {
     this.scheduled = false;
     if (this.controls.is_moving()) {
       this.request_render();
-    } else if (this.speckAO && !this.speckAO.isDone()) {
-      // Throttle AO accumulation to keep UI responsive
-      setTimeout(() => this.request_render(), 50);
     }
   }
 
@@ -13366,7 +12697,6 @@ class Viewer {
     this.model_bags.push(model_bag);
     this.auto_adjust_map_radius();
     this.set_model_objects(model_bag);
-    this.update_speck_ao();
     this.update_nav_menus();
     this.request_render();
   }
@@ -13602,18 +12932,24 @@ class Viewer {
   fetch_monomer_cif(resname) {
     const name = resname.toUpperCase();
     if (!(name in this.monomer_cif_cache)) {
-      const template = aminoAcidTemplate(name) || nucleotideTemplate(name);
-      if (template != null) {
-        this.monomer_cif_cache[name] = Promise.resolve(template.cif);
-      } else {
-        this.monomer_cif_cache[name] = fetch(
-          'https://files.rcsb.org/ligands/view/' + encodeURIComponent(name) + '.cif'
-        ).then(function (resp) {
+      const self = this;
+      const default_fetch = function () {
+        const template = aminoAcidTemplate(name) || nucleotideTemplate(name);
+        if (template != null) return Promise.resolve(template.cif);
+        const url = self.monomer_url_template != null ?
+          self.monomer_url_template.replace(/\{name\}/g, encodeURIComponent(name)) :
+          'https://files.rcsb.org/ligands/view/' + encodeURIComponent(name) + '.cif';
+        return fetch(url).then(function (resp) {
           return resp.ok ? resp.text() : null;
         }).catch(function () {
           return null;
         });
-      }
+      };
+      this.monomer_cif_cache[name] = this.monomer_fetcher ?
+        Promise.resolve(this.monomer_fetcher(name)).then(function (text) {
+          return text != null ? text : default_fetch();
+        }) :
+        default_fetch();
     }
     return this.monomer_cif_cache[name];
   }
@@ -14586,7 +13922,6 @@ exports.ShaderMaterial = ShaderMaterial;
 exports.Texture = Texture;
 exports.Vector3 = Vector3;
 exports.Viewer = Viewer;
-exports.WebGLRenderTarget = WebGLRenderTarget;
 exports.WebGLRenderer = WebGLRenderer;
 exports.addXyzCross = addXyzCross;
 exports.bondDataFromGemmiStructure = bondDataFromGemmiStructure;

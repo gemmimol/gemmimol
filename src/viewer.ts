@@ -5,7 +5,6 @@ import { makeLineMaterial, makeLineSegments, makeRibbon, makeCartoon,
          makeWheels, makeCube, makeSpaceFilling,
          makeRgbBox, Label, addXyzCross } from './draw';
 import { STATE, Controls } from './controls';
-import { SpeckAO } from './ao';
 import { ElMap } from './elmap';
 import type { BlobHit } from './elmap';
 import { BondType, modelsFromGemmi, modelFromGemmiStructure,
@@ -81,6 +80,7 @@ export type ViewerConfig = {
   hydrogens: boolean,
   ball_size: number,
   stick_radius: number,
+  sphere_scale: number,
   stay?: boolean;
 };
 
@@ -184,8 +184,7 @@ const INIT_HUD_TEXT = 'This is GemmiMol not Coot.';
 const COLOR_PROPS = ['element', 'B-factor', 'pLDDT', 'occupancy',
                      'index', 'chain', 'secondary structure'];
 const MAINCHAIN_STYLES = ['sticks', 'lines', 'backbone', 'cartoon',
-                          'ribbon', 'ball&stick', 'space-filling',
-                          'space-filling+AO'];
+                          'ribbon', 'ball&stick', 'space-filling'];
 const SIDECHAIN_STYLES = ['sticks', 'lines', 'ball&stick', 'invisible'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
@@ -197,6 +196,8 @@ type HelpActionSpec = {
   shiftKey?: boolean,
   ctrlKey?: boolean,
 };
+
+type MonomerCifFetcher = (resname: string) => Promise<string | null> | string | null;
 
 function escape_html(text: string) {
   return text.replace(/[&<>"']/g, (ch) => ({
@@ -843,6 +844,8 @@ export class Viewer {
   //nav: object | null;
   xhr_headers: Record<string, string>;
   monomer_cif_cache: Record<string, Promise<string | null>>;
+  monomer_fetcher: MonomerCifFetcher | null;
+  monomer_url_template: string | null;
   last_bonding_info: GemmiBondingInfo | null;
   sym_model_bags: ModelBag[];
   sym_bond_objects: object[];
@@ -863,7 +866,6 @@ export class Viewer {
   controls: Controls;
   tied_viewer: Viewer | null;
   renderer: WebGLRenderer;
-  speckAO: SpeckAO | null;
   container: HTMLElement | null;
   hud_el: HTMLElement | null;
   help_el: HTMLElement | null;
@@ -910,6 +912,7 @@ export class Viewer {
   key_bindings: Array<((evt: KeyboardEvent) => void) | false | undefined>;
   histogram_el: HTMLDivElement | null;
   histogram_redraw: (() => void) | null;
+  sphere_scale_el: HTMLDivElement | null;
   declare ColorSchemes: typeof ColorSchemes;
 
   constructor(options: Record<string, any> | string = {}) {
@@ -927,6 +930,10 @@ export class Viewer {
     //this.nav = null;
     this.xhr_headers = {};
     this.monomer_cif_cache = {};
+    this.monomer_fetcher = typeof options.monomer_fetcher === 'function' ?
+      options.monomer_fetcher : null;
+    this.monomer_url_template = typeof options.monomer_url_template === 'string' ?
+      options.monomer_url_template : null;
     this.last_bonding_info = null;
     this.sym_model_bags = [];
     this.sym_bond_objects = [];
@@ -953,6 +960,7 @@ export class Viewer {
       hydrogens: false,
       ball_size: 0.4,
       stick_radius: 0.08,
+      sphere_scale: 100,
     };
 
     // options of the constructor overwrite default values of the config
@@ -1032,6 +1040,7 @@ export class Viewer {
     this.queued_mutation_preview = null;
     this.histogram_el = null;
     this.histogram_redraw = null;
+    this.sphere_scale_el = null;
     this.blob_hits = [];
     this.blob_map_bag = null;
     this.blob_negate = false;
@@ -1042,7 +1051,6 @@ export class Viewer {
     this.fps_text = 'FPS: --';
     this.last_frame_time = 0;
     this.frame_times = [];
-    this.speckAO = null;
     this.map_radius_auto = !('map_radius' in options) && !('max_map_radius' in options);
     if (this.hud_el) {
       if (this.hud_el.innerHTML === '') this.hud_el.innerHTML = INIT_HUD_TEXT;
@@ -1431,33 +1439,6 @@ export class Viewer {
     return this.renderer && this.renderer.extensions.get('EXT_frag_depth');
   }
 
-  make_objects_translucent(objects: object[]) {
-    for (const obj of objects) {
-      const o = obj as any;
-      if (o.material) {
-        this.set_material_opacity(o.material, 0.5);
-      }
-      if (o.children) {
-        for (const child of o.children) {
-          if (child.material) {
-            this.set_material_opacity(child.material, 0.5);
-          }
-        }
-      }
-    }
-  }
-
-  set_material_opacity(material: any, opacity: number) {
-    material.transparent = true;
-    if (material.fragmentShader) {
-      material.fragmentShader = material.fragmentShader.replace(
-        /gl_FragColor\s*=\s*vec4\(([^,]+),\s*1\.0\)/g,
-        'gl_FragColor = vec4($1, ' + opacity.toFixed(1) + ')'
-      );
-      material.needsUpdate = true;
-    }
-  }
-
   add_rendered_atoms(target: Atom[], seen: Set<number>, atoms: Atom[]) {
     for (const atom of atoms) {
       if (!seen.has(atom.i_seq)) {
@@ -1506,7 +1487,8 @@ export class Viewer {
       }
       const visible_atoms = model_bag.get_visible_atoms();
       const colors = model_bag.atom_colors(visible_atoms);
-      model_bag.objects.push(makeSpaceFilling(visible_atoms, colors));
+      model_bag.objects.push(makeSpaceFilling(visible_atoms, colors,
+                                              this.config.sphere_scale / 100));
       model_bag.atom_array = visible_atoms;
       this.add_rendered_atoms(rendered_atoms, seen_atoms, visible_atoms);
     } else {
@@ -1652,66 +1634,16 @@ export class Viewer {
     this.request_render();
   }
 
-  redraw_model(model_bag: ModelBag, skip_ao_update?: boolean) {
+  redraw_model(model_bag: ModelBag) {
     this.clear_model_objects(model_bag);
     if (model_bag.visible) {
       this.set_model_objects(model_bag);
     }
-    if (!skip_ao_update) this.update_speck_ao();
   }
 
   redraw_models() {
     for (const model_bag of this.model_bags) {
-      this.redraw_model(model_bag, true);
-    }
-    this.update_speck_ao();
-  }
-
-  space_filling_bounding_radius() {
-    let cx = 0;
-    let cy = 0;
-    let cz = 0;
-    let n = 0;
-    for (const bag of this.model_bags) {
-      for (const atom of bag.atom_array) {
-        cx += atom.xyz[0];
-        cy += atom.xyz[1];
-        cz += atom.xyz[2];
-        n++;
-      }
-    }
-    if (n === 0) return 2;
-    cx /= n;
-    cy /= n;
-    cz /= n;
-    let maxR2 = 0;
-    for (const bag of this.model_bags) {
-      for (const atom of bag.atom_array) {
-        const dx = atom.xyz[0] - cx;
-        const dy = atom.xyz[1] - cy;
-        const dz = atom.xyz[2] - cz;
-        const r2 = dx * dx + dy * dy + dz * dz;
-        if (r2 > maxR2) maxR2 = r2;
-      }
-    }
-    return Math.sqrt(maxR2) + 2; // +2 for VdW radii
-  }
-
-  update_speck_ao() {
-    const needsAO = this.model_bags.some(
-      (bag) => bag.conf.mainchain_style === 'space-filling+AO');
-    if (needsAO && this.renderer) {
-      const boundingRadius = this.space_filling_bounding_radius();
-      if (!this.speckAO) {
-        this.speckAO = new SpeckAO(this.renderer, this.scene, this.camera,
-                                   boundingRadius);
-      } else {
-        this.speckAO.setBoundingRadius(boundingRadius);
-      }
-      this.speckAO.reset();
-    } else if (this.speckAO) {
-      this.speckAO.dispose();
-      this.speckAO = null;
+      this.redraw_model(model_bag);
     }
   }
 
@@ -1927,7 +1859,6 @@ export class Viewer {
       }
       this.sym_model_bags = [];
       this.sym_bond_objects = [];
-      this.update_speck_ao();
       this.update_nav_menus();
       this.hud('symmetry mates hidden');
       this.request_render();
@@ -2009,7 +1940,6 @@ export class Viewer {
     this.hud(n + ' symmetry mate' + (n > 1 ? 's' : '') +
              ' shown: ' + shown_symops.join(', '));
     images.delete();
-    this.update_speck_ao();
     this.request_render();
   }
 
@@ -2866,6 +2796,23 @@ export class Viewer {
     select.disabled = (edit == null);
     select.style.display = (editable_bag == null) ? 'none' : '';
     select.value = '';
+    const opts = select.options;
+    if (edit != null) {
+      const a = edit.atom;
+      for (let i = 1; i < opts.length; i++) {
+        const v = opts[i].value;
+        if (v === 'atom') opts[i].textContent = 'atom ' + a.name;
+        else if (v === 'residue') opts[i].textContent = 'residue /' + a.seqid + ' ' + a.resname + '/' + a.chain;
+        else if (v === 'chain') opts[i].textContent = 'chain ' + a.chain;
+      }
+    } else {
+      for (let i = 1; i < opts.length; i++) {
+        const v = opts[i].value;
+        if (v === 'atom') opts[i].textContent = 'atom';
+        else if (v === 'residue') opts[i].textContent = 'residue';
+        else if (v === 'chain') opts[i].textContent = 'chain';
+      }
+    }
   }
 
   mutation_target_from_resname(resname: string): string {
@@ -4010,11 +3957,27 @@ export class Viewer {
     this.request_render();
   }
 
+  style_menus_html() {
+    return this.select_menu_html('mainchain as', 'mainchain_style', MAINCHAIN_STYLES) + '<br>' +
+           this.select_menu_html('sidechains as', 'sidechain_style', SIDECHAIN_STYLES) + '<br>' +
+           this.select_menu_html('ligands as', 'ligand_style', LIGAND_STYLES) + '<br>' +
+           this.select_menu_html('waters as', 'water_style', WATER_STYLES);
+  }
+
   set_selected_option(info: string, key: string, options: string[], value: string) {
     if (options.indexOf(value) === -1) return;
     this.config[key] = value;
     this.apply_selected_option(key);
-    this.hud(this.select_menu_html(info, key, options), 'HTML');
+    const is_style = key === 'mainchain_style' || key === 'sidechain_style' ||
+                     key === 'ligand_style' || key === 'water_style';
+    if (is_style) {
+      this.hud(this.style_menus_html(), 'HTML');
+    } else {
+      this.hud(this.select_menu_html(info, key, options), 'HTML');
+    }
+    if (key === 'mainchain_style') {
+      this.show_sphere_scale_slider(value.startsWith('space-filling'));
+    }
   }
 
   on_hud_click(event: MouseEvent) {
@@ -4031,6 +3994,47 @@ export class Viewer {
         return;
       }
       el = el.parentElement;
+    }
+  }
+
+  show_sphere_scale_slider(show: boolean) {
+    if (!this.container) return;
+    if (!show) {
+      if (this.sphere_scale_el) this.sphere_scale_el.style.display = 'none';
+      return;
+    }
+    if (!this.sphere_scale_el) {
+      const div = document.createElement('div');
+      div.style.position = 'absolute';
+      div.style.bottom = '5px';
+      div.style.left = '50%';
+      div.style.transform = 'translateX(-50%)';
+      div.style.color = 'white';
+      div.style.fontSize = '14px';
+      div.style.zIndex = '1';
+      div.style.background = 'rgba(0,0,0,0.5)';
+      div.style.padding = '4px 10px';
+      div.style.borderRadius = '4px';
+      div.innerHTML = 'sphere scale: <input type="range" min="0" max="100" value="' +
+                      this.config.sphere_scale + '" style="vertical-align:middle">' +
+                      ' <span>' + this.config.sphere_scale + '%</span>';
+      const self = this;
+      const input = div.querySelector('input') as HTMLInputElement;
+      const label = div.querySelector('span') as HTMLSpanElement;
+      input.addEventListener('input', function () {
+        self.config.sphere_scale = parseInt(input.value, 10);
+        label.textContent = self.config.sphere_scale + '%';
+        self.redraw_models();
+        self.request_render();
+      });
+      this.container.appendChild(div);
+      this.sphere_scale_el = div;
+    } else {
+      const input = this.sphere_scale_el.querySelector('input') as HTMLInputElement;
+      const label = this.sphere_scale_el.querySelector('span') as HTMLSpanElement;
+      input.value = String(this.config.sphere_scale);
+      label.textContent = this.config.sphere_scale + '%';
+      this.sphere_scale_el.style.display = '';
     }
   }
 
@@ -4567,23 +4571,7 @@ export class Viewer {
       this.redraw_maps();
       if (tied && !tied.scheduled) tied.redraw_maps();
     }
-    if (this.speckAO) {
-      if (this.controls.is_moving()) {
-        this.speckAO.reset();
-        this.renderer.render(this.scene, this.camera);
-      } else {
-        this.speckAO.render();
-        const pct = Math.min(100, Math.round(100 * this.speckAO.sampleCount /
-                                              this.speckAO.maxSamples));
-        if (pct < 100) {
-          this.hud('calculating AO: ' + pct + '%');
-        } else {
-          this.hud();
-        }
-      }
-    } else {
-      this.renderer.render(this.scene, this.camera);
-    }
+    this.renderer.render(this.scene, this.camera);
     if (tied && !tied.scheduled) tied.renderer.render(tied.scene, tied.camera);
     //if (this.nav) {
     //  this.nav.renderer.render(this.nav.scene, this.camera);
@@ -4591,9 +4579,6 @@ export class Viewer {
     this.scheduled = false;
     if (this.controls.is_moving()) {
       this.request_render();
-    } else if (this.speckAO && !this.speckAO.isDone()) {
-      // Throttle AO accumulation to keep UI responsive
-      setTimeout(() => this.request_render(), 50);
     }
   }
 
@@ -4646,7 +4631,6 @@ export class Viewer {
     this.model_bags.push(model_bag);
     this.auto_adjust_map_radius();
     this.set_model_objects(model_bag);
-    this.update_speck_ao();
     this.update_nav_menus();
     this.request_render();
   }
@@ -4882,18 +4866,24 @@ export class Viewer {
   fetch_monomer_cif(resname: string) {
     const name = resname.toUpperCase();
     if (!(name in this.monomer_cif_cache)) {
-      const template = aminoAcidTemplate(name) || nucleotideTemplate(name);
-      if (template != null) {
-        this.monomer_cif_cache[name] = Promise.resolve(template.cif);
-      } else {
-        this.monomer_cif_cache[name] = fetch(
-          'https://files.rcsb.org/ligands/view/' + encodeURIComponent(name) + '.cif'
-        ).then(function (resp) {
+      const self = this;
+      const default_fetch = function () {
+        const template = aminoAcidTemplate(name) || nucleotideTemplate(name);
+        if (template != null) return Promise.resolve(template.cif);
+        const url = self.monomer_url_template != null ?
+          self.monomer_url_template.replace(/\{name\}/g, encodeURIComponent(name)) :
+          'https://files.rcsb.org/ligands/view/' + encodeURIComponent(name) + '.cif';
+        return fetch(url).then(function (resp) {
           return resp.ok ? resp.text() : null;
         }).catch(function () {
           return null;
         });
-      }
+      };
+      this.monomer_cif_cache[name] = this.monomer_fetcher ?
+        Promise.resolve(this.monomer_fetcher(name)).then(function (text) {
+          return text != null ? text : default_fetch();
+        }) :
+        default_fetch();
     }
     return this.monomer_cif_cache[name];
   }
