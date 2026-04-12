@@ -54,9 +54,15 @@ sed -e 's/1mru/dimple_thaum/g' \
 
 cd "$outdir"
 if command -v jekyll >/dev/null 2>&1; then
-    jekyll build --source "$outdir" --destination "$outdir/_site" >/dev/null
-    cp "$outdir/_site/index.html" "$outdir/"
-    cp "$outdir/_site/integration.html" "$outdir/"
+    sourcedir=$(mktemp -d /tmp/gemmimol-source.XXXXXX)
+    builddir=$(mktemp -d /tmp/gemmimol-pages.XXXXXX)
+    cp -a "$outdir/." "$sourcedir/"
+    rm -f "$sourcedir/index.html" "$sourcedir/integration.html"
+    jekyll build --source "$sourcedir" --destination "$builddir" >/dev/null
+    cp "$builddir/index.html" "$outdir/"
+    cp "$builddir/integration.html" "$outdir/"
+    rm -rf "$sourcedir"
+    rm -rf "$builddir"
 fi
 echo "=== $(pwd) ==="
 git status -s

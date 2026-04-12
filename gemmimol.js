@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.5";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-1-g57286b9-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-3-gd82e72f-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-145-g097e7656";
 
 
@@ -8254,6 +8254,12 @@ const MAINCHAIN_STYLES = ['sticks', 'lines', 'backbone', 'cartoon',
 const SIDECHAIN_STYLES = ['sticks', 'lines', 'ball&stick', 'invisible'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
+const STYLE_MENUS = [
+  ['mainchain as', 'mainchain_style', MAINCHAIN_STYLES],
+  ['sidechains as', 'sidechain_style', SIDECHAIN_STYLES],
+  ['ligands as', 'ligand_style', LIGAND_STYLES],
+  ['waters as', 'water_style', WATER_STYLES],
+];
 const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
@@ -9335,7 +9341,9 @@ class Viewer {
       // search directly atom array ignoring matrixWorld
       const vec = new Vector3();
       // required picking precision: 0.35A at zoom 50, 0.27A @z30, 0.44 @z80
-      const precision2 = 0.35 * 0.35 * 0.02 * camera.zoom;
+      const default_prec2 = 0.35 * 0.35 * 0.02 * camera.zoom;
+      const space_filling = bag.conf.mainchain_style.startsWith('space-filling');
+      const sphere_scale = space_filling ? this.config.sphere_scale / 100 : 0;
       for (const atom of bag.atom_array) {
         vec.set(atom.xyz[0] - ray.origin.x,
                 atom.xyz[1] - ray.origin.y,
@@ -9343,6 +9351,8 @@ class Viewer {
         const distance = vec.dot(ray.direction);
         if (distance < 0 || distance < near || distance > far) continue;
         const diff2 = vec.addScaledVector(ray.direction, -distance).lengthSq();
+        const r = space_filling ? getVdwRadius(atom.element) * sphere_scale : 0;
+        const precision2 = Math.max(default_prec2, r * r);
         if (diff2 > precision2) continue;
         if (pick == null || distance < pick.distance) {
           pick = {bag, atom, distance};
@@ -10862,21 +10872,15 @@ class Viewer {
     select.disabled = (edit == null);
     select.style.display = (editable_bag == null) ? 'none' : '';
     select.value = '';
-    const opts = select.options;
-    if (edit != null) {
-      const a = edit.atom;
-      for (let i = 1; i < opts.length; i++) {
-        const v = opts[i].value;
-        if (v === 'atom') opts[i].textContent = 'atom ' + a.name;
-        else if (v === 'residue') opts[i].textContent = 'residue /' + a.seqid + ' ' + a.resname + '/' + a.chain;
-        else if (v === 'chain') opts[i].textContent = 'chain ' + a.chain;
-      }
-    } else {
-      for (let i = 1; i < opts.length; i++) {
-        const v = opts[i].value;
-        if (v === 'atom') opts[i].textContent = 'atom';
-        else if (v === 'residue') opts[i].textContent = 'residue';
-        else if (v === 'chain') opts[i].textContent = 'chain';
+    const a = edit ? edit.atom : null;
+    for (const opt of select.options) {
+      if (opt.value === 'atom') {
+        opt.textContent = 'atom' + (a ? ' ' + a.name : '');
+      } else if (opt.value === 'residue') {
+        opt.textContent = 'residue' +
+          (a ? ' /' + a.seqid + ' ' + a.resname + '/' + a.chain : '');
+      } else if (opt.value === 'chain') {
+        opt.textContent = 'chain' + (a ? ' ' + a.chain : '');
       }
     }
   }
@@ -12024,18 +12028,15 @@ class Viewer {
   }
 
   style_menus_html() {
-    return this.select_menu_html('mainchain as', 'mainchain_style', MAINCHAIN_STYLES) + '<br>' +
-           this.select_menu_html('sidechains as', 'sidechain_style', SIDECHAIN_STYLES) + '<br>' +
-           this.select_menu_html('ligands as', 'ligand_style', LIGAND_STYLES) + '<br>' +
-           this.select_menu_html('waters as', 'water_style', WATER_STYLES);
+    return STYLE_MENUS.map(([info, k, opts]) =>
+      this.select_menu_html(info, k, opts)).join('<br>');
   }
 
   set_selected_option(info, key, options, value) {
     if (options.indexOf(value) === -1) return;
     this.config[key] = value;
     this.apply_selected_option(key);
-    const is_style = key === 'mainchain_style' || key === 'sidechain_style' ||
-                     key === 'ligand_style' || key === 'water_style';
+    const is_style = STYLE_MENUS.some(([, k]) => k === key);
     if (is_style) {
       this.hud(this.style_menus_html(), 'HTML');
     } else {
@@ -12990,8 +12991,8 @@ class Viewer {
     });
   }
 
-  // Load molecular model from PDB file and centers the view
-  load_pdb_from_text(text, name='model.pdb', explicit_gemmi) {
+  // Load molecular model from PDB or mmCIF text and centers the view
+  load_model_from_text(text, name='model.pdb', explicit_gemmi) {
     const self = this;
     return this.resolve_gemmi(explicit_gemmi).then(function (gemmi) {
       if (!gemmi) throw Error('Gemmi is required for coordinate loading.');
@@ -13021,10 +13022,10 @@ class Viewer {
     });
   }
 
-  load_pdb(url, options,
+  load_model(url, options,
            callback) {
     if (Array.isArray(url)) {
-      this.load_pdb_candidates(url, options, callback);
+      this.load_model_candidates(url, options, callback);
       return;
     }
     const self = this;
@@ -13042,7 +13043,7 @@ class Viewer {
     });
   }
 
-   load_pdb_candidates(urls, options,
+   load_model_candidates(urls, options,
                               callback) {
     const self = this;
     const gemmi = options && options.gemmi;
@@ -13123,10 +13124,10 @@ class Viewer {
   }
 
   // Load a model (PDB), normal map and a difference map - in this order.
-  load_pdb_and_maps(pdb, map1, map2,
+  load_model_and_maps(pdb, map1, map2,
                     options, callback) {
     const self = this;
-    this.load_pdb(pdb, options, function () {
+    this.load_model(pdb, options, function () {
       self.load_maps(map1, map2, options, callback);
     });
   }
@@ -13135,15 +13136,15 @@ class Viewer {
   load_ccp4_maps(url1, url2, callback) {
     this.load_maps(url1, url2, {format: 'ccp4'}, callback);
   }
-  load_pdb_and_ccp4_maps(pdb, map1, map2,
+  load_model_and_ccp4_maps(pdb, map1, map2,
                          callback) {
-    this.load_pdb_and_maps(pdb, map1, map2, {format: 'ccp4'}, callback);
+    this.load_model_and_maps(pdb, map1, map2, {format: 'ccp4'}, callback);
   }
 
   // pdb_id here should be lowercase ('1abc')
   load_from_pdbe(pdb_id, callback) {
     const id = pdb_id.toLowerCase();
-    this.load_pdb_and_maps(
+    this.load_model_and_maps(
       [
         'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + id + '.ent',
         'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif',
@@ -13154,7 +13155,7 @@ class Viewer {
   }
   load_from_rcsb(pdb_id, callback) {
     const id = pdb_id.toLowerCase();
-    this.load_pdb_and_maps(
+    this.load_model_and_maps(
       'https://files.rcsb.org/download/' + id + '.pdb',
       'https://edmaps.rcsb.org/maps/' + id + '_2fofc.dsn6',
       'https://edmaps.rcsb.org/maps/' + id + '_fofc.dsn6',
@@ -13927,6 +13928,7 @@ exports.addXyzCross = addXyzCross;
 exports.bondDataFromGemmiStructure = bondDataFromGemmiStructure;
 exports.fog_end_fragment = fog_end_fragment;
 exports.fog_pars_fragment = fog_pars_fragment;
+exports.getVdwRadius = getVdwRadius;
 exports.help_action_link = help_action_link;
 exports.load_maps_from_mtz = load_maps_from_mtz;
 exports.load_maps_from_mtz_buffer = load_maps_from_mtz_buffer;
