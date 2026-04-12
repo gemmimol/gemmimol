@@ -47,7 +47,7 @@
     }
 
     V1 = new GM.Viewer({viewer: "viewer1", focusable: true, hud: "hud", help: "help"});
-    V1.load_pdb("data/1mru.pdb", null, function () {
+    V1.load_model("data/1mru.pdb", null, function () {
       sync_label(V1, "#viewer1", "PDB original");
     });
     V2 = new GM.Viewer({viewer: "viewer2", focusable: true, share_view: V1,
@@ -55,7 +55,7 @@
     V2.hud_el = V1.hud_el;
     V2.initial_hud_html = V1.initial_hud_html;
     V2.help_el = V1.help_el;
-    V2.load_pdb_and_ccp4_maps("data/pdb_redo/1mru_final.pdb",
+    V2.load_model_and_ccp4_maps("data/pdb_redo/1mru_final.pdb",
                               "data/pdb_redo/1mru.map",
                               "data/pdb_redo/1mru_diff.map", function () {
       sync_label(V2, "#viewer2", "PDB_REDO");

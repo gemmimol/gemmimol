@@ -57,7 +57,7 @@
       });
     }
     function load_from_pdbe(id, callback) {
-      V.load_pdb(
+      V.load_model(
           'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif',
           {}, function () {
           load_optional_pdbe_mtz(id, callback);
@@ -90,7 +90,7 @@
     }
     function load_pdb_redo(id) {
       var url = 'https://pdb-redo.eu/db/' + id + '/' + id + '_final.pdb';
-      V.load_pdb(url, {stay: true}, function () {
+      V.load_model(url, {stay: true}, function () {
       V.hud('Reload the page to remove all the models and maps.\n' +
             'V hides one of the models. H shows help.');
       });

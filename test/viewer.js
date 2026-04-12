@@ -516,7 +516,7 @@ describe('Viewer', () => {
 
   it('collects deposited SITE annotations for navigation', () => {
     var viewer2 = new GM.Viewer('viewer');
-    return viewer2.load_pdb_from_text(SITE_PDB, 'site.pdb', gemmi).then(function () {
+    return viewer2.load_model_from_text(SITE_PDB, 'site.pdb', gemmi).then(function () {
       var bag = viewer2.model_bags[0];
       var items = viewer2.collect_site_nav_items(bag);
       expect(items.length).toBe(1);
@@ -543,7 +543,7 @@ describe('Viewer', () => {
     }
 
     var viewer2 = new GM.Viewer('viewer');
-    return viewer2.load_pdb_from_text(CONNECTIONS_PDB, 'connections.pdb', gemmi).then(function () {
+    return viewer2.load_model_from_text(CONNECTIONS_PDB, 'connections.pdb', gemmi).then(function () {
       var bag = viewer2.model_bags[0];
       var structure = bag.gemmi_selection.structure;
 
@@ -606,11 +606,11 @@ describe('Viewer', () => {
 
   it('PDBe loader falls back to updated cif', () => {
     var viewer2 = new GM.Viewer('viewer');
-    viewer2.load_pdb_and_maps = jest.fn();
+    viewer2.load_model_and_maps = jest.fn();
 
     viewer2.load_from_pdbe('8aq8');
 
-    expect(viewer2.load_pdb_and_maps).toHaveBeenCalledWith(
+    expect(viewer2.load_model_and_maps).toHaveBeenCalledWith(
       [
         'https://www.ebi.ac.uk/pdbe/entry-files/pdb8aq8.ent',
         'https://www.ebi.ac.uk/pdbe/entry-files/download/8aq8_updated.cif',

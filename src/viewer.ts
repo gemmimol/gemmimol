@@ -188,6 +188,12 @@ const MAINCHAIN_STYLES = ['sticks', 'lines', 'backbone', 'cartoon',
 const SIDECHAIN_STYLES = ['sticks', 'lines', 'ball&stick', 'invisible'];
 const LIGAND_STYLES = ['ball&stick', 'sticks', 'lines'];
 const WATER_STYLES = ['sphere', 'cross', 'invisible'];
+const STYLE_MENUS: Array<[string, string, string[]]> = [
+  ['mainchain as', 'mainchain_style', MAINCHAIN_STYLES],
+  ['sidechains as', 'sidechain_style', SIDECHAIN_STYLES],
+  ['ligands as', 'ligand_style', LIGAND_STYLES],
+  ['waters as', 'water_style', WATER_STYLES],
+];
 const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
@@ -2800,21 +2806,15 @@ export class Viewer {
     select.disabled = (edit == null);
     select.style.display = (editable_bag == null) ? 'none' : '';
     select.value = '';
-    const opts = select.options;
-    if (edit != null) {
-      const a = edit.atom;
-      for (let i = 1; i < opts.length; i++) {
-        const v = opts[i].value;
-        if (v === 'atom') opts[i].textContent = 'atom ' + a.name;
-        else if (v === 'residue') opts[i].textContent = 'residue /' + a.seqid + ' ' + a.resname + '/' + a.chain;
-        else if (v === 'chain') opts[i].textContent = 'chain ' + a.chain;
-      }
-    } else {
-      for (let i = 1; i < opts.length; i++) {
-        const v = opts[i].value;
-        if (v === 'atom') opts[i].textContent = 'atom';
-        else if (v === 'residue') opts[i].textContent = 'residue';
-        else if (v === 'chain') opts[i].textContent = 'chain';
+    const a = edit ? edit.atom : null;
+    for (const opt of select.options) {
+      if (opt.value === 'atom') {
+        opt.textContent = 'atom' + (a ? ' ' + a.name : '');
+      } else if (opt.value === 'residue') {
+        opt.textContent = 'residue' +
+          (a ? ' /' + a.seqid + ' ' + a.resname + '/' + a.chain : '');
+      } else if (opt.value === 'chain') {
+        opt.textContent = 'chain' + (a ? ' ' + a.chain : '');
       }
     }
   }
@@ -3962,18 +3962,15 @@ export class Viewer {
   }
 
   style_menus_html() {
-    return this.select_menu_html('mainchain as', 'mainchain_style', MAINCHAIN_STYLES) + '<br>' +
-           this.select_menu_html('sidechains as', 'sidechain_style', SIDECHAIN_STYLES) + '<br>' +
-           this.select_menu_html('ligands as', 'ligand_style', LIGAND_STYLES) + '<br>' +
-           this.select_menu_html('waters as', 'water_style', WATER_STYLES);
+    return STYLE_MENUS.map(([info, k, opts]) =>
+      this.select_menu_html(info, k, opts)).join('<br>');
   }
 
   set_selected_option(info: string, key: string, options: string[], value: string) {
     if (options.indexOf(value) === -1) return;
     this.config[key] = value;
     this.apply_selected_option(key);
-    const is_style = key === 'mainchain_style' || key === 'sidechain_style' ||
-                     key === 'ligand_style' || key === 'water_style';
+    const is_style = STYLE_MENUS.some(([, k]) => k === key);
     if (is_style) {
       this.hud(this.style_menus_html(), 'HTML');
     } else {
@@ -4928,8 +4925,8 @@ export class Viewer {
     });
   }
 
-  // Load molecular model from PDB file and centers the view
-  load_pdb_from_text(text: string, name: string='model.pdb', explicit_gemmi?: GemmiModule) {
+  // Load molecular model from PDB or mmCIF text and centers the view
+  load_model_from_text(text: string, name: string='model.pdb', explicit_gemmi?: GemmiModule) {
     const self = this;
     return this.resolve_gemmi(explicit_gemmi).then(function (gemmi) {
       if (!gemmi) throw Error('Gemmi is required for coordinate loading.');
@@ -4959,10 +4956,10 @@ export class Viewer {
     });
   }
 
-  load_pdb(url: string | string[], options?: Record<string, any>,
+  load_model(url: string | string[], options?: Record<string, any>,
            callback?: () => void) {
     if (Array.isArray(url)) {
-      this.load_pdb_candidates(url, options, callback);
+      this.load_model_candidates(url, options, callback);
       return;
     }
     const self = this;
@@ -4980,7 +4977,7 @@ export class Viewer {
     });
   }
 
-  private load_pdb_candidates(urls: string[], options?: Record<string, any>,
+  private load_model_candidates(urls: string[], options?: Record<string, any>,
                               callback?: () => void) {
     const self = this;
     const gemmi = options && options.gemmi;
@@ -5061,10 +5058,10 @@ export class Viewer {
   }
 
   // Load a model (PDB), normal map and a difference map - in this order.
-  load_pdb_and_maps(pdb: string | string[], map1: string, map2: string,
+  load_model_and_maps(pdb: string | string[], map1: string, map2: string,
                     options: Record<string, any>, callback?: () => void) {
     const self = this;
-    this.load_pdb(pdb, options, function () {
+    this.load_model(pdb, options, function () {
       self.load_maps(map1, map2, options, callback);
     });
   }
@@ -5073,15 +5070,15 @@ export class Viewer {
   load_ccp4_maps(url1: string, url2: string, callback?: () => void) {
     this.load_maps(url1, url2, {format: 'ccp4'}, callback);
   }
-  load_pdb_and_ccp4_maps(pdb: string | string[], map1: string, map2: string,
+  load_model_and_ccp4_maps(pdb: string | string[], map1: string, map2: string,
                          callback?: () => void) {
-    this.load_pdb_and_maps(pdb, map1, map2, {format: 'ccp4'}, callback);
+    this.load_model_and_maps(pdb, map1, map2, {format: 'ccp4'}, callback);
   }
 
   // pdb_id here should be lowercase ('1abc')
   load_from_pdbe(pdb_id: string, callback?: () => void) {
     const id = pdb_id.toLowerCase();
-    this.load_pdb_and_maps(
+    this.load_model_and_maps(
       [
         'https://www.ebi.ac.uk/pdbe/entry-files/pdb' + id + '.ent',
         'https://www.ebi.ac.uk/pdbe/entry-files/download/' + id + '_updated.cif',
@@ -5092,7 +5089,7 @@ export class Viewer {
   }
   load_from_rcsb(pdb_id: string, callback?: () => void) {
     const id = pdb_id.toLowerCase();
-    this.load_pdb_and_maps(
+    this.load_model_and_maps(
       'https://files.rcsb.org/download/' + id + '.pdb',
       'https://edmaps.rcsb.org/maps/' + id + '_2fofc.dsn6',
       'https://edmaps.rcsb.org/maps/' + id + '_fofc.dsn6',

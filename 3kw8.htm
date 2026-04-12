@@ -23,7 +23,7 @@
     V = new GM.Viewer({viewer: "viewer", hud: "hud", help: "help"});
     V.hud("loading 3kw8...");
     Gemmi().then(function (gemmi) {
-      V.load_pdb(
+      V.load_model(
         "3kw8_mc_restraints.mmcif",
         {gemmi: gemmi},
         function () {
