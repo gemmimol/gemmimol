@@ -896,6 +896,7 @@ export class Viewer {
   mutate_select_target: string | null;
   mutate_select_residue_key: string | null;
   mutate_select_busy: boolean;
+  viewer_only_mode: boolean;
   queued_mutation_preview: {target: string, residue_key: string} | null;
   blob_hits: BlobHit[];
   blob_map_bag: MapBag | null;
@@ -1043,6 +1044,7 @@ export class Viewer {
     this.mutate_select_target = null;
     this.mutate_select_residue_key = null;
     this.mutate_select_busy = false;
+    this.viewer_only_mode = false;
     this.queued_mutation_preview = null;
     this.histogram_el = null;
     this.histogram_redraw = null;
@@ -2794,8 +2796,9 @@ export class Viewer {
                          bag: ModelBag | null | undefined) {
     if (select == null) return;
     const ctx = this.download_target_context(bag);
+    const hide = this.viewer_only_mode || ctx == null;
     select.disabled = (ctx == null);
-    select.style.display = (ctx == null) ? 'none' : '';
+    select.style.display = hide ? 'none' : '';
     select.value = '';
   }
 
@@ -2804,7 +2807,8 @@ export class Viewer {
     const editable_bag = this.editable_model_bag();
     const edit = this.current_edit_target();
     select.disabled = (edit == null);
-    select.style.display = (editable_bag == null) ? 'none' : '';
+    select.style.display =
+      (this.viewer_only_mode || editable_bag == null) ? 'none' : '';
     select.value = '';
     const a = edit ? edit.atom : null;
     for (const opt of select.options) {
@@ -2937,7 +2941,8 @@ export class Viewer {
     button.disabled = (edit == null || targets.length === 0);
     button.style.opacity = button.disabled ? '0.7' : '1';
     button.style.cursor = button.disabled ? 'default' : 'pointer';
-    select.style.display = (editable_bag == null) ? 'none' : '';
+    select.style.display =
+      (this.viewer_only_mode || editable_bag == null) ? 'none' : '';
     const current_target = edit == null ? '' : this.mutation_target_from_resname(edit.atom.resname);
     const value = targets.indexOf(preferred_target) !== -1 ? preferred_target :
       (targets.indexOf(current_target) !== -1 ? current_target : '');
@@ -3246,6 +3251,98 @@ export class Viewer {
       }
     }
     return best ? best.ctx : null;
+  }
+
+  viewer_only(enabled: boolean = true) {
+    this.viewer_only_mode = enabled;
+    this.update_nav_menus();
+  }
+
+  set_model(text: string, name: string = 'model.pdb') {
+    for (const uid in this.labels) {
+      this.remove_and_dispose(this.labels[uid].o.mesh);
+      delete this.labels[uid];
+    }
+    for (const bag of this.model_bags) this.clear_model_objects(bag);
+    this.model_bags = [];
+    this.sym_model_bags = [];
+    this.selected = {bag: null, atom: null};
+    this.blob_hits = [];
+    this.blob_map_bag = null;
+    this.mutate_select_target = null;
+    this.mutate_select_residue_key = null;
+    this.queued_mutation_preview = null;
+    this.last_bonding_info = null;
+    return this.load_model_from_text(text, name);
+  }
+
+  apply_state(state: any) {
+    if (state == null) return;
+    if (state.config) {
+      const keep_scheme = this.config.color_scheme;
+      for (const k of Object.keys(state.config)) {
+        if (k in this.config) (this.config as any)[k] = state.config[k];
+      }
+      if (this.config.color_scheme !== keep_scheme) {
+        this.set_colors();
+      } else {
+        this.redraw_models();
+      }
+    }
+    if (state.view) {
+      const v = state.view;
+      if (v.target) this.target.set(v.target[0], v.target[1], v.target[2]);
+      if (v.camera_position) {
+        this.camera.position.set(v.camera_position[0],
+                                 v.camera_position[1],
+                                 v.camera_position[2]);
+      }
+      if (v.up) this.camera.up.set(v.up[0], v.up[1], v.up[2]);
+      if (typeof v.zoom === 'number') this.camera.zoom = v.zoom;
+      this.camera.lookAt(this.target);
+      this.camera.updateProjectionMatrix();
+    }
+    this.request_render();
+  }
+
+  get_current_state() {
+    const c = this.config;
+    return {
+      config: {
+        bond_line: c.bond_line,
+        map_line: c.map_line,
+        map_radius: c.map_radius,
+        default_isolevel: c.default_isolevel,
+        map_style: c.map_style,
+        mainchain_style: c.mainchain_style,
+        sidechain_style: c.sidechain_style,
+        ligand_style: c.ligand_style,
+        water_style: c.water_style,
+        color_prop: c.color_prop,
+        label_font: c.label_font,
+        color_scheme: c.color_scheme,
+        hydrogens: c.hydrogens,
+        ball_size: c.ball_size,
+        stick_radius: c.stick_radius,
+        sphere_scale: c.sphere_scale,
+      },
+      view: {
+        target: [this.target.x, this.target.y, this.target.z],
+        camera_position: [this.camera.position.x,
+                          this.camera.position.y,
+                          this.camera.position.z],
+        up: [this.camera.up.x, this.camera.up.y, this.camera.up.z],
+        zoom: this.camera.zoom,
+      },
+    };
+  }
+
+  get_current_structure(format: 'pdb' | 'mmcif' = 'mmcif'): string | null {
+    const ctx = this.download_target_context();
+    if (ctx == null) return null;
+    return format === 'pdb' ?
+      ctx.gemmi.make_pdb_string(ctx.structure) :
+      ctx.gemmi.make_mmcif_string(ctx.structure);
   }
 
   download_model(format: 'pdb' | 'mmcif') {
