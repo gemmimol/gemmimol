@@ -5054,7 +5054,7 @@ export class Viewer {
   }
 
   load_model(url: string | string[], options?: Record<string, any>,
-           callback?: () => void) {
+             callback?: () => void) {
     if (Array.isArray(url)) {
       this.load_model_candidates(url, options, callback);
       return;
@@ -5075,7 +5075,7 @@ export class Viewer {
   }
 
   private load_model_candidates(urls: string[], options?: Record<string, any>,
-                              callback?: () => void) {
+                                callback?: () => void) {
     const self = this;
     const gemmi = options && options.gemmi;
     const failed: string[] = [];
@@ -5156,7 +5156,7 @@ export class Viewer {
 
   // Load a model (PDB), normal map and a difference map - in this order.
   load_model_and_maps(pdb: string | string[], map1: string, map2: string,
-                    options: Record<string, any>, callback?: () => void) {
+                      options: Record<string, any>, callback?: () => void) {
     const self = this;
     this.load_model(pdb, options, function () {
       self.load_maps(map1, map2, options, callback);
@@ -5168,7 +5168,7 @@ export class Viewer {
     this.load_maps(url1, url2, {format: 'ccp4'}, callback);
   }
   load_model_and_ccp4_maps(pdb: string | string[], map1: string, map2: string,
-                         callback?: () => void) {
+                           callback?: () => void) {
     this.load_model_and_maps(pdb, map1, map2, {format: 'ccp4'}, callback);
   }
 
