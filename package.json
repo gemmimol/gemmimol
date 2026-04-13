@@ -1,6 +1,6 @@
 {
   "name": "gemmimol",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "Gemmi-backed macromolecular viewer for crystallographers",
   "keywords": [
     "crystallography",
@@ -8,7 +8,14 @@
     "webgl",
     "coot",
     "protein",
-    "structure"
+    "structure",
+    "space-groups",
+    "cheminformatics",
+    "molecule",
+    "molecule-visualization",
+    "molecule-viewer",
+    "wasm",
+    "gemmi"
   ],
   "homepage": "https://gemmimol.github.io",
   "repository": {
