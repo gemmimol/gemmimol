@@ -375,6 +375,29 @@ describe('Viewer', () => {
     expect(max_segment_length(obj)).toBeLessThan(2.0);
   });
 
+  it('keeps squarish as a distinct selectable map style', () => {
+    var viewer2 = new GM.Viewer({viewer: 'viewer', map_style: 'squarish'});
+    expect(viewer2.config.map_style).toEqual('squarish');
+  });
+
+  it('uses explicit segments when present in chickenwire data', () => {
+    var data = {
+      vertices: new Float32Array([
+        0, 0, 0,
+        1, 0, 0,
+        1, 1, 0,
+        0, 1, 0,
+      ]),
+      triangles: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      segments: new Uint32Array([0, 1, 1, 2, 2, 3, 3, 0]),
+    };
+    var plain = GM.makeChickenWire(data, {
+      color: new GM.Color(0xffffff),
+      linewidth: 1,
+    });
+    expect(plain.geometry.index.array.length).toEqual(8);
+  });
+
   it('refreshes ligand bonding when a monomer cif is dropped later', () => {
     var viewer2 = new GM.Viewer('viewer');
     var savedFileReader = global.FileReader;

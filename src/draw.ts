@@ -600,7 +600,9 @@ function makeChickenWire(data: IsosurfaceData,
   geom.setAttribute('position', new BufferAttribute(position, 3));
 
   const vertex_count = data.vertices.length / 3;
-  const arr = wireIndexFromTriangles(data.triangles, vertex_count);
+  const arr = data.segments != null ? data.segments :
+    wireIndexFromTriangles(data.triangles || new Uint32Array(0), position, vertex_count,
+                           options.remove_coplanar_diagonals === true);
   //console.log('arr len:', data.vertices.length, data.triangles.length);
   geom.setIndex(new BufferAttribute(arr, 1));
   const material = new ShaderMaterial({
@@ -666,23 +668,86 @@ function cleanSurfaceTriangles(index: Uint16Array | Uint32Array, vertex_count: n
                                : new Uint32Array(tri));
 }
 
-function wireIndexFromTriangles(index: Uint32Array, vertex_count: number) {
+function wireIndexFromTriangles(index: Uint16Array | Uint32Array,
+                                position: Float32Array,
+                                vertex_count: number,
+                                remove_coplanar_diagonals: boolean=false) {
+  if (!remove_coplanar_diagonals) {
+    const edges: number[] = [];
+    const seen = new Set<string>();
+    for (let i = 0; i + 2 < index.length; i += 3) {
+      const a = index[i];
+      const b = index[i + 1];
+      const c = index[i + 2];
+      if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
+      if (a === b || b === c || c === a) continue;
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        const lo = Math.min(u, v);
+        const hi = Math.max(u, v);
+        const key = lo + ',' + hi;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        edges.push(u, v);
+      }
+    }
+    return (vertex_count < 65536 ? new Uint16Array(edges)
+                                 : new Uint32Array(edges));
+  }
+
+  const vertex_keys = new Array<string>(vertex_count);
+  for (let i = 0; i < vertex_count; i++) {
+    const j = 3 * i;
+    vertex_keys[i] = Math.round(position[j] * 1e4) + ',' +
+                     Math.round(position[j+1] * 1e4) + ',' +
+                     Math.round(position[j+2] * 1e4);
+  }
+  const edge_map = new Map<string, {u: number, v: number, normals: number[][]}>();
+  function add_edge(u: number, v: number, normal: number[]) {
+    const key_u = vertex_keys[u];
+    const key_v = vertex_keys[v];
+    const key = key_u < key_v ? key_u + '|' + key_v : key_v + '|' + key_u;
+    const entry = edge_map.get(key);
+    if (entry === undefined) {
+      edge_map.set(key, {u: u, v: v, normals: [normal]});
+    } else {
+      entry.normals.push(normal);
+    }
+  }
+
   const edges: number[] = [];
-  const seen = new Set<string>();
   for (let i = 0; i + 2 < index.length; i += 3) {
     const a = index[i];
     const b = index[i + 1];
     const c = index[i + 2];
     if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
     if (a === b || b === c || c === a) continue;
-    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
-      const lo = Math.min(u, v);
-      const hi = Math.max(u, v);
-      const key = lo + ',' + hi;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edges.push(u, v);
+    const ia = 3 * a;
+    const ib = 3 * b;
+    const ic = 3 * c;
+    const abx = position[ib] - position[ia];
+    const aby = position[ib+1] - position[ia+1];
+    const abz = position[ib+2] - position[ia+2];
+    const acx = position[ic] - position[ia];
+    const acy = position[ic+1] - position[ia+1];
+    const acz = position[ic+2] - position[ia+2];
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const normal = len > 1e-12 ? [nx / len, ny / len, nz / len] : [0, 0, 0];
+    add_edge(a, b, normal);
+    add_edge(b, c, normal);
+    add_edge(c, a, normal);
+  }
+
+  for (const entry of edge_map.values()) {
+    if (entry.normals.length === 2) {
+      const n0 = entry.normals[0];
+      const n1 = entry.normals[1];
+      const dot = n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2];
+      if (dot > 0.999) continue;
     }
+    edges.push(entry.u, entry.v);
   }
   return (vertex_count < 65536 ? new Uint16Array(edges)
                                : new Uint32Array(edges));

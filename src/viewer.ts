@@ -194,7 +194,7 @@ const STYLE_MENUS: Array<[string, string, string[]]> = [
   ['ligands as', 'ligand_style', LIGAND_STYLES],
   ['waters as', 'water_style', WATER_STYLES],
 ];
-const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
+const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
 type HelpActionSpec = {
@@ -229,19 +229,20 @@ export function help_action_link(text: string, spec: HelpActionSpec) {
 
 export function normalize_viewer_options(options?: Record<string, any> | string | null) {
   if (typeof options === 'string') return {viewer: options};
-  if (options && typeof options === 'object') {
-    if (options.map_style === 'squarish') options.map_style = 'marching cubes';
-    return options;
-  }
+  if (options && typeof options === 'object') return options;
   return {};
 }
 
 function map_style_method(style: string) {
-  return style === 'smooth surface' || style === 'squarish' ? 'marching cubes' : style;
+  return style === 'smooth surface' ? 'marching cubes' : style;
 }
 
 function map_style_is_surface(style: string) {
   return style === 'smooth surface';
+}
+
+function map_style_needs_block(style: string) {
+  return style === 'smooth surface' || style === 'squarish';
 }
 
 function rainbow_value(v: number, vmin: number, vmax: number) {
@@ -368,6 +369,14 @@ function monomer_cif_names(text: string) {
 
 function is_standalone_monomer_cif(text: string) {
   return text.indexOf('_atom_site.') === -1 && monomer_cif_names(text).length !== 0;
+}
+
+function format_error(e: any): string {
+  if (e == null) return 'unknown error';
+  if (typeof e === 'string') return e;
+  if (typeof e === 'number') return 'exception code ' + e;
+  if (typeof e.message === 'string' && e.message) return e.message;
+  try { return String(e); } catch { return 'unknown error'; }
 }
 
 function download_filename(name: string | null | undefined, format: 'pdb' | 'mmcif') {
@@ -1505,14 +1514,12 @@ export class Viewer {
       this.add_rendered_atoms(rendered_atoms, seen_atoms, visible_atoms);
     } else {
       const sidechain_style = model_bag.conf.sidechain_style;
-      const wheel_caps = (mainchain_style === 'lines' &&
-                          sidechain_style === 'lines' &&
-                          model_bag.conf.ligand_style === 'lines');
       const mainchain_filter = (atom: Atom) => atom.is_backbone();
       const sidechain_filter = (atom: Atom) => !atom.is_backbone();
       switch (mainchain_style) {
         case 'lines':
-          model_bag.add_bonds(true, false, undefined, mainchain_filter, partner_visible, wheel_caps);
+          model_bag.add_bonds(true, false, undefined, mainchain_filter,
+                              partner_visible, true);
           finish_pass();
           break;
         case 'sticks':
@@ -1550,7 +1557,8 @@ export class Viewer {
       }
       switch (sidechain_style) {
         case 'lines':
-          model_bag.add_bonds(true, false, undefined, sidechain_filter, partner_visible, wheel_caps);
+          model_bag.add_bonds(true, false, undefined, sidechain_filter,
+                              partner_visible, true);
           finish_pass();
           break;
         case 'sticks':
@@ -1568,7 +1576,10 @@ export class Viewer {
         model_bag.add_sticks(false, true, this.config.stick_radius);
         finish_pass();
       } else {
-        model_bag.add_bonds(false, true, ligand_balls, undefined, undefined, wheel_caps);
+        // If ball&stick falls back to line rendering, still draw atom caps so
+        // ligand atoms remain visible instead of only their bonds.
+        model_bag.add_bonds(false, true, ligand_balls, undefined, undefined,
+                            ligand_balls == null);
         finish_pass();
       }
     }
@@ -1665,7 +1676,7 @@ export class Viewer {
       const t = this.target;
       map_bag.block_ctr.copy(t);
       map_bag.map.prepare_isosurface(this.config.map_radius, [t.x, t.y, t.z],
-                                     map_style_is_surface(this.config.map_style));
+                                     map_style_needs_block(this.config.map_style));
     }
     for (const mtype of map_bag.types) {
       const isolevel = (mtype === 'map_neg' ? -1 : 1) * map_bag.isolevel;
@@ -1680,6 +1691,7 @@ export class Viewer {
         makeChickenWire(iso, {
           color: this.config.colors[mtype],
           linewidth: this.config.map_line,
+          remove_coplanar_diagonals: this.config.map_style === 'squarish',
         });
       map_bag.el_objects.push(obj);
       this.scene.add(obj);
@@ -4767,7 +4779,7 @@ export class Viewer {
             callback(req);
           } catch (e) {
             if (error_callback) error_callback(req, e);
-            else self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+            else self.hud('Error: ' + format_error(e) + '\nwhen processing ' + url, 'ERR');
           }
         } else {
           if (error_callback) error_callback(req);
@@ -5069,7 +5081,7 @@ export class Viewer {
         if (options == null || !options.stay) self.set_view(options);
         if (callback) callback();
       }, function (e) {
-        self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+        self.hud('Error: ' + format_error(e) + '\nwhen processing ' + url, 'ERR');
       });
     });
   }
@@ -5128,7 +5140,7 @@ export class Viewer {
       after_load.then(function () {
         if (callback) callback();
       }, function (e) {
-        self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+        self.hud('Error: ' + format_error(e) + '\nwhen processing ' + url, 'ERR');
       });
     });
   }

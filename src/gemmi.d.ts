@@ -58,6 +58,7 @@ export interface Isosurface extends ClassHandle {
   input_points(): any;
   input_values(): any;
   vertices(): any;
+  segments(): any;
   triangles(): any;
 }
 
@@ -273,6 +274,7 @@ export interface MapData extends ClassHandle {
   extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
   data(): any;
   isosurface_vertices(): any;
+  isosurface_segments(): any;
   isosurface_triangles(): any;
 }
 
@@ -296,6 +298,7 @@ export interface MtzMap extends ClassHandle {
   extract_isosurface(_0: number, _1: number, _2: number, _3: number, _4: number, _5: EmbindString): boolean;
   data(): any;
   isosurface_vertices(): any;
+  isosurface_segments(): any;
   isosurface_triangles(): any;
 }
 

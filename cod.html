@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>COD example - GemmiMol</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no">
+  <meta name="theme-color" content="#333333">
+  <link rel="stylesheet" href="gemmimol.css">
+
+  <script src="gemmimol.js?v=cod-render-fix-1"></script>
+  <script src="vendor/wasm/gemmi.js"></script>
+
+</head>
+<body style="background-color: black">
+  <div id="viewer"></div>
+  <div id="gm-overlay">
+    <header id="hud" onmousedown="event.stopPropagation();"
+                     ondblclick="event.stopPropagation();"></header>
+  </div>
+  <footer id="help"></footer>
+  <div id="inset"></div>
+  <script>
+    // COD 1574457 is caffeine_3,5-dinitrobenzoic acid.
+    V = new GM.Viewer({
+      viewer: "viewer",
+      hud: "hud",
+      help: "help",
+      hydrogens: false,
+      ligand_style: "ball&stick",
+      ball_size: 0.24
+    });
+    V.hud("loading COD 1574457...");
+    Gemmi().then(function (gemmi) {
+      V.load_model("1574457.mmcif", {gemmi: gemmi}, function () {
+        const bag = V.model_bags[0];
+        GM.load_maps_from_mtz(gemmi, V, "1574457_maps.mtz");
+        if (!V.has_frag_depth()) {
+          V.config.mainchain_style = "lines";
+          V.config.sidechain_style = "lines";
+          V.config.ligand_style = "lines";
+          V.config.bond_line = 6.5;
+          V.redraw_models();
+        }
+        if (bag) {
+          const center = bag.model.get_center();
+          V.recenter(center, [center[0] + 55, center[1] - 35, center[2] + 70], 1);
+        }
+        V.toggle_cell_box();
+        V.hud("COD 1574457: caffeine_3,5-dinitrobenzoic acid");
+      });
+    });
+  </script>
+</body>
+</html>

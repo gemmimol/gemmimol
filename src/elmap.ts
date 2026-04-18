@@ -3,6 +3,7 @@ import type { GemmiModule, UnitCell, Structure,
               Dsn6Map as WasmDsn6Map,
               MtzMap as WasmMtzMap,
               Isosurface as WasmIsosurface } from './gemmi';
+import { squarishIsomesh } from './squarish';
 
 type Num3 = [number, number, number];
 
@@ -17,7 +18,8 @@ export interface IsosurfaceField {
 
 export interface IsosurfaceData {
   vertices: Float32Array;
-  triangles: Uint32Array;
+  segments?: Uint32Array;
+  triangles?: Uint32Array;
   field?: IsosurfaceField;
 }
 
@@ -170,6 +172,13 @@ class Block {
       iso.input_values().set(this._values);
       if (!iso.calculate(isolevel, method)) {
         throw Error(iso.last_error || 'Failed to calculate isosurface.');
+      }
+      if (method === 'squarish' && typeof iso.segments === 'function') {
+        return {
+          vertices: iso.vertices().slice(),
+          segments: iso.segments().slice(),
+          field: this.field(),
+        } as IsosurfaceData;
       }
       return {
         vertices: iso.vertices().slice(),
@@ -324,6 +333,7 @@ export class ElMap {
 
   isomesh_in_block(sigma: number, method: string) {
     const abs_level = this.abs_level(sigma);
+    const field = this.block.field();
     if (this.wasm_map != null && this.block_center != null && this.unit_cell != null) {
       if (!this.wasm_map.extract_isosurface(this.block_radius,
                                             this.block_center[0],
@@ -333,11 +343,21 @@ export class ElMap {
                                             method || '')) {
         throw Error(this.wasm_map.last_error || 'Failed to extract isosurface.');
       }
+      if (method === 'squarish' && typeof this.wasm_map.isosurface_segments === 'function') {
+        return {
+          vertices: this.wasm_map.isosurface_vertices().slice(),
+          segments: this.wasm_map.isosurface_segments().slice(),
+          field: field,
+        } as IsosurfaceData;
+      }
       return {
         vertices: this.wasm_map.isosurface_vertices().slice(),
         triangles: this.wasm_map.isosurface_triangles().slice(),
-        field: this.block.field(),
+        field: field,
       } as IsosurfaceData;
+    }
+    if (method === 'squarish' && field != null) {
+      return squarishIsomesh(field, abs_level);
     }
     return this.block.isosurface(this.gemmi_module, abs_level, method);
   }

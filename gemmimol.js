@@ -1,5 +1,5 @@
 /*!
- * GemmiMol v0.8.5. Macromolecular Viewer for Crystallographers.
+ * GemmiMol v0.8.6. Macromolecular Viewer for Crystallographers.
  * Copyright 2014 Nat Echols
  * Copyright 2016 Diamond Light Source Ltd
  * Copyright 2016 Marcin Wojdyr
@@ -11,8 +11,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.GM = {}));
 })(this, (function (exports) { 'use strict';
 
-var VERSION = exports.VERSION = "0.8.5";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-3-gd82e72f-dirty";
+var VERSION = exports.VERSION = "0.8.6";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-8-g6834aae-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-145-g097e7656";
 
 
@@ -777,10 +777,275 @@ class Cubicles {
   }
 }
 
+// Generated from gemmi commit 051d65cb^ include/gemmi/mc_tables.hpp
+
+const EDGE_TABLE = new Int32Array([
+  0, 0, 514, 770, 1030, 1030, 1540, 1796,
+  2052, 2053, 2566, 2566, 3082, 3331, 3592, 3840,
+  144, 152, 658, 658, 1174, 1182, 1684, 1684,
+  2196, 2196, 2710, 2710, 3226, 3218, 3729, 3728,
+  560, 560, 51, 314, 1590, 1590, 1076, 1084,
+  2612, 2613, 2103, 2358, 3642, 3890, 3121, 3376,
+  672, 680, 163, 170, 1702, 1711, 1444, 1196,
+  2724, 2724, 2470, 2214, 4010, 3747, 3233, 3232,
+  1120, 1120, 1634, 1890, 102, 102, 613, 868,
+  3172, 3173, 3686, 3686, 2154, 2147, 2665, 2656,
+  1264, 1272, 1778, 1778, 246, 254, 757, 764,
+  3316, 3316, 3830, 3830, 2298, 2291, 2809, 2800,
+  1616, 1616, 1107, 1362, 598, 598, 84, 340,
+  3668, 3924, 3159, 3414, 2650, 2898, 2137, 2384,
+  1984, 1729, 1474, 1218, 966, 718, 197, 196,
+  4036, 3781, 3526, 3270, 3018, 2754, 2241, 2240,
+  2240, 2240, 2754, 3010, 3270, 3270, 3780, 4044,
+  196, 197, 710, 966, 1218, 1474, 1729, 1984,
+  2384, 2137, 2898, 2650, 3414, 3159, 3668, 3676,
+  340, 84, 606, 598, 1362, 1107, 1624, 1616,
+  2800, 2800, 2291, 2298, 3830, 3830, 3316, 3324,
+  756, 1013, 255, 502, 1778, 1779, 1273, 1520,
+  2656, 2665, 2147, 2154, 3686, 3687, 3429, 3180,
+  868, 613, 358, 102, 1898, 1635, 1120, 1120,
+  3232, 3232, 3746, 4002, 2214, 2214, 2724, 2980,
+  1196, 1444, 1710, 1958, 170, 163, 680, 672,
+  3376, 3121, 3890, 3642, 2358, 2103, 2869, 2612,
+  1084, 1076, 1854, 1590, 314, 51, 825, 560,
+  3728, 3728, 3218, 3226, 2710, 2710, 2196, 2204,
+  1684, 1685, 1183, 1174, 658, 914, 152, 144,
+  3840, 3592, 3331, 3082, 2566, 2574, 2053, 2052,
+  1796, 1540, 1286, 1030, 770, 514, 0, 0,
+]);
+
+const EDGE_INDEX = [
+  [0, 1],
+  [1, 2],
+  [2, 3],
+  [3, 0],
+  [4, 5],
+  [5, 6],
+  [6, 7],
+  [7, 4],
+  [0, 4],
+  [1, 5],
+  [2, 6],
+  [3, 7],
+] ;
+
+const SQUARISH_SEGMENT_TABLE_OFFSETS = new Int32Array([
+  0, 0, 0, 2, 4, 8, 12, 16,
+  20, 22, 24, 28, 32, 36, 40, 44,
+  48, 50, 52, 56, 60, 66, 72, 78,
+  84, 88, 92, 98, 104, 110, 116, 122,
+  128, 132, 136, 140, 144, 152, 160, 166,
+  172, 178, 184, 190, 196, 204, 212, 218,
+  224, 228, 232, 236, 240, 248, 256, 262,
+  268, 274, 280, 286, 292, 300, 308, 314,
+  320, 326, 332, 340, 348, 354, 360, 366,
+  372, 380, 388, 398, 408, 414, 420, 426,
+  432, 440, 448, 458, 468, 476, 484, 492,
+  500, 510, 520, 532, 544, 552, 560, 568,
+  576, 582, 588, 594, 600, 606, 612, 616,
+  620, 628, 636, 644, 652, 658, 664, 668,
+  672, 678, 684, 690, 696, 702, 708, 712,
+  716, 724, 732, 740, 748, 754, 760, 764,
+  768, 772, 776, 782, 788, 796, 804, 812,
+  820, 824, 828, 834, 840, 846, 852, 858,
+  864, 868, 872, 878, 884, 892, 900, 908,
+  916, 920, 924, 930, 936, 942, 948, 954,
+  960, 968, 976, 984, 992, 1004, 1016, 1026,
+  1036, 1044, 1052, 1060, 1068, 1078, 1088, 1096,
+  1104, 1110, 1116, 1122, 1128, 1138, 1148, 1156,
+  1164, 1170, 1176, 1182, 1188, 1196, 1204, 1210,
+  1216, 1222, 1228, 1236, 1244, 1250, 1256, 1262,
+  1268, 1274, 1280, 1288, 1296, 1300, 1304, 1308,
+  1312, 1318, 1324, 1332, 1340, 1346, 1352, 1358,
+  1364, 1370, 1376, 1384, 1392, 1396, 1400, 1404,
+  1408, 1414, 1420, 1426, 1432, 1438, 1444, 1448,
+  1452, 1458, 1464, 1470, 1476, 1480, 1484, 1486,
+  1488, 1492, 1496, 1500, 1504, 1508, 1512, 1514,
+  1516, 1520, 1524, 1528, 1532, 1534, 1536, 1536,
+  1536,
+]);
+
+const SQUARISH_SEGMENT_TABLE_DATA = new Int32Array([
+  1, 9, 1, 9, 2, 10, 10, 1, 2, 10, 10, 1, 2, 10, 10, 9,
+  2, 10, 10, 9, 11, 2, 11, 2, 1, 9, 11, 2, 11, 2, 1, 9,
+  10, 1, 11, 10, 10, 1, 11, 10, 11, 10, 10, 9, 10, 9, 11, 10,
+  4, 7, 4, 7, 1, 9, 4, 7, 1, 9, 4, 7, 2, 10, 10, 1,
+  4, 7, 4, 7, 2, 10, 10, 1, 2, 10, 10, 9, 4, 7, 2, 10,
+  10, 9, 4, 7, 4, 7, 11, 2, 4, 7, 11, 2, 1, 9, 4, 7,
+  11, 2, 4, 7, 11, 2, 1, 9, 10, 1, 11, 10, 4, 7, 11, 10,
+  10, 1, 4, 7, 4, 7, 11, 10, 10, 9, 4, 7, 11, 10, 10, 9,
+  9, 5, 5, 4, 9, 5, 5, 4, 5, 4, 1, 5, 5, 4, 1, 5,
+  2, 10, 10, 1, 9, 5, 5, 4, 2, 10, 10, 1, 9, 5, 5, 4,
+  2, 10, 10, 5, 5, 4, 2, 10, 10, 5, 5, 4, 9, 5, 5, 4,
+  11, 2, 11, 2, 9, 5, 5, 4, 5, 4, 1, 5, 11, 2, 1, 5,
+  11, 2, 5, 4, 11, 10, 10, 1, 9, 5, 5, 4, 9, 5, 5, 4,
+  10, 1, 11, 10, 5, 4, 11, 10, 10, 5, 5, 4, 10, 5, 11, 10,
+  5, 7, 9, 5, 9, 5, 5, 7, 1, 5, 5, 7, 1, 5, 5, 7,
+  9, 5, 5, 7, 10, 1, 2, 10, 10, 1, 2, 10, 9, 5, 5, 7,
+  5, 7, 10, 5, 2, 10, 2, 10, 10, 5, 5, 7, 9, 5, 5, 7,
+  11, 2, 9, 5, 5, 7, 11, 2, 11, 2, 1, 5, 5, 7, 11, 2,
+  1, 5, 5, 7, 9, 5, 5, 7, 10, 1, 11, 10, 5, 7, 9, 5,
+  10, 1, 11, 10, 11, 10, 10, 5, 5, 7, 11, 10, 10, 5, 5, 7,
+  10, 6, 6, 5, 5, 10, 5, 10, 10, 6, 6, 5, 1, 9, 5, 10,
+  10, 6, 6, 5, 1, 9, 5, 10, 10, 6, 6, 5, 6, 5, 5, 1,
+  2, 6, 6, 5, 5, 1, 2, 6, 6, 5, 5, 9, 2, 6, 5, 9,
+  2, 6, 6, 5, 11, 2, 10, 6, 6, 5, 5, 10, 11, 2, 10, 6,
+  6, 5, 5, 10, 1, 9, 11, 2, 5, 10, 10, 6, 6, 5, 5, 10,
+  10, 6, 6, 5, 1, 9, 11, 2, 11, 6, 6, 5, 5, 1, 5, 1,
+  11, 6, 6, 5, 11, 6, 6, 5, 5, 9, 6, 5, 5, 9, 11, 6,
+  5, 10, 10, 6, 6, 5, 4, 7, 4, 7, 6, 5, 5, 10, 10, 6,
+  1, 9, 5, 10, 10, 6, 6, 5, 4, 7, 10, 6, 6, 5, 5, 10,
+  1, 9, 4, 7, 2, 6, 6, 5, 5, 1, 4, 7, 5, 1, 2, 6,
+  6, 5, 4, 7, 4, 7, 5, 9, 6, 5, 2, 6, 4, 7, 5, 9,
+  6, 5, 2, 6, 11, 2, 4, 7, 10, 6, 6, 5, 5, 10, 5, 10,
+  10, 6, 6, 5, 4, 7, 11, 2, 1, 9, 4, 7, 11, 2, 5, 10,
+  10, 6, 6, 5, 1, 9, 11, 2, 4, 7, 5, 10, 10, 6, 6, 5,
+  4, 7, 5, 1, 11, 6, 6, 5, 5, 1, 11, 6, 6, 5, 4, 7,
+  5, 9, 6, 5, 11, 6, 4, 7, 6, 5, 5, 9, 11, 6, 4, 7,
+  9, 10, 6, 4, 10, 6, 10, 6, 6, 4, 9, 10, 1, 10, 10, 6,
+  6, 4, 6, 4, 1, 10, 10, 6, 9, 1, 2, 6, 6, 4, 9, 1,
+  2, 6, 6, 4, 2, 6, 6, 4, 2, 6, 6, 4, 9, 10, 10, 6,
+  6, 4, 11, 2, 11, 2, 9, 10, 10, 6, 6, 4, 11, 2, 6, 4,
+  1, 10, 10, 6, 6, 4, 1, 10, 10, 6, 11, 2, 6, 4, 9, 1,
+  11, 6, 11, 6, 9, 1, 6, 4, 11, 6, 6, 4, 6, 4, 11, 6,
+  10, 6, 6, 7, 9, 10, 9, 10, 6, 7, 10, 6, 10, 6, 6, 7,
+  1, 10, 10, 6, 6, 7, 1, 10, 2, 6, 9, 1, 6, 7, 2, 6,
+  9, 1, 6, 7, 6, 7, 2, 6, 6, 7, 2, 6, 11, 2, 10, 6,
+  9, 10, 6, 7, 11, 2, 6, 7, 10, 6, 9, 10, 1, 10, 6, 7,
+  10, 6, 11, 2, 11, 2, 10, 6, 1, 10, 6, 7, 6, 7, 9, 1,
+  11, 6, 9, 1, 11, 6, 6, 7, 6, 7, 11, 6, 11, 6, 6, 7,
+  7, 6, 6, 11, 7, 6, 6, 11, 1, 9, 7, 6, 6, 11, 1, 9,
+  7, 6, 6, 11, 10, 1, 2, 10, 6, 11, 7, 6, 2, 10, 10, 1,
+  6, 11, 7, 6, 2, 10, 10, 9, 6, 11, 7, 6, 6, 11, 7, 6,
+  2, 10, 10, 9, 6, 2, 7, 6, 7, 6, 6, 2, 7, 6, 6, 2,
+  1, 9, 6, 2, 1, 9, 7, 6, 7, 6, 6, 10, 10, 1, 7, 6,
+  6, 10, 10, 1, 10, 9, 6, 10, 7, 6, 7, 6, 6, 10, 10, 9,
+  4, 6, 6, 11, 6, 11, 4, 6, 6, 11, 4, 6, 1, 9, 4, 6,
+  1, 9, 6, 11, 4, 6, 6, 11, 2, 10, 10, 1, 2, 10, 10, 1,
+  6, 11, 4, 6, 4, 6, 6, 11, 2, 10, 10, 9, 10, 9, 2, 10,
+  6, 11, 4, 6, 4, 6, 6, 2, 4, 6, 6, 2, 1, 9, 4, 6,
+  6, 2, 1, 9, 4, 6, 6, 2, 4, 6, 6, 10, 10, 1, 10, 1,
+  6, 10, 4, 6, 4, 6, 6, 10, 10, 9, 10, 9, 6, 10, 4, 6,
+  9, 5, 5, 4, 7, 6, 6, 11, 9, 5, 5, 4, 7, 6, 6, 11,
+  1, 5, 5, 4, 7, 6, 6, 11, 7, 6, 6, 11, 5, 4, 1, 5,
+  9, 5, 5, 4, 10, 1, 2, 10, 7, 6, 6, 11, 6, 11, 7, 6,
+  2, 10, 10, 1, 9, 5, 5, 4, 7, 6, 6, 11, 5, 4, 10, 5,
+  2, 10, 5, 4, 10, 5, 2, 10, 7, 6, 6, 11, 7, 6, 6, 2,
+  5, 4, 9, 5, 9, 5, 5, 4, 6, 2, 7, 6, 6, 2, 7, 6,
+  1, 5, 5, 4, 6, 2, 7, 6, 5, 4, 1, 5, 9, 5, 5, 4,
+  10, 1, 6, 10, 7, 6, 6, 10, 10, 1, 7, 6, 9, 5, 5, 4,
+  10, 5, 5, 4, 6, 10, 7, 6, 7, 6, 6, 10, 5, 4, 10, 5,
+  9, 5, 5, 6, 6, 11, 6, 11, 5, 6, 9, 5, 1, 5, 5, 6,
+  6, 11, 6, 11, 5, 6, 1, 5, 2, 10, 10, 1, 9, 5, 5, 6,
+  6, 11, 6, 11, 5, 6, 9, 5, 2, 10, 10, 1, 5, 6, 6, 11,
+  10, 5, 2, 10, 6, 11, 5, 6, 2, 10, 10, 5, 9, 5, 5, 6,
+  6, 2, 9, 5, 5, 6, 6, 2, 1, 5, 5, 6, 6, 2, 1, 5,
+  5, 6, 6, 2, 6, 10, 10, 1, 5, 6, 9, 5, 10, 1, 6, 10,
+  9, 5, 5, 6, 5, 6, 6, 10, 10, 5, 10, 5, 5, 6, 6, 10,
+  5, 10, 10, 11, 7, 5, 5, 10, 10, 11, 7, 5, 7, 5, 5, 10,
+  10, 11, 1, 9, 7, 5, 5, 10, 10, 11, 1, 9, 2, 11, 7, 5,
+  5, 1, 7, 5, 5, 1, 2, 11, 7, 5, 5, 9, 2, 11, 7, 5,
+  2, 11, 5, 9, 5, 10, 10, 2, 7, 5, 7, 5, 10, 2, 5, 10,
+  1, 9, 5, 10, 7, 5, 10, 2, 1, 9, 10, 2, 5, 10, 7, 5,
+  5, 1, 7, 5, 7, 5, 5, 1, 5, 9, 7, 5, 5, 9, 7, 5,
+  4, 5, 5, 10, 10, 11, 4, 5, 5, 10, 10, 11, 1, 9, 10, 11,
+  4, 5, 5, 10, 10, 11, 4, 5, 5, 10, 1, 9, 5, 1, 2, 11,
+  4, 5, 4, 5, 2, 11, 5, 1, 5, 9, 2, 11, 4, 5, 4, 5,
+  5, 9, 2, 11, 5, 10, 10, 2, 4, 5, 5, 10, 10, 2, 4, 5,
+  10, 2, 5, 10, 4, 5, 1, 9, 5, 10, 10, 2, 4, 5, 1, 9,
+  4, 5, 5, 1, 4, 5, 5, 1, 4, 5, 5, 9, 4, 5, 5, 9,
+  7, 4, 9, 10, 10, 11, 7, 4, 9, 10, 10, 11, 1, 10, 10, 11,
+  7, 4, 1, 10, 7, 4, 10, 11, 7, 4, 2, 11, 9, 1, 7, 4,
+  9, 1, 2, 11, 7, 4, 2, 11, 7, 4, 2, 11, 9, 10, 10, 2,
+  7, 4, 9, 10, 7, 4, 10, 2, 10, 2, 7, 4, 1, 10, 1, 10,
+  10, 2, 7, 4, 9, 1, 7, 4, 9, 1, 7, 4, 7, 4, 7, 4,
+  9, 10, 10, 11, 9, 10, 10, 11, 1, 10, 10, 11, 1, 10, 10, 11,
+  2, 11, 9, 1, 9, 1, 2, 11, 2, 11, 2, 11, 10, 2, 9, 10,
+  9, 10, 10, 2, 10, 2, 1, 10, 1, 10, 10, 2, 9, 1, 9, 1,
+]);
+
+const CUBE_VERTS = [
+  [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+  [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+] ;
+
+function point_offset(size, i, j, k) {
+  return k + size[2] * (j + size[1] * i);
+}
+
+function axis_point(field, i, j, k) {
+  return [
+    field.origin[0] + i * field.axis_x[0] + j * field.axis_y[0] + k * field.axis_z[0],
+    field.origin[1] + i * field.axis_x[1] + j * field.axis_y[1] + k * field.axis_z[1],
+    field.origin[2] + i * field.axis_x[2] + j * field.axis_y[2] + k * field.axis_z[2],
+  ] ;
+}
+
+function squarishIsomesh(field, isolevel) {
+  const size = field.size;
+  const values = field.values;
+  const vertices = [];
+  const segments = [];
+  const vert_offsets = new Int32Array(8);
+  for (let i = 0; i < 8; ++i) {
+    const vert = CUBE_VERTS[i];
+    vert_offsets[i] = point_offset(size, vert[0], vert[1], vert[2]);
+  }
+
+  const vertex_values = new Float32Array(8);
+  const vlist = new Uint32Array(12);
+  let vertex_count = 0;
+
+  for (let x = 0; x < size[0] - 1; ++x) {
+    for (let y = 0; y < size[1] - 1; ++y) {
+      for (let z = 0; z < size[2] - 1; ++z) {
+        const offset0 = point_offset(size, x, y, z);
+        let cubeindex = 0;
+        for (let i = 0; i < 8; ++i) {
+          const point_index = offset0 + vert_offsets[i];
+          cubeindex |= (values[point_index] < isolevel) ? (1 << i) : 0;
+        }
+        if (cubeindex === 0 || cubeindex === 255) continue;
+
+        for (let i = 0; i < 8; ++i) {
+          vertex_values[i] = values[offset0 + vert_offsets[i]];
+        }
+
+        const edge_mask = EDGE_TABLE[cubeindex];
+        for (let i = 0; i < 12; ++i) {
+          if ((edge_mask & (1 << i)) === 0) continue;
+          const edge = EDGE_INDEX[i];
+          const v0 = edge[0];
+          const v1 = edge[1];
+          const mu = (isolevel - vertex_values[v0]) /
+                     (vertex_values[v1] - vertex_values[v0]);
+          const p0 = axis_point(field, x + CUBE_VERTS[v0][0], y + CUBE_VERTS[v0][1], z + CUBE_VERTS[v0][2]);
+          const p1 = axis_point(field, x + CUBE_VERTS[v1][0], y + CUBE_VERTS[v1][1], z + CUBE_VERTS[v1][2]);
+          vertices.push(
+            p0[0] + (p1[0] - p0[0]) * mu,
+            p0[1] + (p1[1] - p0[1]) * mu,
+            p0[2] + (p1[2] - p0[2]) * mu
+          );
+          vlist[i] = vertex_count++;
+        }
+
+        for (let i = SQUARISH_SEGMENT_TABLE_OFFSETS[cubeindex];
+          i < SQUARISH_SEGMENT_TABLE_OFFSETS[cubeindex + 1];
+          ++i) {
+          segments.push(vlist[SQUARISH_SEGMENT_TABLE_DATA[i]]);
+        }
+      }
+    }
+  }
+
+  return {
+    vertices: new Float32Array(vertices),
+    segments: new Uint32Array(segments),
+    field: field,
+  };
+}
+
 function _nullishCoalesce$2(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }
-
-
-
 
 
 
@@ -950,6 +1215,13 @@ class Block {
       if (!iso.calculate(isolevel, method)) {
         throw Error(iso.last_error || 'Failed to calculate isosurface.');
       }
+      if (method === 'squarish' && typeof iso.segments === 'function') {
+        return {
+          vertices: iso.vertices().slice(),
+          segments: iso.segments().slice(),
+          field: this.field(),
+        } ;
+      }
       return {
         vertices: iso.vertices().slice(),
         triangles: iso.triangles().slice(),
@@ -1103,6 +1375,7 @@ class ElMap {
 
   isomesh_in_block(sigma, method) {
     const abs_level = this.abs_level(sigma);
+    const field = this.block.field();
     if (this.wasm_map != null && this.block_center != null && this.unit_cell != null) {
       if (!this.wasm_map.extract_isosurface(this.block_radius,
                                             this.block_center[0],
@@ -1112,11 +1385,21 @@ class ElMap {
                                             method || '')) {
         throw Error(this.wasm_map.last_error || 'Failed to extract isosurface.');
       }
+      if (method === 'squarish' && typeof this.wasm_map.isosurface_segments === 'function') {
+        return {
+          vertices: this.wasm_map.isosurface_vertices().slice(),
+          segments: this.wasm_map.isosurface_segments().slice(),
+          field: field,
+        } ;
+      }
       return {
         vertices: this.wasm_map.isosurface_vertices().slice(),
         triangles: this.wasm_map.isosurface_triangles().slice(),
-        field: this.block.field(),
+        field: field,
       } ;
+    }
+    if (method === 'squarish' && field != null) {
+      return squarishIsomesh(field, abs_level);
     }
     return this.block.isosurface(this.gemmi_module, abs_level, method);
   }
@@ -5733,7 +6016,9 @@ function makeChickenWire(data,
   geom.setAttribute('position', new BufferAttribute(position, 3));
 
   const vertex_count = data.vertices.length / 3;
-  const arr = wireIndexFromTriangles(data.triangles, vertex_count);
+  const arr = data.segments != null ? data.segments :
+    wireIndexFromTriangles(data.triangles || new Uint32Array(0), position, vertex_count,
+                           options.remove_coplanar_diagonals === true);
   //console.log('arr len:', data.vertices.length, data.triangles.length);
   geom.setIndex(new BufferAttribute(arr, 1));
   const material = new ShaderMaterial({
@@ -5799,23 +6084,86 @@ function cleanSurfaceTriangles(index, vertex_count) {
                                : new Uint32Array(tri));
 }
 
-function wireIndexFromTriangles(index, vertex_count) {
+function wireIndexFromTriangles(index,
+                                position,
+                                vertex_count,
+                                remove_coplanar_diagonals=false) {
+  if (!remove_coplanar_diagonals) {
+    const edges = [];
+    const seen = new Set();
+    for (let i = 0; i + 2 < index.length; i += 3) {
+      const a = index[i];
+      const b = index[i + 1];
+      const c = index[i + 2];
+      if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
+      if (a === b || b === c || c === a) continue;
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        const lo = Math.min(u, v);
+        const hi = Math.max(u, v);
+        const key = lo + ',' + hi;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        edges.push(u, v);
+      }
+    }
+    return (vertex_count < 65536 ? new Uint16Array(edges)
+                                 : new Uint32Array(edges));
+  }
+
+  const vertex_keys = new Array(vertex_count);
+  for (let i = 0; i < vertex_count; i++) {
+    const j = 3 * i;
+    vertex_keys[i] = Math.round(position[j] * 1e4) + ',' +
+                     Math.round(position[j+1] * 1e4) + ',' +
+                     Math.round(position[j+2] * 1e4);
+  }
+  const edge_map = new Map();
+  function add_edge(u, v, normal) {
+    const key_u = vertex_keys[u];
+    const key_v = vertex_keys[v];
+    const key = key_u < key_v ? key_u + '|' + key_v : key_v + '|' + key_u;
+    const entry = edge_map.get(key);
+    if (entry === undefined) {
+      edge_map.set(key, {u: u, v: v, normals: [normal]});
+    } else {
+      entry.normals.push(normal);
+    }
+  }
+
   const edges = [];
-  const seen = new Set();
   for (let i = 0; i + 2 < index.length; i += 3) {
     const a = index[i];
     const b = index[i + 1];
     const c = index[i + 2];
     if (a >= vertex_count || b >= vertex_count || c >= vertex_count) continue;
     if (a === b || b === c || c === a) continue;
-    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
-      const lo = Math.min(u, v);
-      const hi = Math.max(u, v);
-      const key = lo + ',' + hi;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edges.push(u, v);
+    const ia = 3 * a;
+    const ib = 3 * b;
+    const ic = 3 * c;
+    const abx = position[ib] - position[ia];
+    const aby = position[ib+1] - position[ia+1];
+    const abz = position[ib+2] - position[ia+2];
+    const acx = position[ic] - position[ia];
+    const acy = position[ic+1] - position[ia+1];
+    const acz = position[ic+2] - position[ia+2];
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    const normal = len > 1e-12 ? [nx / len, ny / len, nz / len] : [0, 0, 0];
+    add_edge(a, b, normal);
+    add_edge(b, c, normal);
+    add_edge(c, a, normal);
+  }
+
+  for (const entry of edge_map.values()) {
+    if (entry.normals.length === 2) {
+      const n0 = entry.normals[0];
+      const n1 = entry.normals[1];
+      const dot = n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2];
+      if (dot > 0.999) continue;
     }
+    edges.push(entry.u, entry.v);
   }
   return (vertex_count < 65536 ? new Uint16Array(edges)
                                : new Uint32Array(edges));
@@ -8260,7 +8608,7 @@ const STYLE_MENUS = [
   ['ligands as', 'ligand_style', LIGAND_STYLES],
   ['waters as', 'water_style', WATER_STYLES],
 ];
-const MAP_STYLES = ['marching cubes', 'smooth surface'/*, 'snapped MC'*/];
+const MAP_STYLES = ['marching cubes', 'squarish', 'smooth surface'/*, 'snapped MC'*/];
 const LABEL_FONTS = ['bold 14px', '14px', '16px', 'bold 16px'];
 
 
@@ -8295,19 +8643,20 @@ function help_action_link(text, spec) {
 
 function normalize_viewer_options(options) {
   if (typeof options === 'string') return {viewer: options};
-  if (options && typeof options === 'object') {
-    if (options.map_style === 'squarish') options.map_style = 'marching cubes';
-    return options;
-  }
+  if (options && typeof options === 'object') return options;
   return {};
 }
 
 function map_style_method(style) {
-  return style === 'smooth surface' || style === 'squarish' ? 'marching cubes' : style;
+  return style === 'smooth surface' ? 'marching cubes' : style;
 }
 
 function map_style_is_surface(style) {
   return style === 'smooth surface';
+}
+
+function map_style_needs_block(style) {
+  return style === 'smooth surface' || style === 'squarish';
 }
 
 function rainbow_value(v, vmin, vmax) {
@@ -8434,6 +8783,14 @@ function monomer_cif_names(text) {
 
 function is_standalone_monomer_cif(text) {
   return text.indexOf('_atom_site.') === -1 && monomer_cif_names(text).length !== 0;
+}
+
+function format_error(e) {
+  if (e == null) return 'unknown error';
+  if (typeof e === 'string') return e;
+  if (typeof e === 'number') return 'exception code ' + e;
+  if (typeof e.message === 'string' && e.message) return e.message;
+  try { return String(e); } catch (e2) { return 'unknown error'; }
 }
 
 function download_filename(name, format) {
@@ -8986,6 +9343,7 @@ class Viewer {
   
   
   
+  
 
   constructor(options = {}) {
     options = normalize_viewer_options(options);
@@ -9109,6 +9467,7 @@ class Viewer {
     this.mutate_select_target = null;
     this.mutate_select_residue_key = null;
     this.mutate_select_busy = false;
+    this.viewer_only_mode = false;
     this.queued_mutation_preview = null;
     this.histogram_el = null;
     this.histogram_redraw = null;
@@ -9131,7 +9490,7 @@ class Viewer {
 
     try {
       this.renderer = new WebGLRenderer({antialias: true});
-    } catch (e2) {
+    } catch (e3) {
       this.hud('No WebGL in your browser?', 'ERR');
       this.renderer = null;
       return;
@@ -9569,14 +9928,12 @@ class Viewer {
       this.add_rendered_atoms(rendered_atoms, seen_atoms, visible_atoms);
     } else {
       const sidechain_style = model_bag.conf.sidechain_style;
-      const wheel_caps = (mainchain_style === 'lines' &&
-                          sidechain_style === 'lines' &&
-                          model_bag.conf.ligand_style === 'lines');
       const mainchain_filter = (atom) => atom.is_backbone();
       const sidechain_filter = (atom) => !atom.is_backbone();
       switch (mainchain_style) {
         case 'lines':
-          model_bag.add_bonds(true, false, undefined, mainchain_filter, partner_visible, wheel_caps);
+          model_bag.add_bonds(true, false, undefined, mainchain_filter,
+                              partner_visible, true);
           finish_pass();
           break;
         case 'sticks':
@@ -9614,7 +9971,8 @@ class Viewer {
       }
       switch (sidechain_style) {
         case 'lines':
-          model_bag.add_bonds(true, false, undefined, sidechain_filter, partner_visible, wheel_caps);
+          model_bag.add_bonds(true, false, undefined, sidechain_filter,
+                              partner_visible, true);
           finish_pass();
           break;
         case 'sticks':
@@ -9632,7 +9990,10 @@ class Viewer {
         model_bag.add_sticks(false, true, this.config.stick_radius);
         finish_pass();
       } else {
-        model_bag.add_bonds(false, true, ligand_balls, undefined, undefined, wheel_caps);
+        // If ball&stick falls back to line rendering, still draw atom caps so
+        // ligand atoms remain visible instead of only their bonds.
+        model_bag.add_bonds(false, true, ligand_balls, undefined, undefined,
+                            ligand_balls == null);
         finish_pass();
       }
     }
@@ -9729,7 +10090,7 @@ class Viewer {
       const t = this.target;
       map_bag.block_ctr.copy(t);
       map_bag.map.prepare_isosurface(this.config.map_radius, [t.x, t.y, t.z],
-                                     map_style_is_surface(this.config.map_style));
+                                     map_style_needs_block(this.config.map_style));
     }
     for (const mtype of map_bag.types) {
       const isolevel = (mtype === 'map_neg' ? -1 : 1) * map_bag.isolevel;
@@ -9744,6 +10105,7 @@ class Viewer {
         makeChickenWire(iso, {
           color: this.config.colors[mtype],
           linewidth: this.config.map_line,
+          remove_coplanar_diagonals: this.config.map_style === 'squarish',
         });
       map_bag.el_objects.push(obj);
       this.scene.add(obj);
@@ -10860,8 +11222,9 @@ class Viewer {
                          bag) {
     if (select == null) return;
     const ctx = this.download_target_context(bag);
+    const hide = this.viewer_only_mode || ctx == null;
     select.disabled = (ctx == null);
-    select.style.display = (ctx == null) ? 'none' : '';
+    select.style.display = hide ? 'none' : '';
     select.value = '';
   }
 
@@ -10870,7 +11233,8 @@ class Viewer {
     const editable_bag = this.editable_model_bag();
     const edit = this.current_edit_target();
     select.disabled = (edit == null);
-    select.style.display = (editable_bag == null) ? 'none' : '';
+    select.style.display =
+      (this.viewer_only_mode || editable_bag == null) ? 'none' : '';
     select.value = '';
     const a = edit ? edit.atom : null;
     for (const opt of select.options) {
@@ -11003,7 +11367,8 @@ class Viewer {
     button.disabled = (edit == null || targets.length === 0);
     button.style.opacity = button.disabled ? '0.7' : '1';
     button.style.cursor = button.disabled ? 'default' : 'pointer';
-    select.style.display = (editable_bag == null) ? 'none' : '';
+    select.style.display =
+      (this.viewer_only_mode || editable_bag == null) ? 'none' : '';
     const current_target = edit == null ? '' : this.mutation_target_from_resname(edit.atom.resname);
     const value = targets.indexOf(preferred_target) !== -1 ? preferred_target :
       (targets.indexOf(current_target) !== -1 ? current_target : '');
@@ -11312,6 +11677,98 @@ class Viewer {
       }
     }
     return best ? best.ctx : null;
+  }
+
+  viewer_only(enabled = true) {
+    this.viewer_only_mode = enabled;
+    this.update_nav_menus();
+  }
+
+  set_model(text, name = 'model.pdb') {
+    for (const uid in this.labels) {
+      this.remove_and_dispose(this.labels[uid].o.mesh);
+      delete this.labels[uid];
+    }
+    for (const bag of this.model_bags) this.clear_model_objects(bag);
+    this.model_bags = [];
+    this.sym_model_bags = [];
+    this.selected = {bag: null, atom: null};
+    this.blob_hits = [];
+    this.blob_map_bag = null;
+    this.mutate_select_target = null;
+    this.mutate_select_residue_key = null;
+    this.queued_mutation_preview = null;
+    this.last_bonding_info = null;
+    return this.load_model_from_text(text, name);
+  }
+
+  apply_state(state) {
+    if (state == null) return;
+    if (state.config) {
+      const keep_scheme = this.config.color_scheme;
+      for (const k of Object.keys(state.config)) {
+        if (k in this.config) (this.config )[k] = state.config[k];
+      }
+      if (this.config.color_scheme !== keep_scheme) {
+        this.set_colors();
+      } else {
+        this.redraw_models();
+      }
+    }
+    if (state.view) {
+      const v = state.view;
+      if (v.target) this.target.set(v.target[0], v.target[1], v.target[2]);
+      if (v.camera_position) {
+        this.camera.position.set(v.camera_position[0],
+                                 v.camera_position[1],
+                                 v.camera_position[2]);
+      }
+      if (v.up) this.camera.up.set(v.up[0], v.up[1], v.up[2]);
+      if (typeof v.zoom === 'number') this.camera.zoom = v.zoom;
+      this.camera.lookAt(this.target);
+      this.camera.updateProjectionMatrix();
+    }
+    this.request_render();
+  }
+
+  get_current_state() {
+    const c = this.config;
+    return {
+      config: {
+        bond_line: c.bond_line,
+        map_line: c.map_line,
+        map_radius: c.map_radius,
+        default_isolevel: c.default_isolevel,
+        map_style: c.map_style,
+        mainchain_style: c.mainchain_style,
+        sidechain_style: c.sidechain_style,
+        ligand_style: c.ligand_style,
+        water_style: c.water_style,
+        color_prop: c.color_prop,
+        label_font: c.label_font,
+        color_scheme: c.color_scheme,
+        hydrogens: c.hydrogens,
+        ball_size: c.ball_size,
+        stick_radius: c.stick_radius,
+        sphere_scale: c.sphere_scale,
+      },
+      view: {
+        target: [this.target.x, this.target.y, this.target.z],
+        camera_position: [this.camera.position.x,
+                          this.camera.position.y,
+                          this.camera.position.z],
+        up: [this.camera.up.x, this.camera.up.y, this.camera.up.z],
+        zoom: this.camera.zoom,
+      },
+    };
+  }
+
+  get_current_structure(format = 'mmcif') {
+    const ctx = this.download_target_context();
+    if (ctx == null) return null;
+    return format === 'pdb' ?
+      ctx.gemmi.make_pdb_string(ctx.structure) :
+      ctx.gemmi.make_mmcif_string(ctx.structure);
   }
 
   download_model(format) {
@@ -12736,7 +13193,7 @@ class Viewer {
             callback(req);
           } catch (e) {
             if (error_callback) error_callback(req, e);
-            else self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+            else self.hud('Error: ' + format_error(e) + '\nwhen processing ' + url, 'ERR');
           }
         } else {
           if (error_callback) error_callback(req);
@@ -13023,7 +13480,7 @@ class Viewer {
   }
 
   load_model(url, options,
-           callback) {
+             callback) {
     if (Array.isArray(url)) {
       this.load_model_candidates(url, options, callback);
       return;
@@ -13038,13 +13495,13 @@ class Viewer {
         if (options == null || !options.stay) self.set_view(options);
         if (callback) callback();
       }, function (e) {
-        self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+        self.hud('Error: ' + format_error(e) + '\nwhen processing ' + url, 'ERR');
       });
     });
   }
 
    load_model_candidates(urls, options,
-                              callback) {
+                                callback) {
     const self = this;
     const gemmi = options && options.gemmi;
     const failed = [];
@@ -13097,7 +13554,7 @@ class Viewer {
       after_load.then(function () {
         if (callback) callback();
       }, function (e) {
-        self.hud('Error: ' + e.message + '\nwhen processing ' + url, 'ERR');
+        self.hud('Error: ' + format_error(e) + '\nwhen processing ' + url, 'ERR');
       });
     });
   }
@@ -13125,7 +13582,7 @@ class Viewer {
 
   // Load a model (PDB), normal map and a difference map - in this order.
   load_model_and_maps(pdb, map1, map2,
-                    options, callback) {
+                      options, callback) {
     const self = this;
     this.load_model(pdb, options, function () {
       self.load_maps(map1, map2, options, callback);
@@ -13137,7 +13594,7 @@ class Viewer {
     this.load_maps(url1, url2, {format: 'ccp4'}, callback);
   }
   load_model_and_ccp4_maps(pdb, map1, map2,
-                         callback) {
+                           callback) {
     this.load_model_and_maps(pdb, map1, map2, {format: 'ccp4'}, callback);
   }
 

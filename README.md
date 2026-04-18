@@ -26,10 +26,13 @@ Try it:
   (Dimple result, thaumatin, 1.4Å),
 - or any [local file or wwPDB entry](https://gemmimol.github.io/view/).
 
+Small molecule from [COD](http://www.crystallography.net/cod/):
+[caffeine](https://gemmimol.github.io/cod.html) ([COD 1542540](https://www.crystallography.net/cod/1542540.html)).
 
 It also has a [reciprocal space spin-off](https://gemmimol.github.io/reciprocal.html?rlp=data/rlp.csv).
 
 GemmiMol is a small (~3 KLOC) [project](https://github.com/gemmimol/gemmimol)
+(see [changelog](https://github.com/gemmimol/gemmimol/releases/)).
 The plan is to keep it small. But if you're missing some functionality,
 it won't hurt if you get in touch --
 use [Issues](https://github.com/gemmimol/gemmimol/issues)
