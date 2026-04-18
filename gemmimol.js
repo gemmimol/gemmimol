@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.6";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-9-ga8e6a72-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-12-gc3cfb68-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-147-g08db0610";
 
 
@@ -151,7 +151,8 @@ function monomer_names_in_cif(text) {
 
 function getGemmiBondData(gemmi, st,
                           getMonomerCifs,
-                          structure_text) {
+                          structure_text,
+                          add_hydrogens) {
   if (typeof gemmi.BondInfo !== 'function') {
     return Promise.resolve({
       bond_data: null,
@@ -190,6 +191,10 @@ function getGemmiBondData(gemmi, st,
         loaded_names.add(name);
       }
       loaded_monomers++;
+    }
+    if (add_hydrogens) {
+      const hc = (gemmi ).HydrogenChange;
+      (bond_info ).add_hydrogens(st, hc.ReAddButWater);
     }
     bond_info.get_bond_lines(st);
     const len = bond_info.bond_data_size();
@@ -306,13 +311,15 @@ function modelsFromGemmi(gemmi, buffer, name,
 }
 
 function bondDataFromGemmiStructure(gemmi, st,
-                                           getMonomerCifs) {
-  return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
-    return {
-      bond_data: bond_result.bond_data,
-      bonding: bond_result.info,
-    };
-  });
+                                           getMonomerCifs,
+                                           add_hydrogens) {
+  return getGemmiBondData(gemmi, st, getMonomerCifs, undefined, add_hydrogens)
+    .then(function (bond_result) {
+      return {
+        bond_data: bond_result.bond_data,
+        bonding: bond_result.info,
+      };
+    });
 }
 
 function modelFromGemmiStructure(gemmi, st,
@@ -11558,12 +11565,14 @@ class Viewer {
     this.request_render();
   }
 
-  refresh_model_from_structure_with_bonds(bag, center) {
+  refresh_model_from_structure_with_bonds(bag, center,
+                                          add_hydrogens) {
     const ctx = bag.gemmi_selection;
     if (ctx == null) return Promise.reject(Error('Gemmi selection is unavailable for this model.'));
     const self = this;
     return bondDataFromGemmiStructure(ctx.gemmi, ctx.structure,
-                                      this.fetch_monomer_cifs.bind(this)).then(function (result) {
+                                      this.fetch_monomer_cifs.bind(this),
+                                      add_hydrogens).then(function (result) {
       const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure,
                                             result.bond_data, ctx.model_index);
       if (result.bond_data != null) model.bond_data = result.bond_data;
@@ -11579,6 +11588,29 @@ class Viewer {
       self.controls.go_to(new Vector3(center[0], center[1], center[2]), null, null, 15);
       self.request_render();
     });
+  }
+
+  add_hydrogens_to_current_model() {
+    const bag = this.editable_model_bag();
+    if (bag == null || bag.gemmi_selection == null) {
+      this.hud('Adding hydrogens requires an editable Gemmi-backed model.', 'ERR');
+      return Promise.resolve();
+    }
+    if (typeof (bag.gemmi_selection.gemmi ).HydrogenChange !== 'object') {
+      this.hud('Gemmi wasm build lacks hydrogen placement support.', 'ERR');
+      return Promise.resolve();
+    }
+    const focus_atom = _optionalChain([this, 'access', _6 => _6.selected, 'optionalAccess', _7 => _7.atom]);
+    const center = focus_atom != null ?
+      focus_atom.xyz :
+      [this.target.x, this.target.y, this.target.z];
+    const self = this;
+    return this.refresh_model_from_structure_with_bonds(bag, center, true).then(
+      function () { self.hud('Hydrogens added.'); },
+      function (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        self.hud('Adding hydrogens failed: ' + (msg || 'unknown error'), 'ERR');
+      });
   }
 
   place_selected_blob(kind) {

@@ -82,6 +82,11 @@ export interface ConnectionTypeValue<T extends number> {
 }
 export type ConnectionType = ConnectionTypeValue<0>|ConnectionTypeValue<1>|ConnectionTypeValue<2>|ConnectionTypeValue<3>|ConnectionTypeValue<4>;
 
+export interface HydrogenChangeValue<T extends number> {
+  value: T;
+}
+export type HydrogenChange = HydrogenChangeValue<0>|HydrogenChangeValue<1>|HydrogenChangeValue<2>|HydrogenChangeValue<3>|HydrogenChangeValue<4>|HydrogenChangeValue<5>;
+
 export interface AtomAddress extends ClassHandle {
   res_id: ResidueId;
   get chain_name(): string;
@@ -239,6 +244,7 @@ export interface BondInfo extends ClassHandle {
   bond_data_ptr(): number;
   bond_data_size(): number;
   add_monomer_cif(_0: EmbindString): void;
+  add_hydrogens(_0: Structure, _1: HydrogenChange): void;
 }
 
 export interface CrossSymBonds extends ClassHandle {
@@ -338,6 +344,7 @@ interface EmbindModule {
   ResidueStrandSense: {NotStrand: ResidueStrandSenseValue<0>, Parallel: ResidueStrandSenseValue<1>, First: ResidueStrandSenseValue<2>, Antiparallel: ResidueStrandSenseValue<-1>};
   Asu: {Same: AsuValue<0>, Different: AsuValue<1>, Any: AsuValue<2>};
   ConnectionType: {Covale: ConnectionTypeValue<0>, Disulf: ConnectionTypeValue<1>, Hydrog: ConnectionTypeValue<2>, MetalC: ConnectionTypeValue<3>, Unknown: ConnectionTypeValue<4>};
+  HydrogenChange: {NoChange: HydrogenChangeValue<0>, Shift: HydrogenChangeValue<1>, Remove: HydrogenChangeValue<2>, ReAdd: HydrogenChangeValue<3>, ReAddButWater: HydrogenChangeValue<4>, ReAddKnown: HydrogenChangeValue<5>};
   AtomAddress: {
     new(): AtomAddress;
   };

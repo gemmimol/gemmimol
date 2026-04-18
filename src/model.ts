@@ -146,7 +146,8 @@ function monomer_names_in_cif(text: string) {
 
 function getGemmiBondData(gemmi: GemmiModule, st: Structure,
                           getMonomerCifs?: MonomerFetcher,
-                          structure_text?: string) {
+                          structure_text?: string,
+                          add_hydrogens?: boolean) {
   if (typeof gemmi.BondInfo !== 'function') {
     return Promise.resolve({
       bond_data: null,
@@ -185,6 +186,10 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
         loaded_names.add(name);
       }
       loaded_monomers++;
+    }
+    if (add_hydrogens) {
+      const hc = gemmi.HydrogenChange;
+      bond_info.add_hydrogens(st, hc.ReAddButWater);
     }
     bond_info.get_bond_lines(st);
     const len = bond_info.bond_data_size();
@@ -301,13 +306,15 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
 }
 
 export function bondDataFromGemmiStructure(gemmi: GemmiModule, st: Structure,
-                                           getMonomerCifs?: MonomerFetcher) {
-  return getGemmiBondData(gemmi, st, getMonomerCifs).then(function (bond_result) {
-    return {
-      bond_data: bond_result.bond_data,
-      bonding: bond_result.info,
-    };
-  });
+                                           getMonomerCifs?: MonomerFetcher,
+                                           add_hydrogens?: boolean) {
+  return getGemmiBondData(gemmi, st, getMonomerCifs, undefined, add_hydrogens)
+    .then(function (bond_result) {
+      return {
+        bond_data: bond_result.bond_data,
+        bonding: bond_result.info,
+      };
+    });
 }
 
 export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,

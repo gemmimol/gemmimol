@@ -3144,12 +3144,14 @@ export class Viewer {
     this.request_render();
   }
 
-  refresh_model_from_structure_with_bonds(bag: ModelBag, center: Num3) {
+  refresh_model_from_structure_with_bonds(bag: ModelBag, center: Num3,
+                                          add_hydrogens?: boolean) {
     const ctx = bag.gemmi_selection;
     if (ctx == null) return Promise.reject(Error('Gemmi selection is unavailable for this model.'));
     const self = this;
     return bondDataFromGemmiStructure(ctx.gemmi, ctx.structure,
-                                      this.fetch_monomer_cifs.bind(this)).then(function (result) {
+                                      this.fetch_monomer_cifs.bind(this),
+                                      add_hydrogens).then(function (result) {
       const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure,
                                             result.bond_data, ctx.model_index);
       if (result.bond_data != null) model.bond_data = result.bond_data;
@@ -3165,6 +3167,29 @@ export class Viewer {
       self.controls.go_to(new Vector3(center[0], center[1], center[2]), null, null, 15);
       self.request_render();
     });
+  }
+
+  add_hydrogens_to_current_model() {
+    const bag = this.editable_model_bag();
+    if (bag == null || bag.gemmi_selection == null) {
+      this.hud('Adding hydrogens requires an editable Gemmi-backed model.', 'ERR');
+      return Promise.resolve();
+    }
+    if (typeof bag.gemmi_selection.gemmi.HydrogenChange !== 'object') {
+      this.hud('Gemmi wasm build lacks hydrogen placement support.', 'ERR');
+      return Promise.resolve();
+    }
+    const focus_atom = this.selected?.atom;
+    const center: Num3 = focus_atom != null ?
+      focus_atom.xyz :
+      [this.target.x, this.target.y, this.target.z];
+    const self = this;
+    return this.refresh_model_from_structure_with_bonds(bag, center, true).then(
+      function () { self.hud('Hydrogens added.'); },
+      function (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        self.hud('Adding hydrogens failed: ' + (msg || 'unknown error'), 'ERR');
+      });
   }
 
   place_selected_blob(kind: string) {
