@@ -12,8 +12,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.6";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-8-g6834aae-dirty";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-145-g097e7656";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.5-9-ga8e6a72-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-147-g08db0610";
 
 
 const BondType = {
@@ -9928,12 +9928,15 @@ class Viewer {
       this.add_rendered_atoms(rendered_atoms, seen_atoms, visible_atoms);
     } else {
       const sidechain_style = model_bag.conf.sidechain_style;
+      const wheel_caps = (mainchain_style === 'lines' &&
+                          sidechain_style === 'lines' &&
+                          (ligand_balls == null));
       const mainchain_filter = (atom) => atom.is_backbone();
       const sidechain_filter = (atom) => !atom.is_backbone();
       switch (mainchain_style) {
         case 'lines':
           model_bag.add_bonds(true, false, undefined, mainchain_filter,
-                              partner_visible, true);
+                              partner_visible, wheel_caps);
           finish_pass();
           break;
         case 'sticks':
@@ -9972,7 +9975,7 @@ class Viewer {
       switch (sidechain_style) {
         case 'lines':
           model_bag.add_bonds(true, false, undefined, sidechain_filter,
-                              partner_visible, true);
+                              partner_visible, wheel_caps);
           finish_pass();
           break;
         case 'sticks':
@@ -9990,10 +9993,8 @@ class Viewer {
         model_bag.add_sticks(false, true, this.config.stick_radius);
         finish_pass();
       } else {
-        // If ball&stick falls back to line rendering, still draw atom caps so
-        // ligand atoms remain visible instead of only their bonds.
         model_bag.add_bonds(false, true, ligand_balls, undefined, undefined,
-                            ligand_balls == null);
+                            wheel_caps);
         finish_pass();
       }
     }
