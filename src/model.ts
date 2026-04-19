@@ -202,7 +202,7 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
         if (e && typeof e.excPtr === 'number' && typeof getMsg === 'function') {
           const info = getMsg(e);
           const msg = Array.isArray(info) ? (info[1] || info[0]) : String(info);
-          throw new Error(msg || 'add_hydrogens failed');
+          throw new Error(msg || 'add_hydrogens failed', { cause: e });
         }
         throw e;
       }
