@@ -2,6 +2,7 @@
 declare namespace RuntimeExports {
     function writeArrayToMemory(array: any, buffer: any): void;
     let HEAPU8: Uint8Array;
+    function getExceptionMessage(exn: any): any;
 }
 interface WasmModule {
 }

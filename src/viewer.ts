@@ -376,6 +376,17 @@ function format_error(e: any): string {
   if (typeof e === 'string') return e;
   if (typeof e === 'number') return 'exception code ' + e;
   if (typeof e.message === 'string' && e.message) return e.message;
+  if (typeof e.name === 'string' && e.name) return e.name;
+  if (typeof e === 'object') {
+    try {
+      const keys = Object.getOwnPropertyNames(e).slice(0, 8);
+      const parts = keys.map((k) => {
+        const v = (e as any)[k];
+        return k + '=' + (typeof v === 'function' ? 'fn' : String(v));
+      });
+      if (parts.length !== 0) return '{' + parts.join(', ') + '}';
+    } catch { /* fall through */ }
+  }
   try { return String(e); } catch { return 'unknown error'; }
 }
 
@@ -861,6 +872,7 @@ export class Viewer {
   monomer_cif_cache: Record<string, Promise<string | null>>;
   monomer_fetcher: MonomerCifFetcher | null;
   monomer_url_template: string | null;
+  link_library_cif_promise: Promise<string | null> | null;
   last_bonding_info: GemmiBondingInfo | null;
   sym_model_bags: ModelBag[];
   sym_bond_objects: object[];
@@ -950,6 +962,7 @@ export class Viewer {
       options.monomer_fetcher : null;
     this.monomer_url_template = typeof options.monomer_url_template === 'string' ?
       options.monomer_url_template : null;
+    this.link_library_cif_promise = null;
     this.last_bonding_info = null;
     this.sym_model_bags = [];
     this.sym_bond_objects = [];
@@ -3149,9 +3162,13 @@ export class Viewer {
     const ctx = bag.gemmi_selection;
     if (ctx == null) return Promise.reject(Error('Gemmi selection is unavailable for this model.'));
     const self = this;
-    return bondDataFromGemmiStructure(ctx.gemmi, ctx.structure,
-                                      this.fetch_monomer_cifs.bind(this),
-                                      add_hydrogens).then(function (result) {
+    const extra_p = add_hydrogens ? this.fetch_link_library() : Promise.resolve(null);
+    return extra_p.then(function (link_cif) {
+      const extra = link_cif ? [link_cif] : undefined;
+      return bondDataFromGemmiStructure(ctx.gemmi, ctx.structure,
+                                        self.fetch_monomer_cifs.bind(self),
+                                        add_hydrogens, extra);
+    }).then(function (result) {
       const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure,
                                             result.bond_data, ctx.model_index);
       if (result.bond_data != null) model.bond_data = result.bond_data;
@@ -3175,7 +3192,7 @@ export class Viewer {
       this.hud('Adding hydrogens requires an editable Gemmi-backed model.', 'ERR');
       return Promise.resolve();
     }
-    if (typeof bag.gemmi_selection.gemmi.HydrogenChange !== 'object') {
+    if (bag.gemmi_selection.gemmi.HydrogenChange == null) {
       this.hud('Gemmi wasm build lacks hydrogen placement support.', 'ERR');
       return Promise.resolve();
     }
@@ -3184,11 +3201,18 @@ export class Viewer {
       focus_atom.xyz :
       [this.target.x, this.target.y, this.target.z];
     const self = this;
+    const before_h = bag.model.hydrogen_count;
     return this.refresh_model_from_structure_with_bonds(bag, center, true).then(
-      function () { self.hud('Hydrogens added.'); },
+      function () {
+        const after_h = self.current_model_hydrogen_count();
+        console.log('add_hydrogens: removed', before_h,
+                    'H/D atoms from input, placed', after_h);
+        self.hud('Hydrogens: removed ' + before_h +
+                 ', added ' + after_h + '.');
+      },
       function (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        self.hud('Adding hydrogens failed: ' + (msg || 'unknown error'), 'ERR');
+        console.error('add_hydrogens error:', err);
+        self.hud('Adding hydrogens failed: ' + format_error(err), 'ERR');
       });
   }
 
@@ -4370,6 +4394,11 @@ export class Viewer {
     kb[89] = function (this: Viewer) {
       this.config.hydrogens = !this.config.hydrogens;
       const n_h = this.current_model_hydrogen_count();
+      if (this.config.hydrogens && n_h === 0) {
+        this.hud('adding hydrogens...');
+        this.add_hydrogens_to_current_model();
+        return;
+      }
       this.hud((this.config.hydrogens ? 'show' : 'hide') +
                ' hydrogens (' + n_h + ' H/D atom' + (n_h === 1 ? '' : 's') +
                ' in model)');
@@ -5006,9 +5035,14 @@ export class Viewer {
       const default_fetch = function () {
         const template = aminoAcidTemplate(name) || nucleotideTemplate(name);
         if (template != null) return Promise.resolve(template.cif);
+        const first_letter = name[0].toLowerCase();
         const url = self.monomer_url_template != null ?
-          self.monomer_url_template.replace(/\{name\}/g, encodeURIComponent(name)) :
-          'https://files.rcsb.org/ligands/view/' + encodeURIComponent(name) + '.cif';
+          self.monomer_url_template
+            .replace(/\{name\}/g, encodeURIComponent(name))
+            .replace(/\{first_letter\}/g, encodeURIComponent(first_letter)) :
+          'https://raw.githubusercontent.com/MonomerLibrary/monomers/master/' +
+            encodeURIComponent(first_letter) + '/' +
+            encodeURIComponent(name) + '.cif';
         return fetch(url).then(function (resp) {
           return resp.ok ? resp.text() : null;
         }).catch(function () {
@@ -5029,6 +5063,16 @@ export class Viewer {
     return Promise.all(unique.map(this.fetch_monomer_cif, this)).then(function (cif_texts) {
       return cif_texts.filter(function (v): v is string { return v != null; });
     });
+  }
+
+  fetch_link_library() {
+    if (this.link_library_cif_promise == null) {
+      const url = 'https://raw.githubusercontent.com/MonomerLibrary/monomers/master/list/mon_lib_list.cif';
+      this.link_library_cif_promise = fetch(url).then(function (resp) {
+        return resp.ok ? resp.text() : null;
+      }).catch(function () { return null; });
+    }
+    return this.link_library_cif_promise;
   }
 
   resolve_gemmi(explicit_module?: GemmiModule) {

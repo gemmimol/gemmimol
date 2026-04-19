@@ -55,11 +55,18 @@ Once the page has loaded, create a viewer instance and load a model.
 </script>
 ```
 
-If you also want electron density:
+If you also want electron density, load it from an MTZ file via the Gemmi
+WASM module:
 
 ```js
-viewer.load_ccp4_maps('/maps/example.map', '/maps/example_diff.map');
+Gemmi().then(function (gemmi) {
+  GM.load_maps_from_mtz(gemmi, viewer, '/maps/example.mtz');
+});
 ```
+
+By default this picks the first `FWT/PHWT` and `DELFWT/PHDELWT` column pairs.
+To use different column labels, pass them as a third argument, e.g.
+`['2FOFCWT', 'PH2FOFCWT', 'FOFCWT', 'PHFOFCWT']`.
 
 ## Supplying monomer CIF files
 
@@ -111,11 +118,15 @@ If your app exposes monomer files through a simple URL pattern, you can use
 ```js
 const viewer = new GM.Viewer({
   viewer: 'viewer',
-  monomer_url_template: '/api/monomers/{name}.cif',
+  monomer_url_template: '/api/monomers/{first_letter}/{name}.cif',
 });
 ```
 
 `{name}` is replaced with the uppercased residue name, URL-encoded.
+`{first_letter}` is replaced with the lowercased first character of the
+residue name, matching the `<first-letter>/<NAME>.cif` layout used by the
+[MonomerLibrary/monomers](https://github.com/MonomerLibrary/monomers)
+repository that GemmiMol now uses as the default source.
 
 ## What the server should return
 
@@ -159,7 +170,7 @@ GemmiMol tries monomer sources in this order:
 1. `monomer_fetcher`, if provided
 2. built-in amino-acid and nucleotide templates
 3. `monomer_url_template`, if provided
-4. the default RCSB ligand URL
+4. the default MonomerLibrary/monomers URL
 
 If `monomer_fetcher` returns `null`, GemmiMol continues with the built-in and
 URL-based fallback path.

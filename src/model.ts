@@ -147,7 +147,8 @@ function monomer_names_in_cif(text: string) {
 function getGemmiBondData(gemmi: GemmiModule, st: Structure,
                           getMonomerCifs?: MonomerFetcher,
                           structure_text?: string,
-                          add_hydrogens?: boolean) {
+                          add_hydrogens?: boolean,
+                          extra_cif_texts?: string[]) {
   if (typeof gemmi.BondInfo !== 'function') {
     return Promise.resolve({
       bond_data: null,
@@ -187,9 +188,24 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
       }
       loaded_monomers++;
     }
+    if (extra_cif_texts) {
+      for (const cif_text of extra_cif_texts) {
+        bond_info.add_monomer_cif(cif_text);
+      }
+    }
     if (add_hydrogens) {
       const hc = gemmi.HydrogenChange;
-      bond_info.add_hydrogens(st, hc.ReAddButWater);
+      try {
+        bond_info.add_hydrogens(st, hc.ReAddButWater);
+      } catch (e: any) {
+        const getMsg = (gemmi as any).getExceptionMessage;
+        if (e && typeof e.excPtr === 'number' && typeof getMsg === 'function') {
+          const info = getMsg(e);
+          const msg = Array.isArray(info) ? (info[1] || info[0]) : String(info);
+          throw new Error(msg || 'add_hydrogens failed');
+        }
+        throw e;
+      }
     }
     bond_info.get_bond_lines(st);
     const len = bond_info.bond_data_size();
@@ -307,8 +323,10 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
 
 export function bondDataFromGemmiStructure(gemmi: GemmiModule, st: Structure,
                                            getMonomerCifs?: MonomerFetcher,
-                                           add_hydrogens?: boolean) {
-  return getGemmiBondData(gemmi, st, getMonomerCifs, undefined, add_hydrogens)
+                                           add_hydrogens?: boolean,
+                                           extra_cif_texts?: string[]) {
+  return getGemmiBondData(gemmi, st, getMonomerCifs, undefined,
+                          add_hydrogens, extra_cif_texts)
     .then(function (bond_result) {
       return {
         bond_data: bond_result.bond_data,
