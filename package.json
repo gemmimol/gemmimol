@@ -20,7 +20,7 @@
   "homepage": "https://gemmimol.github.io",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gemmimol/gemmimol.git"
+    "url": "git+https://github.com/gemmimol/gemmimol.git"
   },
   "license": "MIT",
   "main": "gemmimol.js",

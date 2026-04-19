@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.7";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.6-4-ga908586-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-148-gfd9e19b6";
 
 
@@ -167,9 +167,15 @@ function getGemmiBondData(gemmi, st,
     });
   }
   const bond_info = new gemmi.BondInfo();
-  const resnames = gemmi.get_missing_monomer_names(st).split(',').filter(Boolean);
+  // For add_hydrogens, prepare_topology needs full restraints (atoms, bonds,
+  // *and angles*). PDBe-updated mmCIFs embed chem_comp_atom / chem_comp_bond
+  // but not angles, so we bypass embedded extraction and fetch the full
+  // monomer dictionary for every residue actually present.
+  const resnames = (add_hydrogens ?
+    gemmi.get_residue_names(st) :
+    gemmi.get_missing_monomer_names(st)).split(',').filter(Boolean);
   const monomers_requested = Array.from(new Set(resnames)).length;
-  const embedded_monomers = structure_text ?
+  const embedded_monomers = (structure_text && !add_hydrogens) ?
     extract_embedded_monomer_cifs(structure_text, resnames) :
     [];
   const embedded_names = new Set(embedded_monomers.map((entry) => entry.name));
@@ -319,7 +325,8 @@ function modelsFromGemmi(gemmi, buffer, name,
       models.push(m);
     }
     //console.log("[after modelsFromGemmi] wasm mem:", gemmi.HEAPU8.length / 1024, "kb");
-    return { models: models, bonding: bond_result.info, structure: st };
+    return { models: models, bonding: bond_result.info, structure: st,
+             structure_text: structure_text };
   }, function (err) {
     st.delete();
     throw err;
@@ -329,8 +336,9 @@ function modelsFromGemmi(gemmi, buffer, name,
 function bondDataFromGemmiStructure(gemmi, st,
                                            getMonomerCifs,
                                            add_hydrogens,
-                                           extra_cif_texts) {
-  return getGemmiBondData(gemmi, st, getMonomerCifs, undefined,
+                                           extra_cif_texts,
+                                           structure_text) {
+  return getGemmiBondData(gemmi, st, getMonomerCifs, structure_text,
                           add_hydrogens, extra_cif_texts)
     .then(function (bond_result) {
       return {
@@ -8523,6 +8531,7 @@ function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { 
 
 
 
+
 const ColorSchemes$1 = {
   // the default scheme that generally mimicks Coot
   'coot dark': {
@@ -11606,7 +11615,8 @@ class Viewer {
       const extra = link_cif ? [link_cif] : undefined;
       return bondDataFromGemmiStructure(ctx.gemmi, ctx.structure,
                                         self.fetch_monomer_cifs.bind(self),
-                                        add_hydrogens, extra);
+                                        add_hydrogens, extra,
+                                        ctx.structure_text);
     }).then(function (result) {
       const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure,
                                             result.bond_data, ctx.model_index);
@@ -13564,6 +13574,7 @@ class Viewer {
             gemmi: gemmi,
             structure: result.structure,
             model_index: model.source_model_index == null ? 0 : model.source_model_index,
+            structure_text: result.structure_text,
           },
         });
       }

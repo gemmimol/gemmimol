@@ -162,9 +162,15 @@ function getGemmiBondData(gemmi: GemmiModule, st: Structure,
     });
   }
   const bond_info = new gemmi.BondInfo();
-  const resnames = gemmi.get_missing_monomer_names(st).split(',').filter(Boolean);
+  // For add_hydrogens, prepare_topology needs full restraints (atoms, bonds,
+  // *and angles*). PDBe-updated mmCIFs embed chem_comp_atom / chem_comp_bond
+  // but not angles, so we bypass embedded extraction and fetch the full
+  // monomer dictionary for every residue actually present.
+  const resnames = (add_hydrogens ?
+    gemmi.get_residue_names(st) :
+    gemmi.get_missing_monomer_names(st)).split(',').filter(Boolean);
   const monomers_requested = Array.from(new Set(resnames)).length;
-  const embedded_monomers = structure_text ?
+  const embedded_monomers = (structure_text && !add_hydrogens) ?
     extract_embedded_monomer_cifs(structure_text, resnames) :
     [];
   const embedded_names = new Set(embedded_monomers.map((entry) => entry.name));
@@ -314,7 +320,8 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
       models.push(m);
     }
     //console.log("[after modelsFromGemmi] wasm mem:", gemmi.HEAPU8.length / 1024, "kb");
-    return { models: models, bonding: bond_result.info, structure: st };
+    return { models: models, bonding: bond_result.info, structure: st,
+             structure_text: structure_text };
   }, function (err) {
     st.delete();
     throw err;
@@ -324,8 +331,9 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
 export function bondDataFromGemmiStructure(gemmi: GemmiModule, st: Structure,
                                            getMonomerCifs?: MonomerFetcher,
                                            add_hydrogens?: boolean,
-                                           extra_cif_texts?: string[]) {
-  return getGemmiBondData(gemmi, st, getMonomerCifs, undefined,
+                                           extra_cif_texts?: string[],
+                                           structure_text?: string) {
+  return getGemmiBondData(gemmi, st, getMonomerCifs, structure_text,
                           add_hydrogens, extra_cif_texts)
     .then(function (bond_result) {
       return {

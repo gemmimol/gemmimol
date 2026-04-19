@@ -24,6 +24,7 @@ type GemmiSelectionContext = {
   gemmi: GemmiModule,
   structure: Structure,
   model_index: number,
+  structure_text?: string,
 };
 
 type SiteNavItem = {
@@ -3167,7 +3168,8 @@ export class Viewer {
       const extra = link_cif ? [link_cif] : undefined;
       return bondDataFromGemmiStructure(ctx.gemmi, ctx.structure,
                                         self.fetch_monomer_cifs.bind(self),
-                                        add_hydrogens, extra);
+                                        add_hydrogens, extra,
+                                        ctx.structure_text);
     }).then(function (result) {
       const model = modelFromGemmiStructure(ctx.gemmi, ctx.structure,
                                             result.bond_data, ctx.model_index);
@@ -5125,6 +5127,7 @@ export class Viewer {
             gemmi: gemmi,
             structure: result.structure,
             model_index: model.source_model_index == null ? 0 : model.source_model_index,
+            structure_text: result.structure_text,
           },
         });
       }
