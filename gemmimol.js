@@ -1,5 +1,5 @@
 /*!
- * GemmiMol v0.8.6. Macromolecular Viewer for Crystallographers.
+ * GemmiMol v0.8.7. Macromolecular Viewer for Crystallographers.
  * Copyright 2014 Nat Echols
  * Copyright 2016 Diamond Light Source Ltd
  * Copyright 2016 Marcin Wojdyr
@@ -11,9 +11,9 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.GM = {}));
 })(this, (function (exports) { 'use strict';
 
-var VERSION = exports.VERSION = "0.8.6";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.6-dirty";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-147-g08db0610";
+var VERSION = exports.VERSION = "0.8.7";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.6-4-ga908586-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-148-gfd9e19b6";
 
 
 const BondType = {
@@ -207,7 +207,7 @@ function getGemmiBondData(gemmi, st,
         if (e && typeof e.excPtr === 'number' && typeof getMsg === 'function') {
           const info = getMsg(e);
           const msg = Array.isArray(info) ? (info[1] || info[0]) : String(info);
-          throw new Error(msg || 'add_hydrogens failed');
+          throw new Error(msg || 'add_hydrogens failed', { cause: e });
         }
         throw e;
       }
