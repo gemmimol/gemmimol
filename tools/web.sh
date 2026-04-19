@@ -56,7 +56,7 @@ cd "$outdir"
 if command -v jekyll >/dev/null 2>&1; then
     sourcedir=$(mktemp -d /tmp/gemmimol-source.XXXXXX)
     builddir=$(mktemp -d /tmp/gemmimol-pages.XXXXXX)
-    cp -a "$outdir/." "$sourcedir/"
+    rsync -a --exclude=_site --exclude=.jekyll-cache "$outdir/" "$sourcedir/"
     rm -f "$sourcedir/index.html" "$sourcedir/integration.html"
     jekyll build --source "$sourcedir" --destination "$builddir" >/dev/null
     cp "$builddir/index.html" "$outdir/"
