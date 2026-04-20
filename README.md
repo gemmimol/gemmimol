@@ -13,7 +13,7 @@ For instance, when screening
 Of course, for this to work, it needs to be integrated into a website
 that provides the data access
 (see the [UglyMol FAQ](https://github.com/uglymol/uglymol/wiki) on how to do it).
-See also the [integration page](integration.md) for GemmiMol-specific notes,
+See also the [integration page](integration.md) for notes,
 including how to provide monomer CIF files.
 
 Try it:
