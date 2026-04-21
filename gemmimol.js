@@ -12,8 +12,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.7";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-1-g15bf15c-dirty";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-148-gfd9e19b6";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-2-g6ee0ea0-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-149-g77b83267";
 
 
 const BondType = {
@@ -12264,7 +12264,7 @@ class Viewer {
         bar_svg.push(
           '<rect x="' + x + '" y="' + y_total +
           '" width="' + (bw - 1) + '" height="' + total_h +
-          '" fill="#555" stroke="#aaa" stroke-width="0.5"/>'
+          '" fill="#c94c4c"/>'
         );
       }
       if (obs > 0) {
@@ -12276,7 +12276,8 @@ class Viewer {
       }
     }
     const title = hist.label ?
-      'reflections by resolution (green = ' + hist.label + ' present)' :
+      'reflections by resolution (green = ' + hist.label +
+      ' present, red = missing)' :
       'reflections by resolution';
     const wrapper = document.createElement('div');
     wrapper.className = 'gm-reflection-histogram';
@@ -12600,7 +12601,17 @@ class Viewer {
   update_help() {
     const el = this.help_el;
     if (!el) return;
-    el.innerHTML = [this.MOUSE_HELP, this.KEYBOARD_HELP,
+    const uc = this.selected.bag ? this.selected.bag.model.unit_cell : null;
+    const cell_line = uc ?
+      '<span style="margin-left:2em;color:#aaa">' +
+      uc.a.toFixed(2) + ' ' + uc.b.toFixed(2) + ' ' + uc.c.toFixed(2) + ' Å, ' +
+      uc.alpha.toFixed(1) + ' ' + uc.beta.toFixed(1) + ' ' + uc.gamma.toFixed(1) +
+      '°</span>' : '';
+    const kb = this.KEYBOARD_HELP.replace(
+      /(>U = unitcell box<\/a>)/,
+      '$1' + (cell_line ? '\n' + cell_line : '')
+    );
+    el.innerHTML = [this.MOUSE_HELP, kb,
                     this.ABOUT_HELP, this.fps_text].join('\n\n');
   }
 
