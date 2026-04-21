@@ -228,6 +228,11 @@ export function help_action_link(text: string, spec: HelpActionSpec) {
          escape_html(text) + '</a>';
 }
 
+export function help_method_link(text: string, method: string) {
+  return '<a href="#" class="gm-help-action" data-help-action="' +
+         escape_html(method) + '">' + escape_html(text) + '</a>';
+}
+
 export function normalize_viewer_options(options?: Record<string, any> | string | null) {
   if (typeof options === 'string') return {viewer: options};
   if (options && typeof options === 'object') return options;
@@ -941,6 +946,8 @@ export class Viewer {
   key_bindings: Array<((evt: KeyboardEvent) => void) | false | undefined>;
   histogram_el: HTMLDivElement | null;
   histogram_redraw: (() => void) | null;
+  reflection_histogram: import('./mtz').ReflectionHistogram | null;
+  reflection_histogram_el: HTMLDivElement | null;
   sphere_scale_el: HTMLDivElement | null;
   declare ColorSchemes: typeof ColorSchemes;
 
@@ -1071,6 +1078,8 @@ export class Viewer {
     this.queued_mutation_preview = null;
     this.histogram_el = null;
     this.histogram_redraw = null;
+    this.reflection_histogram = null;
+    this.reflection_histogram_el = null;
     this.sphere_scale_el = null;
     this.blob_hits = [];
     this.blob_map_bag = null;
@@ -3770,6 +3779,96 @@ export class Viewer {
     }
   }
 
+  toggle_reflection_histogram() {
+    if (this.reflection_histogram_el) {
+      this.reflection_histogram_el.remove();
+      this.reflection_histogram_el = null;
+      return;
+    }
+    const hist = this.reflection_histogram;
+    if (!hist) {
+      this.hud('No MTZ reflections loaded.', 'ERR');
+      return;
+    }
+    const nbins = hist.observed.length;
+    const width = 360, height = 180, pad_l = 34, pad_r = 8, pad_t = 8, pad_b = 22;
+    const plot_w = width - pad_l - pad_r;
+    const plot_h = height - pad_t - pad_b;
+    let ymax = 0;
+    for (let i = 0; i < nbins; i++) {
+      const v = hist.observed[i] + hist.missing[i];
+      if (v > ymax) ymax = v;
+    }
+    if (ymax === 0) ymax = 1;
+    const d_low = hist.d_bounds[0];
+    const d_high = hist.d_bounds[nbins];
+    const bw = plot_w / nbins;
+    const bar_svg: string[] = [];
+    for (let i = 0; i < nbins; i++) {
+      const obs = hist.observed[i];
+      const miss = hist.missing[i];
+      const total = obs + miss;
+      const x = pad_l + i * bw;
+      const total_h = total / ymax * plot_h;
+      const obs_h = obs / ymax * plot_h;
+      const y_total = pad_t + plot_h - total_h;
+      const y_obs = pad_t + plot_h - obs_h;
+      if (total > 0) {
+        bar_svg.push(
+          '<rect x="' + x + '" y="' + y_total +
+          '" width="' + (bw - 1) + '" height="' + total_h +
+          '" fill="#555" stroke="#aaa" stroke-width="0.5"/>'
+        );
+      }
+      if (obs > 0) {
+        bar_svg.push(
+          '<rect x="' + x + '" y="' + y_obs +
+          '" width="' + (bw - 1) + '" height="' + obs_h +
+          '" fill="#4aa564"/>'
+        );
+      }
+    }
+    const title = hist.label ?
+      'reflections by resolution (green = ' + hist.label + ' present)' :
+      'reflections by resolution';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'gm-reflection-histogram';
+    wrapper.style.position = 'absolute';
+    wrapper.style.right = '10px';
+    wrapper.style.bottom = '10px';
+    wrapper.style.background = 'rgba(0,0,0,0.75)';
+    wrapper.style.color = '#ddd';
+    wrapper.style.padding = '6px 8px';
+    wrapper.style.font = '11px sans-serif';
+    wrapper.style.pointerEvents = 'auto';
+    wrapper.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">' +
+      '<span>' + title + '</span>' +
+      '<a href="#" class="gm-help-action" data-help-action="toggle_reflection_histogram" ' +
+      'style="color:#9cf;margin-left:12px">close</a></div>' +
+      '<svg width="' + width + '" height="' + height + '" xmlns="http://www.w3.org/2000/svg">' +
+      '<line x1="' + pad_l + '" y1="' + (pad_t + plot_h) +
+      '" x2="' + (pad_l + plot_w) + '" y2="' + (pad_t + plot_h) +
+      '" stroke="#888"/>' +
+      '<line x1="' + pad_l + '" y1="' + pad_t +
+      '" x2="' + pad_l + '" y2="' + (pad_t + plot_h) + '" stroke="#888"/>' +
+      bar_svg.join('') +
+      '<text x="' + pad_l + '" y="' + (height - 6) +
+      '" fill="#ccc">' + d_low.toFixed(2) + ' Å</text>' +
+      '<text x="' + (pad_l + plot_w) + '" y="' + (height - 6) +
+      '" text-anchor="end" fill="#ccc">' + d_high.toFixed(2) + ' Å</text>' +
+      '<text x="4" y="' + (pad_t + 10) + '" fill="#ccc">' + ymax + '</text>' +
+      '</svg>';
+    const parent = this.viewer_overlay_el || document.body;
+    parent.appendChild(wrapper);
+    const close = wrapper.querySelector('.gm-help-action') as HTMLElement | null;
+    if (close) close.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      this.toggle_reflection_histogram();
+    });
+    this.reflection_histogram_el = wrapper;
+  }
+
   toggle_histogram() {
     if (this.histogram_el) {
       this.histogram_el.remove();
@@ -4070,6 +4169,14 @@ export class Viewer {
   on_help_click(event: MouseEvent) {
     let el = event.target as HTMLElement | null;
     while (el && el !== this.help_el) {
+      const action = el.getAttribute('data-help-action');
+      if (action != null) {
+        event.preventDefault();
+        event.stopPropagation();
+        const fn = (this as any)[action];
+        if (typeof fn === 'function') fn.call(this);
+        return;
+      }
       const keycode = el.getAttribute('data-help-keycode');
       if (keycode != null) {
         event.preventDefault();
@@ -5333,6 +5440,7 @@ Viewer.prototype.KEYBOARD_HELP = [
   help_action_link('V = inactive models', {keyCode: 86}),
   help_action_link('R = center view', {keyCode: 82}),
   help_action_link('G = density histogram', {keyCode: 71}),
+  help_method_link('reflection histogram (by resolution)', 'toggle_reflection_histogram'),
   help_action_link('W = density style', {keyCode: 87}),
   help_action_link('I = spin', {keyCode: 73}),
   help_action_link('K = rock', {keyCode: 75}),

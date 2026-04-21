@@ -2,8 +2,44 @@ import { ElMap } from './elmap';
 import type { Viewer } from './viewer';
 import type { GemmiModule, Mtz as WasmMtz, MtzMap as WasmMtzMap } from './gemmi';
 
+export type ReflectionHistogram = {
+  d_bounds: number[];     // length nbins+1, Å, low→high resolution
+  observed: Uint32Array;  // length nbins
+  missing: Uint32Array;   // length nbins
+  label: string | null;   // column used for observed/missing split (null => all observed)
+};
+
+const F_LABEL_CANDIDATES = ['F_meas_au', 'F_meas', 'FP', 'F', 'FOBS'];
+
 function log_timing(t0: number, text: string) {
   console.log(text + ': ' + (performance.now() - t0).toFixed(2) + ' ms.');
+}
+
+function detect_f_label(mtz: WasmMtz): string | null {
+  for (const cand of F_LABEL_CANDIDATES) {
+    // no introspection API; rely on resolution_histogram to return null on miss
+    try {
+      const bounds: number[] = new Array(2);
+      const buf = mtz.resolution_histogram(cand, 1, bounds);
+      if (buf) return cand;
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+function compute_histogram(mtz: WasmMtz, nbins: number): ReflectionHistogram | null {
+  const label = detect_f_label(mtz);
+  const d_bounds: number[] = new Array(nbins + 1);
+  const buf = mtz.resolution_histogram(label || '', nbins, d_bounds);
+  if (!buf) return null;
+  // wasm returns a typed_memory_view into wasm memory; slice to detach.
+  const flat = new Uint32Array(buf).slice();
+  return {
+    d_bounds: d_bounds.slice(),
+    observed: flat.slice(0, nbins),
+    missing: flat.slice(nbins, 2 * nbins),
+    label: label,
+  };
 }
 
 function add_map_from_mtz(gemmi: GemmiModule, viewer: Viewer,
@@ -21,6 +57,12 @@ function add_map_from_mtz(gemmi: GemmiModule, viewer: Viewer,
 export
 function load_maps_from_mtz_buffer(gemmi: GemmiModule, viewer: Viewer, mtz: WasmMtz,
                                    labels?: string[]) {
+  try {
+    const hist = compute_histogram(mtz, 25);
+    if (hist) viewer.reflection_histogram = hist;
+  } catch (e) {
+    console.warn('reflection histogram failed:', e);
+  }
   if (labels != null) {
     for (let n = 0; n < labels.length; n += 2) {
       if (labels[n] === '') continue;

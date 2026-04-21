@@ -320,6 +320,7 @@ export interface Mtz extends ClassHandle {
   calculate_wasm_map_from_labels(_0: EmbindString, _1: EmbindString): MtzMap | null;
   calculate_map(_0: boolean): any;
   calculate_map_from_labels(_0: EmbindString, _1: EmbindString): any;
+  resolution_histogram(_0: EmbindString, _1: number, _2: any): any;
 }
 
 export type Fractional = [ number, number, number ];
