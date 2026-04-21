@@ -45,6 +45,9 @@ describe('MTZ loading', () => {
       calculate_map_from_labels: jest.fn(function () {
         throw new Error('old JS path should not be used');
       }),
+      resolution_histogram: jest.fn(function () {
+        return null;
+      }),
       calculate_wasm_map: jest.fn(function (isDiff) {
         return fakeWasmMap(isDiff ? 2.5 : 1.5, isDiff ? 4.5 : 3.5, [7, 8, 9]);
       }),
@@ -73,5 +76,46 @@ describe('MTZ loading', () => {
     expect(created[1].map.stats.rms).toBe(4.5);
     expect(created[1].isDiff).toBe(true);
     expect(deleted).toBe(true);
+  });
+
+  it('uses a measured column when it exposes missing reflection bins', () => {
+    var gemmi = fakeGemmi();
+    var mtz = {
+      nx: 4,
+      ny: 5,
+      nz: 6,
+      last_error: '',
+      resolution_histogram: jest.fn(function (label, nbins, bounds) {
+        for (var i = 0; i <= nbins; i++) {
+          bounds[i] = 10 - i * 0.1;
+        }
+        var flat = new Uint32Array(2 * nbins);
+        for (var j = 0; j < nbins; j++) {
+          flat[j] = 10;
+        }
+        if (label === 'F_est') {
+          flat[nbins + 2] = 7;
+        }
+        return flat;
+      }),
+      calculate_wasm_map: jest.fn(function (isDiff) {
+        return fakeWasmMap(isDiff ? 2.5 : 1.5, isDiff ? 4.5 : 3.5, [7, 8, 9]);
+      }),
+      calculate_wasm_map_from_labels: jest.fn(function () {
+        throw new Error('label path not expected here');
+      }),
+      delete: function () {},
+    };
+    var viewer = {
+      add_map: function () {},
+      hud: function (msg, level) {
+        throw new Error(level + ': ' + msg);
+      },
+    };
+
+    GM.load_maps_from_mtz_buffer(gemmi, viewer, mtz);
+
+    expect(viewer.reflection_histogram.label).toBe('F_est');
+    expect(viewer.reflection_histogram.missing[2]).toBe(7);
   });
 });

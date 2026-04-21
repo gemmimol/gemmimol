@@ -9,26 +9,17 @@ export type ReflectionHistogram = {
   label: string | null;   // column used for observed/missing split (null => all observed)
 };
 
-const F_LABEL_CANDIDATES = ['F_meas_au', 'F_meas', 'FP', 'F', 'FOBS'];
+const OBSERVED_LABEL_CANDIDATES = [
+  'F_meas_au', 'F_meas', 'F_est', 'FP', 'F', 'FOBS',
+  'I', 'IMEAN', 'IOBS', 'I-obs',
+];
 
 function log_timing(t0: number, text: string) {
   console.log(text + ': ' + (performance.now() - t0).toFixed(2) + ' ms.');
 }
 
-function detect_f_label(mtz: WasmMtz): string | null {
-  for (const cand of F_LABEL_CANDIDATES) {
-    // no introspection API; rely on resolution_histogram to return null on miss
-    try {
-      const bounds: number[] = new Array(2);
-      const buf = mtz.resolution_histogram(cand, 1, bounds);
-      if (buf) return cand;
-    } catch { /* ignore */ }
-  }
-  return null;
-}
-
-function compute_histogram(mtz: WasmMtz, nbins: number): ReflectionHistogram | null {
-  const label = detect_f_label(mtz);
+function make_histogram(mtz: WasmMtz, label: string | null,
+                        nbins: number): ReflectionHistogram | null {
   const d_bounds: number[] = new Array(nbins + 1);
   const buf = mtz.resolution_histogram(label || '', nbins, d_bounds);
   if (!buf) return null;
@@ -40,6 +31,25 @@ function compute_histogram(mtz: WasmMtz, nbins: number): ReflectionHistogram | n
     missing: flat.slice(nbins, 2 * nbins),
     label: label,
   };
+}
+
+function has_missing_reflections(hist: ReflectionHistogram): boolean {
+  for (let i = 0; i < hist.missing.length; i++) {
+    if (hist.missing[i] > 0) return true;
+  }
+  return false;
+}
+
+function compute_histogram(mtz: WasmMtz, nbins: number): ReflectionHistogram | null {
+  // resolution_histogram() currently treats unknown non-empty labels as
+  // "all observed", so use only labels that expose actual missing values.
+  for (const label of OBSERVED_LABEL_CANDIDATES) {
+    try {
+      const hist = make_histogram(mtz, label, nbins);
+      if (hist && has_missing_reflections(hist)) return hist;
+    } catch { /* ignore */ }
+  }
+  return make_histogram(mtz, null, nbins);
 }
 
 function add_map_from_mtz(gemmi: GemmiModule, viewer: Viewer,
