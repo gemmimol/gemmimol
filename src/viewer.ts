@@ -10,7 +10,12 @@ import type { BlobHit } from './elmap';
 import { BondType, modelsFromGemmi, modelFromGemmiStructure,
          bondDataFromGemmiStructure } from './model';
 import { mutation_targets_for_residue, plan_residue_mutation } from './mutate';
-import { aminoAcidTemplate, nucleotideTemplate } from './residue-templates';
+import { aminoAcidTemplate, nucleotideTemplate,
+         AMINO_ACID_NAMES, NUCLEOTIDE_TEMPLATE_NAMES } from './residue-templates';
+
+const STANDARD_RESNAMES = new Set<string>([
+  ...AMINO_ACID_NAMES, ...NUCLEOTIDE_TEMPLATE_NAMES, 'HOH',
+]);
 
 import type { GemmiModule, Structure } from './gemmi';
 import type { Atom, Model } from './model';
@@ -911,6 +916,7 @@ export class Viewer {
   place_select_el: HTMLSelectElement | null;
   metals_select_el: HTMLSelectElement | null;
   ligands_select_el: HTMLSelectElement | null;
+  nonstd_select_el: HTMLSelectElement | null;
   sites_select_el: HTMLSelectElement | null;
   connections_select_el: HTMLSelectElement | null;
   download_select_el: HTMLSelectElement | null;
@@ -1062,6 +1068,7 @@ export class Viewer {
     this.place_select_el = null;
     this.metals_select_el = null;
     this.ligands_select_el = null;
+    this.nonstd_select_el = null;
     this.sites_select_el = null;
     this.connections_select_el = null;
     this.download_select_el = null;
@@ -1269,23 +1276,25 @@ export class Viewer {
     const text = (name || '').trim();
     const bag = this.selected.bag || this.model_bags[0];
     const sg = (bag && bag.model && bag.model.spacegroup_hm) || '';
-    if (text !== '' || sg !== '') {
+    if (text === '' && sg === '') {
+      el.textContent = '';
+      el.style.display = 'none';
+      return;
+    }
+    if (sg === '') {
+      el.textContent = text.toUpperCase();
+    } else {
       el.innerHTML = '';
       if (text !== '') {
         const title = document.createElement('div');
         title.textContent = text.toUpperCase();
         el.appendChild(title);
       }
-      if (sg !== '') {
-        const sub = document.createElement('div');
-        sub.textContent = sg;
-        el.appendChild(sub);
-      }
-      el.style.display = 'block';
-    } else {
-      el.textContent = '';
-      el.style.display = 'none';
+      const sub = document.createElement('div');
+      sub.textContent = sg;
+      el.appendChild(sub);
     }
+    el.style.display = 'block';
   }
 
   pick_atom(coords: Num2, camera: OrCameraType) {
@@ -2359,6 +2368,7 @@ export class Viewer {
     this.place_select_el = this.create_place_select();
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
+    this.nonstd_select_el = this.create_nav_select();
     this.sites_select_el = this.create_site_select();
     this.connections_select_el = this.create_connection_select();
     this.empty_blobs_select_el = this.create_empty_blobs_select();
@@ -2369,6 +2379,7 @@ export class Viewer {
     row1.appendChild(this.place_select_el);
     row1.appendChild(this.metals_select_el);
     row1.appendChild(this.ligands_select_el);
+    row1.appendChild(this.nonstd_select_el);
     row1.appendChild(this.sites_select_el);
     row1.appendChild(this.connections_select_el);
     row1.appendChild(this.empty_blobs_select_el);
@@ -2386,12 +2397,16 @@ export class Viewer {
     const metal_items = bag ? this.collect_nav_items(bag, (atom) => atom.is_metal) : [];
     const ligand_items = bag ? this.collect_nav_items(
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
+    const nonstd_items = bag ? this.collect_nav_items(
+      bag, (atom) => !atom.is_ligand && !atom.is_metal && !atom.is_water() &&
+                     !STANDARD_RESNAMES.has((atom.resname || '').toUpperCase())) : [];
     const site_items = bag ? this.collect_site_nav_items(bag) : [];
     const connection_items = bag ? this.collect_connection_nav_items(bag) : [];
     this.update_blob_select(this.blob_select_el);
     this.update_place_select(this.place_select_el);
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
+    this.update_nav_select(this.nonstd_select_el, 'Non-std residues', bag, nonstd_items);
     this.update_site_select(this.sites_select_el, bag, site_items);
     this.update_connection_select(this.connections_select_el, bag, connection_items);
     this.update_empty_blobs_select(this.empty_blobs_select_el);
@@ -3840,9 +3855,11 @@ export class Viewer {
         );
       }
     }
+    const limit_text = hist.map_d_min != null ?
+      ', map cutoff = ' + hist.map_d_min.toFixed(2) + ' Å' : '';
     const title = hist.label ?
       'reflections by resolution (green = ' + hist.label +
-      ' present, red = missing)' :
+      ' present, red = missing' + limit_text + ')' :
       'reflections by resolution';
     const wrapper = document.createElement('div');
     wrapper.className = 'gm-reflection-histogram';
@@ -3875,10 +3892,12 @@ export class Viewer {
     const parent = this.viewer_overlay_el || document.body;
     parent.appendChild(wrapper);
     const close = wrapper.querySelector('.gm-help-action') as HTMLElement | null;
-    if (close) close.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      this.toggle_reflection_histogram();
-    });
+    if (close) {
+      close.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        this.toggle_reflection_histogram();
+      });
+    }
     this.reflection_histogram_el = wrapper;
   }
 

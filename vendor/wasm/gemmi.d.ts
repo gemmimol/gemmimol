@@ -393,7 +393,9 @@ export interface Mtz extends ClassHandle {
   readonly last_error: string;
   read(): boolean;
   calculate_wasm_map(_0: boolean): MtzMap | null;
+  calculate_wasm_map_limited(_0: boolean, _1: number): MtzMap | null;
   calculate_wasm_map_from_labels(_0: EmbindString, _1: EmbindString): MtzMap | null;
+  calculate_wasm_map_from_labels_limited(_0: EmbindString, _1: EmbindString, _2: number): MtzMap | null;
   calculate_map(_0: boolean): any;
   calculate_map_from_labels(_0: EmbindString, _1: EmbindString): any;
   resolution_histogram(_0: EmbindString, _1: number, _2: any): any;

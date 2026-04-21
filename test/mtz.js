@@ -118,4 +118,54 @@ describe('MTZ loading', () => {
     expect(viewer.reflection_histogram.label).toBe('F_est');
     expect(viewer.reflection_histogram.missing[2]).toBe(7);
   });
+
+  it('limits map calculation at the first low-completeness resolution shell', () => {
+    var gemmi = fakeGemmi();
+    var limitCalls = [];
+    var mtz = {
+      nx: 4,
+      ny: 5,
+      nz: 6,
+      last_error: '',
+      resolution_histogram: jest.fn(function (label, nbins, bounds) {
+        for (var i = 0; i <= nbins; i++) {
+          bounds[i] = 10 - i * 0.2;
+        }
+        var flat = new Uint32Array(2 * nbins);
+        for (var j = 0; j < nbins; j++) {
+          flat[j] = 10;
+          if (label === 'F_est' && j >= 6) {
+            flat[nbins + j] = 15;
+          }
+        }
+        return flat;
+      }),
+      calculate_wasm_map: jest.fn(function () {
+        throw new Error('unlimited map path should not be used');
+      }),
+      calculate_wasm_map_limited: jest.fn(function (isDiff, dMin) {
+        limitCalls.push({isDiff: isDiff, dMin: dMin});
+        return fakeWasmMap(isDiff ? 2.5 : 1.5, isDiff ? 4.5 : 3.5, [7, 8, 9]);
+      }),
+      calculate_wasm_map_from_labels: jest.fn(function () {
+        throw new Error('label path not expected here');
+      }),
+      delete: function () {},
+    };
+    var viewer = {
+      add_map: function () {},
+      hud: function (msg, level) {
+        throw new Error(level + ': ' + msg);
+      },
+    };
+
+    GM.load_maps_from_mtz_buffer(gemmi, viewer, mtz);
+
+    expect(viewer.reflection_histogram.label).toBe('F_est');
+    expect(viewer.reflection_histogram.map_d_min).toBeCloseTo(8.8);
+    expect(limitCalls).toEqual([
+      {isDiff: false, dMin: 8.8},
+      {isDiff: true, dMin: 8.8},
+    ]);
+  });
 });

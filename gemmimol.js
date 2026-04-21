@@ -12,8 +12,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.7";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-3-g734cb4a-dirty";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-149-g77b83267";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-6-g8008e1f-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-150-ga086eb38";
 
 
 const BondType = {
@@ -7259,6 +7259,20 @@ class Controls {
 // Generated from CCP4/Coot monomer library CIFs.
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+const AMINO_ACID_NAMES = ["ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS","ILE","LEU","LYS","MET","PHE","PRO","SER","THR","TRP","TYR","VAL"] ;
+
 const AMINO_ACID_TEMPLATES = {
   "ALA": {
     name: "ALA",
@@ -7765,6 +7779,8 @@ const AMINO_ACID_TEMPLATES = {
     ],
   },
 };
+
+const NUCLEOTIDE_TEMPLATE_NAMES = ["A", "C", "G", "U", "DA", "DC", "DG", "DT"] ;
 
 const NUCLEOTIDE_TEMPLATES = {
   "A": {
@@ -8463,6 +8479,10 @@ function plan_residue_mutation(residue_atoms, target_resname) {
 }
 
 function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
+const STANDARD_RESNAMES = new Set([
+  ...AMINO_ACID_NAMES, ...NUCLEOTIDE_TEMPLATE_NAMES, 'HOH',
+]);
+
 
 
 
@@ -9401,6 +9421,7 @@ class Viewer {
   
   
   
+  
 
   constructor(options = {}) {
     options = normalize_viewer_options(options);
@@ -9513,6 +9534,7 @@ class Viewer {
     this.place_select_el = null;
     this.metals_select_el = null;
     this.ligands_select_el = null;
+    this.nonstd_select_el = null;
     this.sites_select_el = null;
     this.connections_select_el = null;
     this.download_select_el = null;
@@ -9720,23 +9742,25 @@ class Viewer {
     const text = (name || '').trim();
     const bag = this.selected.bag || this.model_bags[0];
     const sg = (bag && bag.model && bag.model.spacegroup_hm) || '';
-    if (text !== '' || sg !== '') {
+    if (text === '' && sg === '') {
+      el.textContent = '';
+      el.style.display = 'none';
+      return;
+    }
+    if (sg === '') {
+      el.textContent = text.toUpperCase();
+    } else {
       el.innerHTML = '';
       if (text !== '') {
         const title = document.createElement('div');
         title.textContent = text.toUpperCase();
         el.appendChild(title);
       }
-      if (sg !== '') {
-        const sub = document.createElement('div');
-        sub.textContent = sg;
-        el.appendChild(sub);
-      }
-      el.style.display = 'block';
-    } else {
-      el.textContent = '';
-      el.style.display = 'none';
+      const sub = document.createElement('div');
+      sub.textContent = sg;
+      el.appendChild(sub);
     }
+    el.style.display = 'block';
   }
 
   pick_atom(coords, camera) {
@@ -10810,6 +10834,7 @@ class Viewer {
     this.place_select_el = this.create_place_select();
     this.metals_select_el = this.create_nav_select();
     this.ligands_select_el = this.create_nav_select();
+    this.nonstd_select_el = this.create_nav_select();
     this.sites_select_el = this.create_site_select();
     this.connections_select_el = this.create_connection_select();
     this.empty_blobs_select_el = this.create_empty_blobs_select();
@@ -10820,6 +10845,7 @@ class Viewer {
     row1.appendChild(this.place_select_el);
     row1.appendChild(this.metals_select_el);
     row1.appendChild(this.ligands_select_el);
+    row1.appendChild(this.nonstd_select_el);
     row1.appendChild(this.sites_select_el);
     row1.appendChild(this.connections_select_el);
     row1.appendChild(this.empty_blobs_select_el);
@@ -10837,12 +10863,16 @@ class Viewer {
     const metal_items = bag ? this.collect_nav_items(bag, (atom) => atom.is_metal) : [];
     const ligand_items = bag ? this.collect_nav_items(
       bag, (atom) => atom.is_ligand && !atom.is_metal && !atom.is_water()) : [];
+    const nonstd_items = bag ? this.collect_nav_items(
+      bag, (atom) => !atom.is_ligand && !atom.is_metal && !atom.is_water() &&
+                     !STANDARD_RESNAMES.has((atom.resname || '').toUpperCase())) : [];
     const site_items = bag ? this.collect_site_nav_items(bag) : [];
     const connection_items = bag ? this.collect_connection_nav_items(bag) : [];
     this.update_blob_select(this.blob_select_el);
     this.update_place_select(this.place_select_el);
     this.update_nav_select(this.metals_select_el, 'Metals', bag, metal_items);
     this.update_nav_select(this.ligands_select_el, 'Ligands', bag, ligand_items);
+    this.update_nav_select(this.nonstd_select_el, 'Non-std residues', bag, nonstd_items);
     this.update_site_select(this.sites_select_el, bag, site_items);
     this.update_connection_select(this.connections_select_el, bag, connection_items);
     this.update_empty_blobs_select(this.empty_blobs_select_el);
@@ -12291,9 +12321,11 @@ class Viewer {
         );
       }
     }
+    const limit_text = hist.map_d_min != null ?
+      ', map cutoff = ' + hist.map_d_min.toFixed(2) + ' Å' : '';
     const title = hist.label ?
       'reflections by resolution (green = ' + hist.label +
-      ' present, red = missing)' :
+      ' present, red = missing' + limit_text + ')' :
       'reflections by resolution';
     const wrapper = document.createElement('div');
     wrapper.className = 'gm-reflection-histogram';
@@ -12326,10 +12358,12 @@ class Viewer {
     const parent = this.viewer_overlay_el || document.body;
     parent.appendChild(wrapper);
     const close = wrapper.querySelector('.gm-help-action') ;
-    if (close) close.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      this.toggle_reflection_histogram();
-    });
+    if (close) {
+      close.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        this.toggle_reflection_histogram();
+      });
+    }
     this.reflection_histogram_el = wrapper;
   }
 
@@ -14492,26 +14526,18 @@ ReciprocalViewer.prototype.MOUSE_HELP =
 
 ReciprocalViewer.prototype.ColorSchemes = ColorSchemes;
 
-const F_LABEL_CANDIDATES = ['F_meas_au', 'F_meas', 'FP', 'F', 'FOBS'];
+const OBSERVED_LABEL_CANDIDATES = [
+  'F_meas_au', 'F_meas', 'F_est', 'FP', 'F', 'FOBS',
+  'I', 'IMEAN', 'IOBS', 'I-obs',
+];
+const MIN_MAP_COMPLETENESS = 0.5;
 
 function log_timing(t0, text) {
   console.log(text + ': ' + (performance.now() - t0).toFixed(2) + ' ms.');
 }
 
-function detect_f_label(mtz) {
-  for (const cand of F_LABEL_CANDIDATES) {
-    // no introspection API; rely on resolution_histogram to return null on miss
-    try {
-      const bounds = new Array(2);
-      const buf = mtz.resolution_histogram(cand, 1, bounds);
-      if (buf) return cand;
-    } catch (e2) { /* ignore */ }
-  }
-  return null;
-}
-
-function compute_histogram(mtz, nbins) {
-  const label = detect_f_label(mtz);
+function make_histogram(mtz, label,
+                        nbins) {
   const d_bounds = new Array(nbins + 1);
   const buf = mtz.resolution_histogram(label || '', nbins, d_bounds);
   if (!buf) return null;
@@ -14522,7 +14548,60 @@ function compute_histogram(mtz, nbins) {
     observed: flat.slice(0, nbins),
     missing: flat.slice(nbins, 2 * nbins),
     label: label,
+    map_d_min: null,
   };
+}
+
+function has_missing_reflections(hist) {
+  for (let i = 0; i < hist.missing.length; i++) {
+    if (hist.missing[i] > 0) return true;
+  }
+  return false;
+}
+
+function map_resolution_limit(hist) {
+  if (!hist.label) return null;
+  let last_good_bin = -1;
+  for (let i = 0; i < hist.observed.length; i++) {
+    const total = hist.observed[i] + hist.missing[i];
+    if (total === 0) continue;
+    if (hist.observed[i] / total < MIN_MAP_COMPLETENESS) {
+      return last_good_bin >= 0 ? hist.d_bounds[last_good_bin + 1] : null;
+    }
+    last_good_bin = i;
+  }
+  return null;
+}
+
+function compute_histogram(mtz, nbins) {
+  // resolution_histogram() currently treats unknown non-empty labels as
+  // "all observed", so use only labels that expose actual missing values.
+  for (const label of OBSERVED_LABEL_CANDIDATES) {
+    try {
+      const hist = make_histogram(mtz, label, nbins);
+      if (hist && has_missing_reflections(hist)) {
+        hist.map_d_min = map_resolution_limit(hist);
+        return hist;
+      }
+    } catch (e2) { /* ignore */ }
+  }
+  return make_histogram(mtz, null, nbins);
+}
+
+function calculate_wasm_map(mtz, is_diff,
+                            d_min) {
+  if (d_min != null && mtz.calculate_wasm_map_limited) {
+    return mtz.calculate_wasm_map_limited(is_diff, d_min);
+  }
+  return mtz.calculate_wasm_map(is_diff);
+}
+
+function calculate_wasm_map_from_labels(mtz, f_label, phi_label,
+                                        d_min) {
+  if (d_min != null && mtz.calculate_wasm_map_from_labels_limited) {
+    return mtz.calculate_wasm_map_from_labels_limited(f_label, phi_label, d_min);
+  }
+  return mtz.calculate_wasm_map_from_labels(f_label, phi_label);
 }
 
 function add_map_from_mtz(gemmi, viewer,
@@ -14539,9 +14618,17 @@ function add_map_from_mtz(gemmi, viewer,
 
 function load_maps_from_mtz_buffer(gemmi, viewer, mtz,
                                    labels) {
+  let map_d_min = null;
   try {
     const hist = compute_histogram(mtz, 25);
-    if (hist) viewer.reflection_histogram = hist;
+    if (hist) {
+      viewer.reflection_histogram = hist;
+      map_d_min = hist.map_d_min;
+      if (map_d_min != null) {
+        console.log('limiting map calculation to ' + map_d_min.toFixed(2) +
+                    ' Å based on ' + hist.label + ' completeness');
+      }
+    }
   } catch (e) {
     console.warn('reflection histogram failed:', e);
   }
@@ -14549,7 +14636,8 @@ function load_maps_from_mtz_buffer(gemmi, viewer, mtz,
     for (let n = 0; n < labels.length; n += 2) {
       if (labels[n] === '') continue;
       const t0 = performance.now();
-      const mtz_map = mtz.calculate_wasm_map_from_labels(labels[n], labels[n+1]);
+      const mtz_map = calculate_wasm_map_from_labels(mtz, labels[n], labels[n+1],
+                                                     map_d_min);
       log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
                      (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
                      (mtz_map ? mtz_map.nz : mtz.nz) +
@@ -14565,7 +14653,7 @@ function load_maps_from_mtz_buffer(gemmi, viewer, mtz,
     for (let nmap = 0; nmap < 2; ++nmap) {
       const is_diff = (nmap == 1);
       const t0 = performance.now();
-      const mtz_map = mtz.calculate_wasm_map(is_diff);
+      const mtz_map = calculate_wasm_map(mtz, is_diff, map_d_min);
       log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
                      (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
                      (mtz_map ? mtz_map.nz : mtz.nz) +
