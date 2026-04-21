@@ -12,7 +12,7 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.7";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-2-g6ee0ea0-dirty";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-3-g734cb4a-dirty";
 var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-149-g77b83267";
 
 
@@ -320,6 +320,7 @@ function modelsFromGemmi(gemmi, buffer, name,
       const m = new Model();
       m.source_model_index = i_model;
       m.unit_cell = copy_unit_cell(gemmi, cell);
+      m.spacegroup_hm = st.spacegroup_hm || '';
       fill_model_from_gemmi(model, m);
       finalize_model(m, bond_data, true);
       models.push(m);
@@ -356,6 +357,7 @@ function modelFromGemmiStructure(gemmi, st,
   const m = new Model();
   m.source_model_index = model_index;
   m.unit_cell = copy_unit_cell(gemmi, cell);
+  m.spacegroup_hm = st.spacegroup_hm || '';
   fill_model_from_gemmi(gm, m);
   finalize_model(m, bond_data);
   return m;
@@ -372,10 +374,12 @@ class Model {
   
   
   
+  
 
   constructor() {
     this.atoms = [];
     this.unit_cell = null;
+    this.spacegroup_hm = '';
     this.has_hydrogens = false;
     this.hydrogen_count = 0;
     this.lower_bound = [0, 0, 0];
@@ -9714,8 +9718,20 @@ class Viewer {
     const el = this.structure_name_el;
     if (!el) return;
     const text = (name || '').trim();
-    if (text !== '') {
-      el.textContent = text.toUpperCase();
+    const bag = this.selected.bag || this.model_bags[0];
+    const sg = (bag && bag.model && bag.model.spacegroup_hm) || '';
+    if (text !== '' || sg !== '') {
+      el.innerHTML = '';
+      if (text !== '') {
+        const title = document.createElement('div');
+        title.textContent = text.toUpperCase();
+        el.appendChild(title);
+      }
+      if (sg !== '') {
+        const sub = document.createElement('div');
+        sub.textContent = sg;
+        el.appendChild(sub);
+      }
       el.style.display = 'block';
     } else {
       el.textContent = '';

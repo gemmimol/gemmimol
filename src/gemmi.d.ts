@@ -173,6 +173,8 @@ export interface Structure extends ClassHandle {
   readonly length: number;
   get name(): string;
   set name(value: EmbindString);
+  get spacegroup_hm(): string;
+  set spacegroup_hm(value: EmbindString);
   add_model(_0: Model): void;
   add_connection(_0: Connection): void;
   add_site(_0: StructSite): void;

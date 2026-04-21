@@ -315,6 +315,7 @@ export function modelsFromGemmi(gemmi: GemmiModule, buffer: ArrayBuffer, name: s
       const m = new Model();
       m.source_model_index = i_model;
       m.unit_cell = copy_unit_cell(gemmi, cell);
+      m.spacegroup_hm = st.spacegroup_hm || '';
       fill_model_from_gemmi(model, m);
       finalize_model(m, bond_data, true);
       models.push(m);
@@ -351,6 +352,7 @@ export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
   const m = new Model();
   m.source_model_index = model_index;
   m.unit_cell = copy_unit_cell(gemmi, cell);
+  m.spacegroup_hm = st.spacegroup_hm || '';
   fill_model_from_gemmi(gm, m);
   finalize_model(m, bond_data);
   return m;
@@ -359,6 +361,7 @@ export function modelFromGemmiStructure(gemmi: GemmiModule, st: Structure,
 export class Model {
   atoms: Atom[];
   unit_cell: UnitCell | null;
+  spacegroup_hm: string;
   has_hydrogens: boolean;
   hydrogen_count: number;
   lower_bound: Num3;
@@ -371,6 +374,7 @@ export class Model {
   constructor() {
     this.atoms = [];
     this.unit_cell = null;
+    this.spacegroup_hm = '';
     this.has_hydrogens = false;
     this.hydrogen_count = 0;
     this.lower_bound = [0, 0, 0];

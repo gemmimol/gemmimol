@@ -1267,8 +1267,20 @@ export class Viewer {
     const el = this.structure_name_el;
     if (!el) return;
     const text = (name || '').trim();
-    if (text !== '') {
-      el.textContent = text.toUpperCase();
+    const bag = this.selected.bag || this.model_bags[0];
+    const sg = (bag && bag.model && bag.model.spacegroup_hm) || '';
+    if (text !== '' || sg !== '') {
+      el.innerHTML = '';
+      if (text !== '') {
+        const title = document.createElement('div');
+        title.textContent = text.toUpperCase();
+        el.appendChild(title);
+      }
+      if (sg !== '') {
+        const sub = document.createElement('div');
+        sub.textContent = sg;
+        el.appendChild(sub);
+      }
       el.style.display = 'block';
     } else {
       el.textContent = '';
