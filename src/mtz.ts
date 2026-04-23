@@ -8,6 +8,7 @@ export type ReflectionHistogram = {
   missing: Uint32Array;   // length nbins
   label: string | null;   // column used for observed/missing split (null => all observed)
   map_d_min: number | null; // high-resolution cutoff for map calculation
+  map_d_max: number | null; // low-resolution cutoff for map calculation
 };
 
 const OBSERVED_LABEL_CANDIDATES = [
@@ -33,6 +34,7 @@ function make_histogram(mtz: WasmMtz, label: string | null,
     missing: flat.slice(nbins, 2 * nbins),
     label: label,
     map_d_min: null,
+    map_d_max: null,
   };
 }
 
@@ -73,17 +75,20 @@ function compute_histogram(mtz: WasmMtz, nbins: number): ReflectionHistogram | n
 }
 
 function calculate_wasm_map(mtz: WasmMtz, is_diff: boolean,
-                            d_min: number | null): WasmMtzMap | null {
-  if (d_min != null && mtz.calculate_wasm_map_limited) {
-    return mtz.calculate_wasm_map_limited(is_diff, d_min);
+                            d_min: number | null,
+                            d_max: number | null): WasmMtzMap | null {
+  if ((d_min != null || d_max != null) && mtz.calculate_wasm_map_limited) {
+    return mtz.calculate_wasm_map_limited(is_diff, d_min || 0, d_max || 0);
   }
   return mtz.calculate_wasm_map(is_diff);
 }
 
 function calculate_wasm_map_from_labels(mtz: WasmMtz, f_label: string, phi_label: string,
-                                        d_min: number | null): WasmMtzMap | null {
-  if (d_min != null && mtz.calculate_wasm_map_from_labels_limited) {
-    return mtz.calculate_wasm_map_from_labels_limited(f_label, phi_label, d_min);
+                                        d_min: number | null,
+                                        d_max: number | null): WasmMtzMap | null {
+  if ((d_min != null || d_max != null) && mtz.calculate_wasm_map_from_labels_limited) {
+    return mtz.calculate_wasm_map_from_labels_limited(f_label, phi_label, d_min || 0,
+                                                      d_max || 0);
   }
   return mtz.calculate_wasm_map_from_labels(f_label, phi_label);
 }
@@ -100,29 +105,33 @@ function add_map_from_mtz(gemmi: GemmiModule, viewer: Viewer,
   viewer.add_map(map, is_diff);
 }
 
-export
-function load_maps_from_mtz_buffer(gemmi: GemmiModule, viewer: Viewer, mtz: WasmMtz,
-                                   labels?: string[]) {
-  let map_d_min: number | null = null;
-  try {
-    const hist = compute_histogram(mtz, 25);
-    if (hist) {
-      viewer.reflection_histogram = hist;
-      map_d_min = hist.map_d_min;
-      if (map_d_min != null) {
-        console.log('limiting map calculation to ' + map_d_min.toFixed(2) +
-                    ' Å based on ' + hist.label + ' completeness');
-      }
-    }
-  } catch (e) {
-    console.warn('reflection histogram failed:', e);
+function log_map_limits(hist: ReflectionHistogram) {
+  const parts: string[] = [];
+  if (hist.map_d_max != null) parts.push('low ' + hist.map_d_max.toFixed(2) + ' Å');
+  if (hist.map_d_min != null) parts.push('high ' + hist.map_d_min.toFixed(2) + ' Å');
+  if (parts.length !== 0) {
+    console.log('limiting map calculation to ' + parts.join(', ') +
+                (hist.label ? ' based on ' + hist.label + ' completeness' : ''));
   }
+}
+
+function calculate_maps_from_mtz(gemmi: GemmiModule, viewer: Viewer, mtz: WasmMtz,
+                                 labels: string[] | undefined,
+                                 d_min: number | null,
+                                 d_max: number | null): any[] {
+  const map_bags: any[] = [];
+  const add_map = (mtz_map: WasmMtzMap, is_diff: boolean) => {
+    const bags = (viewer as any).map_bags;
+    const before = Array.isArray(bags) ? bags.length : -1;
+    add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
+    if (before >= 0 && bags[before]) map_bags.push(bags[before]);
+  };
   if (labels != null) {
     for (let n = 0; n < labels.length; n += 2) {
       if (labels[n] === '') continue;
       const t0 = performance.now();
       const mtz_map = calculate_wasm_map_from_labels(mtz, labels[n], labels[n+1],
-                                                     map_d_min);
+                                                     d_min, d_max);
       log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
                      (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
                      (mtz_map ? mtz_map.nz : mtz.nz) +
@@ -132,25 +141,67 @@ function load_maps_from_mtz_buffer(gemmi: GemmiModule, viewer: Viewer, mtz: Wasm
         continue;
       }
       const is_diff = (n % 4 == 2);
-      add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
+      add_map(mtz_map, is_diff);
     }
   } else {  // use default labels
     for (let nmap = 0; nmap < 2; ++nmap) {
       const is_diff = (nmap == 1);
       const t0 = performance.now();
-      const mtz_map = calculate_wasm_map(mtz, is_diff, map_d_min);
+      const mtz_map = calculate_wasm_map(mtz, is_diff, d_min, d_max);
       log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
                      (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
                      (mtz_map ? mtz_map.nz : mtz.nz) +
                      ' calculated in');
       if (mtz_map != null) {
-        add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
+        add_map(mtz_map, is_diff);
       } else {
         viewer.hud(mtz.last_error, 'ERR');
       }
     }
   }
-  mtz.delete();
+  return map_bags;
+}
+
+export
+function load_maps_from_mtz_buffer(gemmi: GemmiModule, viewer: Viewer, mtz: WasmMtz,
+                                   labels?: string[]) {
+  if (viewer.reflection_histogram_cleanup) {
+    viewer.reflection_histogram_cleanup();
+  }
+  viewer.reflection_histogram_cleanup = null;
+  viewer.reflection_histogram_apply = null;
+  let hist: ReflectionHistogram | null = null;
+  try {
+    hist = compute_histogram(mtz, 25);
+    if (hist) {
+      viewer.reflection_histogram = hist;
+      log_map_limits(hist);
+    }
+  } catch (e) {
+    console.warn('reflection histogram failed:', e);
+  }
+  let map_bags = calculate_maps_from_mtz(gemmi, viewer, mtz, labels,
+                                         hist ? hist.map_d_min : null,
+                                         hist ? hist.map_d_max : null);
+  if (hist) {
+    let active = true;
+    viewer.reflection_histogram_cleanup = function () {
+      if (!active) return;
+      active = false;
+      mtz.delete();
+    };
+    viewer.reflection_histogram_apply = function (d_min, d_max) {
+      if (!active || hist == null) return;
+      hist.map_d_min = d_min;
+      hist.map_d_max = d_max;
+      if (viewer.remove_maps) viewer.remove_maps(map_bags);
+      log_map_limits(hist);
+      map_bags = calculate_maps_from_mtz(gemmi, viewer, mtz, labels, d_min, d_max);
+      if (viewer.refresh_reflection_histogram) viewer.refresh_reflection_histogram();
+    };
+  } else {
+    mtz.delete();
+  }
 }
 
 export

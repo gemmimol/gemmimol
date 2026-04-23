@@ -12,8 +12,8 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 })(this, (function (exports) { 'use strict';
 
 var VERSION = exports.VERSION = "0.8.7";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-6-g8008e1f-dirty";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-150-ga086eb38";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-7-g3df533b-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-151-gb74dd4c2";
 
 
 const BondType = {
@@ -9422,6 +9422,8 @@ class Viewer {
   
   
   
+  
+  
 
   constructor(options = {}) {
     options = normalize_viewer_options(options);
@@ -9547,12 +9549,16 @@ class Viewer {
     this.mutate_select_target = null;
     this.mutate_select_residue_key = null;
     this.mutate_select_busy = false;
-    this.viewer_only_mode = false;
+    this.viewer_mode_value = typeof options.viewer_mode === 'string' &&
+      (options.viewer_mode === 'cloud' || options.viewer_mode === 'viewer') ?
+      options.viewer_mode : 'full';
     this.queued_mutation_preview = null;
     this.histogram_el = null;
     this.histogram_redraw = null;
     this.reflection_histogram = null;
     this.reflection_histogram_el = null;
+    this.reflection_histogram_apply = null;
+    this.reflection_histogram_cleanup = null;
     this.sphere_scale_el = null;
     this.blob_hits = [];
     this.blob_map_bag = null;
@@ -9901,6 +9907,20 @@ class Viewer {
       this.remove_and_dispose(o);
     }
     map_bag.el_objects = [];
+  }
+
+  remove_maps(map_bags) {
+    if (map_bags.length === 0) return;
+    const remove_set = new Set(map_bags);
+    for (const map_bag of map_bags ) {
+      if (this.blob_map_bag === map_bag) this.hide_blobs(true);
+      this.clear_el_objects(map_bag);
+      map_bag.map.dispose();
+    }
+    this.map_bags = this.map_bags.filter((map_bag) => !remove_set.has(map_bag));
+    this.auto_adjust_map_radius();
+    this.update_nav_menus();
+    this.request_render();
   }
 
   clear_model_objects(model_bag) {
@@ -11325,7 +11345,7 @@ class Viewer {
                          bag) {
     if (select == null) return;
     const ctx = this.download_target_context(bag);
-    const hide = this.viewer_only_mode || ctx == null;
+    const hide = this.viewer_mode_value !== 'full' || ctx == null;
     select.disabled = (ctx == null);
     select.style.display = hide ? 'none' : '';
     select.value = '';
@@ -11337,7 +11357,7 @@ class Viewer {
     const edit = this.current_edit_target();
     select.disabled = (edit == null);
     select.style.display =
-      (this.viewer_only_mode || editable_bag == null) ? 'none' : '';
+      (this.viewer_mode_value === 'viewer' || editable_bag == null) ? 'none' : '';
     select.value = '';
     const a = edit ? edit.atom : null;
     for (const opt of select.options) {
@@ -11471,7 +11491,7 @@ class Viewer {
     button.style.opacity = button.disabled ? '0.7' : '1';
     button.style.cursor = button.disabled ? 'default' : 'pointer';
     select.style.display =
-      (this.viewer_only_mode || editable_bag == null) ? 'none' : '';
+      (this.viewer_mode_value === 'viewer' || editable_bag == null) ? 'none' : '';
     const current_target = edit == null ? '' : this.mutation_target_from_resname(edit.atom.resname);
     const value = targets.indexOf(preferred_target) !== -1 ? preferred_target :
       (targets.indexOf(current_target) !== -1 ? current_target : '');
@@ -11819,9 +11839,17 @@ class Viewer {
     return best ? best.ctx : null;
   }
 
-  viewer_only(enabled = true) {
-    this.viewer_only_mode = enabled;
+  viewer_mode(mode = 'full') {
+    if (mode !== 'full' && mode !== 'cloud' && mode !== 'viewer') {
+      throw new Error("viewer_mode: expected 'full', 'cloud', or 'viewer'");
+    }
+    this.viewer_mode_value = mode;
     this.update_nav_menus();
+  }
+
+  // Deprecated: prefer viewer_mode('viewer'|'full').
+  viewer_only(enabled = true) {
+    this.viewer_mode(enabled ? 'viewer' : 'full');
   }
 
   set_model(text, name = 'model.pdb') {
@@ -12321,11 +12349,38 @@ class Viewer {
         );
       }
     }
-    const limit_text = hist.map_d_min != null ?
-      ', map cutoff = ' + hist.map_d_min.toFixed(2) + ' Å' : '';
-    const title = hist.label ?
+    function nearest_boundary_index(d, fallback) {
+      if (d == null) return fallback;
+      let best = fallback;
+      let best_diff = Infinity;
+      for (let i = 0; i <= nbins; i++) {
+        const diff = Math.abs(hist.d_bounds[i] - d);
+        if (diff < best_diff) {
+          best = i;
+          best_diff = diff;
+        }
+      }
+      return best;
+    }
+    let left_index = nearest_boundary_index(hist.map_d_max, 0);
+    let right_index = nearest_boundary_index(hist.map_d_min, nbins);
+    if (left_index >= right_index) {
+      left_index = 0;
+      right_index = nbins;
+    }
+    const x_for_index = (i) => pad_l + i * bw;
+    const d_max_from_left = () => left_index === 0 ? null : hist.d_bounds[left_index];
+    const d_min_from_right = () => right_index === nbins ? null : hist.d_bounds[right_index];
+    const range_text = () => {
+      const d_max = d_max_from_left();
+      const d_min = d_min_from_right();
+      const low = (d_max != null ? d_max : d_low).toFixed(2);
+      const high = (d_min != null ? d_min : d_high).toFixed(2);
+      return low + ' - ' + high + ' Å';
+    };
+    const title_text = () => hist.label ?
       'reflections by resolution (green = ' + hist.label +
-      ' present, red = missing' + limit_text + ')' :
+      ' present, red = missing, map range = ' + range_text() + ')' :
       'reflections by resolution';
     const wrapper = document.createElement('div');
     wrapper.className = 'gm-reflection-histogram';
@@ -12339,7 +12394,7 @@ class Viewer {
     wrapper.style.pointerEvents = 'auto';
     wrapper.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">' +
-      '<span>' + title + '</span>' +
+      '<span class="gm-reflection-title">' + title_text() + '</span>' +
       '<a href="#" class="gm-help-action" data-help-action="toggle_reflection_histogram" ' +
       'style="color:#9cf;margin-left:12px">close</a></div>' +
       '<svg width="' + width + '" height="' + height + '" xmlns="http://www.w3.org/2000/svg">' +
@@ -12349,10 +12404,27 @@ class Viewer {
       '<line x1="' + pad_l + '" y1="' + pad_t +
       '" x2="' + pad_l + '" y2="' + (pad_t + plot_h) + '" stroke="#888"/>' +
       bar_svg.join('') +
+      '<rect class="gm-reflection-excluded-left" x="' + pad_l +
+      '" y="' + pad_t + '" width="' + (x_for_index(left_index) - pad_l) +
+      '" height="' + plot_h + '" fill="#000" opacity="0.55"/>' +
+      '<rect class="gm-reflection-excluded-right" x="' + x_for_index(right_index) +
+      '" y="' + pad_t + '" width="' + (pad_l + plot_w - x_for_index(right_index)) +
+      '" height="' + plot_h + '" fill="#000" opacity="0.55"/>' +
+      '<line class="gm-reflection-handle" data-handle="left" x1="' + x_for_index(left_index) +
+      '" y1="' + pad_t + '" x2="' + x_for_index(left_index) +
+      '" y2="' + (pad_t + plot_h) + '" stroke="#f0d65c" stroke-width="3" ' +
+      'style="cursor:ew-resize"><title>low-resolution limit (drag to adjust)</title></line>' +
+      '<line class="gm-reflection-handle" data-handle="right" x1="' + x_for_index(right_index) +
+      '" y1="' + pad_t + '" x2="' + x_for_index(right_index) +
+      '" y2="' + (pad_t + plot_h) + '" stroke="#f0d65c" stroke-width="3" ' +
+      'style="cursor:ew-resize"><title>high-resolution limit (drag to adjust)</title></line>' +
       '<text x="' + pad_l + '" y="' + (height - 6) +
       '" fill="#ccc">' + d_low.toFixed(2) + ' Å</text>' +
       '<text x="' + (pad_l + plot_w) + '" y="' + (height - 6) +
       '" text-anchor="end" fill="#ccc">' + d_high.toFixed(2) + ' Å</text>' +
+      '<text class="gm-reflection-range-label" x="' + (pad_l + plot_w / 2) +
+      '" y="' + (height - 6) + '" text-anchor="middle" fill="#f0d65c">' +
+      range_text() + '</text>' +
       '<text x="4" y="' + (pad_t + 10) + '" fill="#ccc">' + ymax + '</text>' +
       '</svg>';
     const parent = this.viewer_overlay_el || document.body;
@@ -12364,7 +12436,82 @@ class Viewer {
         this.toggle_reflection_histogram();
       });
     }
+    const svg = wrapper.querySelector('svg') ;
+    const excluded_left = wrapper.querySelector('.gm-reflection-excluded-left') ;
+    const excluded_right = wrapper.querySelector('.gm-reflection-excluded-right') ;
+    const title_el = wrapper.querySelector('.gm-reflection-title') ;
+    const range_label = wrapper.querySelector('.gm-reflection-range-label') ;
+    const left_handle = wrapper.querySelector('[data-handle="left"]') ;
+    const right_handle = wrapper.querySelector('[data-handle="right"]') ;
+    const set_line_x = (el, x) => {
+      if (el == null) return;
+      el.setAttribute('x1', String(x));
+      el.setAttribute('x2', String(x));
+    };
+    const update_handles = () => {
+      hist.map_d_max = d_max_from_left();
+      hist.map_d_min = d_min_from_right();
+      const left_x = x_for_index(left_index);
+      const right_x = x_for_index(right_index);
+      set_line_x(left_handle, left_x);
+      set_line_x(right_handle, right_x);
+      if (excluded_left != null) {
+        excluded_left.setAttribute('width', String(Math.max(0, left_x - pad_l)));
+      }
+      if (excluded_right != null) {
+        excluded_right.setAttribute('x', String(right_x));
+        excluded_right.setAttribute('width', String(Math.max(0, pad_l + plot_w - right_x)));
+      }
+      if (title_el != null) title_el.textContent = title_text();
+      if (range_label != null) range_label.textContent = range_text();
+    };
+    const index_from_event = (ev) => {
+      if (svg == null) return 0;
+      const rect = svg.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const idx = Math.round((x - pad_l) / bw);
+      return Math.max(0, Math.min(nbins, idx));
+    };
+    let dragging = null;
+    const start_drag = (handle, ev) => {
+      dragging = handle;
+      ev.preventDefault();
+      document.addEventListener('mousemove', drag_move);
+      document.addEventListener('mouseup', drag_end);
+    };
+    const drag_move = (ev) => {
+      if (dragging == null) return;
+      const idx = index_from_event(ev);
+      if (dragging === 'left') {
+        left_index = Math.min(idx, right_index - 1);
+      } else {
+        right_index = Math.max(idx, left_index + 1);
+      }
+      update_handles();
+    };
+    const drag_end = (ev) => {
+      drag_move(ev);
+      dragging = null;
+      document.removeEventListener('mousemove', drag_move);
+      document.removeEventListener('mouseup', drag_end);
+      if (this.reflection_histogram_apply) {
+        this.reflection_histogram_apply(hist.map_d_min, hist.map_d_max);
+      }
+    };
+    if (left_handle) {
+      left_handle.addEventListener('mousedown', (ev) => start_drag('left', ev ));
+    }
+    if (right_handle) {
+      right_handle.addEventListener('mousedown', (ev) => start_drag('right', ev ));
+    }
     this.reflection_histogram_el = wrapper;
+  }
+
+  refresh_reflection_histogram() {
+    if (this.reflection_histogram_el == null) return;
+    this.reflection_histogram_el.remove();
+    this.reflection_histogram_el = null;
+    this.toggle_reflection_histogram();
   }
 
   toggle_histogram() {
@@ -14549,6 +14696,7 @@ function make_histogram(mtz, label,
     missing: flat.slice(nbins, 2 * nbins),
     label: label,
     map_d_min: null,
+    map_d_max: null,
   };
 }
 
@@ -14589,17 +14737,20 @@ function compute_histogram(mtz, nbins) {
 }
 
 function calculate_wasm_map(mtz, is_diff,
-                            d_min) {
-  if (d_min != null && mtz.calculate_wasm_map_limited) {
-    return mtz.calculate_wasm_map_limited(is_diff, d_min);
+                            d_min,
+                            d_max) {
+  if ((d_min != null || d_max != null) && mtz.calculate_wasm_map_limited) {
+    return mtz.calculate_wasm_map_limited(is_diff, d_min || 0, d_max || 0);
   }
   return mtz.calculate_wasm_map(is_diff);
 }
 
 function calculate_wasm_map_from_labels(mtz, f_label, phi_label,
-                                        d_min) {
-  if (d_min != null && mtz.calculate_wasm_map_from_labels_limited) {
-    return mtz.calculate_wasm_map_from_labels_limited(f_label, phi_label, d_min);
+                                        d_min,
+                                        d_max) {
+  if ((d_min != null || d_max != null) && mtz.calculate_wasm_map_from_labels_limited) {
+    return mtz.calculate_wasm_map_from_labels_limited(f_label, phi_label, d_min || 0,
+                                                      d_max || 0);
   }
   return mtz.calculate_wasm_map_from_labels(f_label, phi_label);
 }
@@ -14616,28 +14767,33 @@ function add_map_from_mtz(gemmi, viewer,
   viewer.add_map(map, is_diff);
 }
 
-function load_maps_from_mtz_buffer(gemmi, viewer, mtz,
-                                   labels) {
-  let map_d_min = null;
-  try {
-    const hist = compute_histogram(mtz, 25);
-    if (hist) {
-      viewer.reflection_histogram = hist;
-      map_d_min = hist.map_d_min;
-      if (map_d_min != null) {
-        console.log('limiting map calculation to ' + map_d_min.toFixed(2) +
-                    ' Å based on ' + hist.label + ' completeness');
-      }
-    }
-  } catch (e) {
-    console.warn('reflection histogram failed:', e);
+function log_map_limits(hist) {
+  const parts = [];
+  if (hist.map_d_max != null) parts.push('low ' + hist.map_d_max.toFixed(2) + ' Å');
+  if (hist.map_d_min != null) parts.push('high ' + hist.map_d_min.toFixed(2) + ' Å');
+  if (parts.length !== 0) {
+    console.log('limiting map calculation to ' + parts.join(', ') +
+                (hist.label ? ' based on ' + hist.label + ' completeness' : ''));
   }
+}
+
+function calculate_maps_from_mtz(gemmi, viewer, mtz,
+                                 labels,
+                                 d_min,
+                                 d_max) {
+  const map_bags = [];
+  const add_map = (mtz_map, is_diff) => {
+    const bags = (viewer ).map_bags;
+    const before = Array.isArray(bags) ? bags.length : -1;
+    add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
+    if (before >= 0 && bags[before]) map_bags.push(bags[before]);
+  };
   if (labels != null) {
     for (let n = 0; n < labels.length; n += 2) {
       if (labels[n] === '') continue;
       const t0 = performance.now();
       const mtz_map = calculate_wasm_map_from_labels(mtz, labels[n], labels[n+1],
-                                                     map_d_min);
+                                                     d_min, d_max);
       log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
                      (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
                      (mtz_map ? mtz_map.nz : mtz.nz) +
@@ -14647,25 +14803,66 @@ function load_maps_from_mtz_buffer(gemmi, viewer, mtz,
         continue;
       }
       const is_diff = (n % 4 == 2);
-      add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
+      add_map(mtz_map, is_diff);
     }
   } else {  // use default labels
     for (let nmap = 0; nmap < 2; ++nmap) {
       const is_diff = (nmap == 1);
       const t0 = performance.now();
-      const mtz_map = calculate_wasm_map(mtz, is_diff, map_d_min);
+      const mtz_map = calculate_wasm_map(mtz, is_diff, d_min, d_max);
       log_timing(t0, 'map ' + (mtz_map ? mtz_map.nx : mtz.nx) + 'x' +
                      (mtz_map ? mtz_map.ny : mtz.ny) + 'x' +
                      (mtz_map ? mtz_map.nz : mtz.nz) +
                      ' calculated in');
       if (mtz_map != null) {
-        add_map_from_mtz(gemmi, viewer, mtz_map, is_diff);
+        add_map(mtz_map, is_diff);
       } else {
         viewer.hud(mtz.last_error, 'ERR');
       }
     }
   }
-  mtz.delete();
+  return map_bags;
+}
+
+function load_maps_from_mtz_buffer(gemmi, viewer, mtz,
+                                   labels) {
+  if (viewer.reflection_histogram_cleanup) {
+    viewer.reflection_histogram_cleanup();
+  }
+  viewer.reflection_histogram_cleanup = null;
+  viewer.reflection_histogram_apply = null;
+  let hist = null;
+  try {
+    hist = compute_histogram(mtz, 25);
+    if (hist) {
+      viewer.reflection_histogram = hist;
+      log_map_limits(hist);
+    }
+  } catch (e) {
+    console.warn('reflection histogram failed:', e);
+  }
+  let map_bags = calculate_maps_from_mtz(gemmi, viewer, mtz, labels,
+                                         hist ? hist.map_d_min : null,
+                                         hist ? hist.map_d_max : null);
+  if (hist) {
+    let active = true;
+    viewer.reflection_histogram_cleanup = function () {
+      if (!active) return;
+      active = false;
+      mtz.delete();
+    };
+    viewer.reflection_histogram_apply = function (d_min, d_max) {
+      if (!active || hist == null) return;
+      hist.map_d_min = d_min;
+      hist.map_d_max = d_max;
+      if (viewer.remove_maps) viewer.remove_maps(map_bags);
+      log_map_limits(hist);
+      map_bags = calculate_maps_from_mtz(gemmi, viewer, mtz, labels, d_min, d_max);
+      if (viewer.refresh_reflection_histogram) viewer.refresh_reflection_histogram();
+    };
+  } else {
+    mtz.delete();
+  }
 }
 
 function load_maps_from_mtz(gemmi, viewer, url,

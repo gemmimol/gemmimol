@@ -143,8 +143,8 @@ describe('MTZ loading', () => {
       calculate_wasm_map: jest.fn(function () {
         throw new Error('unlimited map path should not be used');
       }),
-      calculate_wasm_map_limited: jest.fn(function (isDiff, dMin) {
-        limitCalls.push({isDiff: isDiff, dMin: dMin});
+      calculate_wasm_map_limited: jest.fn(function (isDiff, dMin, dMax) {
+        limitCalls.push({isDiff: isDiff, dMin: dMin, dMax: dMax});
         return fakeWasmMap(isDiff ? 2.5 : 1.5, isDiff ? 4.5 : 3.5, [7, 8, 9]);
       }),
       calculate_wasm_map_from_labels: jest.fn(function () {
@@ -164,8 +164,77 @@ describe('MTZ loading', () => {
     expect(viewer.reflection_histogram.label).toBe('F_est');
     expect(viewer.reflection_histogram.map_d_min).toBeCloseTo(8.8);
     expect(limitCalls).toEqual([
-      {isDiff: false, dMin: 8.8},
-      {isDiff: true, dMin: 8.8},
+      {isDiff: false, dMin: 8.8, dMax: 0},
+      {isDiff: true, dMin: 8.8, dMax: 0},
     ]);
+  });
+
+  it('recalculates maps when reflection histogram limits are applied', () => {
+    var gemmi = fakeGemmi();
+    var deleted = false;
+    var limited = [];
+    var mtz = {
+      nx: 4,
+      ny: 5,
+      nz: 6,
+      last_error: '',
+      resolution_histogram: jest.fn(function (label, nbins, bounds) {
+        for (var i = 0; i <= nbins; i++) {
+          bounds[i] = 10 - i * 0.2;
+        }
+        var flat = new Uint32Array(2 * nbins);
+        for (var j = 0; j < nbins; j++) {
+          flat[j] = 10;
+        }
+        if (label === 'F_est') {
+          flat[nbins + 2] = 1;
+        }
+        return flat;
+      }),
+      calculate_wasm_map: jest.fn(function (isDiff) {
+        return fakeWasmMap(isDiff ? 2.5 : 1.5, isDiff ? 4.5 : 3.5, [7, 8, 9]);
+      }),
+      calculate_wasm_map_limited: jest.fn(function (isDiff, dMin, dMax) {
+        limited.push({isDiff: isDiff, dMin: dMin, dMax: dMax});
+        return fakeWasmMap(isDiff ? 2.5 : 1.5, isDiff ? 4.5 : 3.5, [5, 6, 7]);
+      }),
+      calculate_wasm_map_from_labels: jest.fn(function () {
+        throw new Error('label path not expected here');
+      }),
+      delete: function () { deleted = true; },
+    };
+    var viewer = {
+      map_bags: [],
+      add_map: function (map, isDiff) {
+        this.map_bags.push({map: map, isDiff: isDiff});
+      },
+      remove_maps: function (maps) {
+        this.map_bags = this.map_bags.filter(function (bag) {
+          return maps.indexOf(bag) === -1;
+        });
+      },
+      refresh_reflection_histogram: jest.fn(),
+      hud: function (msg, level) {
+        throw new Error(level + ': ' + msg);
+      },
+    };
+
+    GM.load_maps_from_mtz_buffer(gemmi, viewer, mtz);
+    expect(viewer.map_bags).toHaveLength(2);
+    expect(deleted).toBe(false);
+
+    viewer.reflection_histogram_apply(2.0, 5.0);
+
+    expect(viewer.map_bags).toHaveLength(2);
+    expect(limited).toEqual([
+      {isDiff: false, dMin: 2.0, dMax: 5.0},
+      {isDiff: true, dMin: 2.0, dMax: 5.0},
+    ]);
+    expect(viewer.reflection_histogram.map_d_min).toBe(2.0);
+    expect(viewer.reflection_histogram.map_d_max).toBe(5.0);
+    expect(viewer.refresh_reflection_histogram).toHaveBeenCalledTimes(1);
+
+    viewer.reflection_histogram_cleanup();
+    expect(deleted).toBe(true);
   });
 });
