@@ -1,5 +1,5 @@
 /*!
- * GemmiMol v0.8.7. Macromolecular Viewer for Crystallographers.
+ * GemmiMol v0.8.8. Macromolecular Viewer for Crystallographers.
  * Copyright 2014 Nat Echols
  * Copyright 2016 Diamond Light Source Ltd
  * Copyright 2016 Marcin Wojdyr
@@ -11,9 +11,9 @@ typeof define === 'function' && define.amd ? define(['exports'], factory) :
 (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.GM = {}));
 })(this, (function (exports) { 'use strict';
 
-var VERSION = exports.VERSION = "0.8.7";
-var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-7-g3df533b-dirty";
-var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-151-gb74dd4c2";
+var VERSION = exports.VERSION = "0.8.8";
+var GIT_DESCRIBE = exports.GIT_DESCRIBE = "0.8.7-8-g43a1955-dirty";
+var GEMMI_GIT_DESCRIBE = exports.GEMMI_GIT_DESCRIBE = "v0.7.5-152-g4bf01c29";
 
 
 const BondType = {
